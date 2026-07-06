@@ -32,6 +32,9 @@ add_library(pdhybrid_dsp STATIC
     src/dsp/MultiStageEnvelope.cpp
     src/dsp/Voice.cpp
     src/dsp/SynthEngine.cpp
+    src/dsp/PhaseDistortionResonator.cpp
+    src/dsp/CombFilter.cpp
+    src/dsp/AllpassDispersion.cpp
 )
 target_include_directories(pdhybrid_dsp PUBLIC src)
 target_compile_features(pdhybrid_dsp PUBLIC cxx_std_17)

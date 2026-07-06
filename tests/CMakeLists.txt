@@ -13,6 +13,7 @@ add_executable(pdhybrid_tests
     dsp/amp_tests.cpp
     dsp/envelope_tests.cpp
     dsp/synth_tests.cpp
+    dsp/nontraditional_filter_tests.cpp
     harness/Fft.cpp
     harness/Spectrum.cpp
 )

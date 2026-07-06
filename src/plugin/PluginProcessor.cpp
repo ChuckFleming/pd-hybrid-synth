@@ -11,6 +11,14 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.30f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "cutoff", 1 }, "Filter Cutoff",
+        juce::NormalisableRange<float> (20.0f, 18000.0f, 0.0f, 0.3f), 8000.0f));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "resonance", 1 }, "Filter Resonance",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.20f));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "gain", 1 }, "Gain",
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.80f));
 
@@ -43,6 +51,8 @@ PDHybridAudioProcessor::PDHybridAudioProcessor()
 void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int)
 {
     osc.setSampleRate (sampleRate);
+    filter.setSampleRate (sampleRate);
+    filter.reset();
     env.setSampleRate (sampleRate);
     env.reset();
 }
@@ -60,6 +70,8 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     env.setParameters (envParams);
 
     osc.setAmount (apvts.getRawParameterValue ("amount")->load());
+    filter.setCutoff (apvts.getRawParameterValue ("cutoff")->load());
+    filter.setResonance (apvts.getRawParameterValue ("resonance")->load());
     const float gain = apvts.getRawParameterValue ("gain")->load();
 
     const int numSamples   = buffer.getNumSamples();
@@ -86,7 +98,8 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             ++midiIt;
         }
 
-        const float s = osc.processSample() * env.getNextSample() * gain;
+        const float s = filter.processSample (osc.processSample())
+                            * env.getNextSample() * gain;
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.setSample (ch, i, s);
     }

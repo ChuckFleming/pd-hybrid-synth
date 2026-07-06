@@ -10,6 +10,7 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(pdhybrid_tests
     dsp/oscillator_tests.cpp
     dsp/filter_tests.cpp
+    dsp/amp_tests.cpp
     harness/Fft.cpp
     harness/Spectrum.cpp
 )

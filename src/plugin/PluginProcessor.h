@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "dsp/PhaseDistortionOscillator.h"
 #include "dsp/LadderFilter.h"
+#include "dsp/OverdriveAmp.h"
 
 /**
     Minimal vertical-slice synth: one PD oscillator -> JUCE ADSR gate -> gain,
@@ -46,6 +47,7 @@ private:
 
     pdhybrid::PhaseDistortionOscillator osc;
     pdhybrid::LadderFilter filter;
+    pdhybrid::OverdriveAmp amp;
     juce::ADSR             env;
     juce::ADSR::Parameters envParams;
     int    currentNote = -1;

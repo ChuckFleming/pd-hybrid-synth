@@ -6,6 +6,9 @@
 # Fetched dependencies (JUCE, Catch2) live under build/_deps
 _deps/
 
+# Transient build/configure logs
+build_*.log
+
 # IDE / editor
 .vs/
 .vscode/

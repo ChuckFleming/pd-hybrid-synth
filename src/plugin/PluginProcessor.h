@@ -4,6 +4,7 @@
 #include "dsp/PhaseDistortionOscillator.h"
 #include "dsp/LadderFilter.h"
 #include "dsp/OverdriveAmp.h"
+#include "dsp/MultiStageEnvelope.h"
 
 /**
     Minimal vertical-slice synth: one PD oscillator -> JUCE ADSR gate -> gain,
@@ -48,8 +49,7 @@ private:
     pdhybrid::PhaseDistortionOscillator osc;
     pdhybrid::LadderFilter filter;
     pdhybrid::OverdriveAmp amp;
-    juce::ADSR             env;
-    juce::ADSR::Parameters envParams;
+    pdhybrid::MultiStageEnvelope env;
     int    currentNote = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDHybridAudioProcessor)

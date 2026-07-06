@@ -65,6 +65,7 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int)
     amp.setOversampling (4);
     amp.reset();
     env.setSampleRate (sampleRate);
+    env.setADSR (0.01, 0.10, 0.70, 0.20);   // preallocate stages
     env.reset();
 }
 
@@ -74,11 +75,10 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
 
-    envParams.attack  = apvts.getRawParameterValue ("attack")->load();
-    envParams.decay   = apvts.getRawParameterValue ("decay")->load();
-    envParams.sustain = apvts.getRawParameterValue ("sustain")->load();
-    envParams.release = apvts.getRawParameterValue ("release")->load();
-    env.setParameters (envParams);
+    env.setADSR (apvts.getRawParameterValue ("attack")->load(),
+                 apvts.getRawParameterValue ("decay")->load(),
+                 apvts.getRawParameterValue ("sustain")->load(),
+                 apvts.getRawParameterValue ("release")->load());
 
     osc.setAmount (apvts.getRawParameterValue ("amount")->load());
     filter.setCutoff (apvts.getRawParameterValue ("cutoff")->load());
@@ -112,7 +112,7 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         }
 
         const float driven = amp.processSample (filter.processSample (osc.processSample()));
-        const float s = driven * env.getNextSample() * gain;
+        const float s = driven * env.processSample() * gain;
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.setSample (ch, i, s);
     }

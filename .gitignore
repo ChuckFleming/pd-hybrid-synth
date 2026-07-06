@@ -1,0 +1,17 @@
+# Build output
+/build/
+/cmake-build-*/
+/out/
+
+# Fetched dependencies (JUCE, Catch2) live under build/_deps
+_deps/
+
+# IDE / editor
+.vs/
+.vscode/
+.idea/
+*.user
+
+# OS
+Thumbs.db
+.DS_Store

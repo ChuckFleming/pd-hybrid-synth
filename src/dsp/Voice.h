@@ -2,6 +2,9 @@
 
 #include "PhaseDistortionOscillator.h"
 #include "LadderFilter.h"
+#include "PhaseDistortionResonator.h"
+#include "CombFilter.h"
+#include "AllpassDispersion.h"
 #include "OverdriveAmp.h"
 #include "MultiStageEnvelope.h"
 #include "SynthParams.h"
@@ -12,9 +15,11 @@ namespace pdhybrid {
 double midiNoteToHz (int note) noexcept;
 
 /**
-    A single synth voice: PD oscillator -> ladder filter -> overdrive -> amp
-    envelope. Expression inputs (pitch bend in semitones, pressure, timbre)
-    modulate pitch, level, and filter cutoff respectively.
+    A single synth voice: PD oscillator -> selectable filter -> overdrive -> amp
+    envelope. The filter is chosen per block (ladder, PD resonator, comb, or
+    allpass dispersion); all share the cutoff/resonance/morph controls so
+    switching is seamless. Expression inputs (pitch bend, pressure, timbre)
+    modulate pitch, level, and filter frequency.
 */
 class Voice
 {
@@ -30,16 +35,19 @@ public:
 
     void setPitchBendSemitones (double semitones) noexcept;
     void setPressure           (double pressure01) noexcept { pressure_ = pressure01; }
-    void setTimbre             (double timbre01)   noexcept;
+    void setTimbre             (double timbre01) noexcept;
 
     float render() noexcept;
 
 private:
-    void updateFrequency() noexcept;
-    void updateCutoff()    noexcept;
+    void updateFrequency()    noexcept;
+    void applyFilterParams()  noexcept;
 
     PhaseDistortionOscillator osc_;
-    LadderFilter              filter_;
+    LadderFilter              ladder_;
+    PhaseDistortionResonator  pdReso_;
+    CombFilter                comb_;
+    AllpassDispersion         allpass_;
     OverdriveAmp              amp_;
     MultiStageEnvelope        env_;
 

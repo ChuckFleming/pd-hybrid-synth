@@ -12,6 +12,7 @@
 
 using pdhybrid::SynthEngine;
 using pdhybrid::SynthParams;
+using pdhybrid::FilterType;
 using pdhybrid::midiNoteToHz;
 using Catch::Approx;
 using namespace harness;
@@ -161,6 +162,28 @@ TEST_CASE ("Polyphony is capped and steals the oldest voice", "[synth][voicing]"
 
     REQUIRE (e.activeVoiceCount() == SynthEngine::kMaxVoices);
     REQUIRE_FALSE (hasBadValues (renderEngine (e, 512)));
+}
+
+TEST_CASE ("Engine produces clean sound with every filter type", "[synth][filter]")
+{
+    const double sr = 48000.0;
+    for (auto ft : { FilterType::Ladder, FilterType::PdResonator,
+                     FilterType::Comb, FilterType::Allpass })
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = brightSustainParams();
+        p.filterType   = ft;
+        p.resonance    = 0.4;
+        p.filterMorph  = 0.5;
+        e.setParams (p);
+        e.noteOn (60, 1.0f, 1);
+
+        auto buf = renderEngine (e, 16384);
+        REQUIRE_FALSE (hasBadValues (buf));
+        REQUIRE (peakAbs (buf) < 50.0f);
+        REQUIRE (rms (buf) > 1e-5);        // it actually makes sound
+    }
 }
 
 TEST_CASE ("Sub-block triggering makes note-on sample-accurate", "[synth][timing]")

@@ -9,6 +9,9 @@ _deps/
 # Transient build/configure logs
 build_*.log
 
+# Machine-local Claude Code settings
+.claude/settings.local.json
+
 # IDE / editor
 .vs/
 .vscode/

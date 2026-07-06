@@ -2,12 +2,24 @@
 
 namespace pdhybrid {
 
+enum class FilterType
+{
+    Ladder = 0,   // analog-modeled 4-pole ladder
+    PdResonator,  // phase-distortion resonator
+    Comb,         // tuned feedback comb / waveguide
+    Allpass       // allpass dispersion
+};
+
 // Per-block synth settings pushed from the host/UI down to every voice.
 struct SynthParams
 {
     double pdAmount  = 0.30;
-    double cutoffHz  = 8000.0;
-    double resonance = 0.20;
+
+    FilterType filterType   = FilterType::Ladder;
+    double     cutoffHz     = 8000.0;
+    double     resonance    = 0.20;
+    double     filterMorph  = 0.0;   // PD-reso amount / comb damping / allpass dispersion
+
     double drive     = 1.0;
     double bias      = 0.0;
 

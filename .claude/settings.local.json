@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(git add *)",
-      "Bash(git -c 'user.name=PD Hybrid' -c user.email=charlesflemingiv@gmail.com commit -q -m 'Add polyphonic voice engine + MIDI/MPE harness *)",
-      "Bash(git -c 'user.name=PD Hybrid' -c user.email=charlesflemingiv@gmail.com commit -q -m 'Add non-traditional filters: PD resonator, comb, allpass dispersion *)"
-    ]
-  }
-}

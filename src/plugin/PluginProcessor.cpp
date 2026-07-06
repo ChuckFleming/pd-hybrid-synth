@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "PluginEditor.h"
 
 using APVTS = juce::AudioProcessorValueTreeState;
 
@@ -17,6 +18,14 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "resonance", 1 }, "Filter Resonance",
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.20f));
+
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "filterType", 1 }, "Filter Type",
+        juce::StringArray { "Ladder", "PD Resonator", "Comb", "Allpass" }, 0));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "filterMorph", 1 }, "Filter Morph",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "drive", 1 }, "Overdrive",
@@ -65,10 +74,13 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 void PDHybridAudioProcessor::pushParams()
 {
     pdhybrid::SynthParams p;
-    p.pdAmount  = apvts.getRawParameterValue ("amount")->load();
-    p.cutoffHz  = apvts.getRawParameterValue ("cutoff")->load();
-    p.resonance = apvts.getRawParameterValue ("resonance")->load();
-    p.drive     = apvts.getRawParameterValue ("drive")->load();
+    p.pdAmount    = apvts.getRawParameterValue ("amount")->load();
+    p.cutoffHz    = apvts.getRawParameterValue ("cutoff")->load();
+    p.resonance   = apvts.getRawParameterValue ("resonance")->load();
+    p.filterType  = static_cast<pdhybrid::FilterType> (
+                        static_cast<int> (apvts.getRawParameterValue ("filterType")->load()));
+    p.filterMorph = apvts.getRawParameterValue ("filterMorph")->load();
+    p.drive       = apvts.getRawParameterValue ("drive")->load();
     p.bias      = apvts.getRawParameterValue ("bias")->load();
     p.attack    = apvts.getRawParameterValue ("attack")->load();
     p.decay     = apvts.getRawParameterValue ("decay")->load();
@@ -136,7 +148,7 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
 juce::AudioProcessorEditor* PDHybridAudioProcessor::createEditor()
 {
-    return new juce::GenericAudioProcessorEditor (*this);
+    return new PDHybridEditor (*this);
 }
 
 void PDHybridAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

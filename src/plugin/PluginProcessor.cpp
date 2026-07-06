@@ -56,17 +56,60 @@ PDHybridAudioProcessor::PDHybridAudioProcessor()
 {
 }
 
-void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int)
+void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    osc.setSampleRate (sampleRate);
-    filter.setSampleRate (sampleRate);
-    filter.reset();
-    amp.setSampleRate (sampleRate);
-    amp.setOversampling (4);
-    amp.reset();
-    env.setSampleRate (sampleRate);
-    env.setADSR (0.01, 0.10, 0.70, 0.20);   // preallocate stages
-    env.reset();
+    engine.setSampleRate (sampleRate);
+    scratch.assign (static_cast<std::size_t> (juce::jmax (1, samplesPerBlock)), 0.0f);
+}
+
+void PDHybridAudioProcessor::pushParams()
+{
+    pdhybrid::SynthParams p;
+    p.pdAmount  = apvts.getRawParameterValue ("amount")->load();
+    p.cutoffHz  = apvts.getRawParameterValue ("cutoff")->load();
+    p.resonance = apvts.getRawParameterValue ("resonance")->load();
+    p.drive     = apvts.getRawParameterValue ("drive")->load();
+    p.bias      = apvts.getRawParameterValue ("bias")->load();
+    p.attack    = apvts.getRawParameterValue ("attack")->load();
+    p.decay     = apvts.getRawParameterValue ("decay")->load();
+    p.sustain   = apvts.getRawParameterValue ("sustain")->load();
+    p.release   = apvts.getRawParameterValue ("release")->load();
+    p.gain      = apvts.getRawParameterValue ("gain")->load();
+    engine.setParams (p);
+}
+
+void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
+{
+    const int channel = msg.getChannel();   // used as the per-note expression id
+
+    if (msg.isNoteOn())
+        engine.noteOn (msg.getNoteNumber(), msg.getFloatVelocity(), channel);
+    else if (msg.isNoteOff())
+        engine.noteOff (msg.getNoteNumber(), channel);
+    else if (msg.isPitchWheel())
+        engine.setNotePitchBend (channel,
+            (msg.getPitchWheelValue() - 8192) / 8192.0 * pitchBendRangeSemis);
+    else if (msg.isChannelPressure())
+        engine.setNotePressure (channel, msg.getChannelPressureValue() / 127.0);
+    else if (msg.isController() && msg.getControllerNumber() == 74)
+        engine.setNoteTimbre (channel, msg.getControllerValue() / 127.0);
+    else if (msg.isAllNotesOff() || msg.isAllSoundOff())
+        engine.allNotesOff();
+}
+
+void PDHybridAudioProcessor::renderSegment (juce::AudioBuffer<float>& buffer,
+                                            int startSample, int numSamples)
+{
+    if (numSamples <= 0)
+        return;
+
+    if (static_cast<int> (scratch.size()) < numSamples)
+        scratch.resize (static_cast<std::size_t> (numSamples));
+
+    engine.renderBlock (scratch.data(), numSamples);
+
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        buffer.copyFrom (ch, startSample, scratch.data(), numSamples);
 }
 
 void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
@@ -75,47 +118,20 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
 
-    env.setADSR (apvts.getRawParameterValue ("attack")->load(),
-                 apvts.getRawParameterValue ("decay")->load(),
-                 apvts.getRawParameterValue ("sustain")->load(),
-                 apvts.getRawParameterValue ("release")->load());
+    pushParams();
 
-    osc.setAmount (apvts.getRawParameterValue ("amount")->load());
-    filter.setCutoff (apvts.getRawParameterValue ("cutoff")->load());
-    filter.setResonance (apvts.getRawParameterValue ("resonance")->load());
-    amp.setDrive (apvts.getRawParameterValue ("drive")->load());
-    amp.setBias (apvts.getRawParameterValue ("bias")->load());
-    const float gain = apvts.getRawParameterValue ("gain")->load();
+    const int numSamples = buffer.getNumSamples();
+    int cursor = 0;
 
-    const int numSamples   = buffer.getNumSamples();
-    const int numChannels  = buffer.getNumChannels();
-
-    auto midiIt  = midi.begin();
-    auto midiEnd = midi.end();
-
-    for (int i = 0; i < numSamples; ++i)
+    for (const auto meta : midi)
     {
-        while (midiIt != midiEnd && (*midiIt).samplePosition <= i)
-        {
-            const auto msg = (*midiIt).getMessage();
-            if (msg.isNoteOn())
-            {
-                currentNote = msg.getNoteNumber();
-                osc.setFrequency (juce::MidiMessage::getMidiNoteInHertz (currentNote));
-                env.noteOn();
-            }
-            else if (msg.isNoteOff() && msg.getNoteNumber() == currentNote)
-            {
-                env.noteOff();
-            }
-            ++midiIt;
-        }
-
-        const float driven = amp.processSample (filter.processSample (osc.processSample()));
-        const float s = driven * env.processSample() * gain;
-        for (int ch = 0; ch < numChannels; ++ch)
-            buffer.setSample (ch, i, s);
+        const int pos = juce::jlimit (0, numSamples, meta.samplePosition);
+        renderSegment (buffer, cursor, pos - cursor);
+        cursor = pos;
+        handleMidiMessage (meta.getMessage());
     }
+
+    renderSegment (buffer, cursor, numSamples - cursor);
 }
 
 juce::AudioProcessorEditor* PDHybridAudioProcessor::createEditor()

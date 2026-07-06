@@ -30,6 +30,8 @@ add_library(pdhybrid_dsp STATIC
     src/dsp/Oversampler.cpp
     src/dsp/OverdriveAmp.cpp
     src/dsp/MultiStageEnvelope.cpp
+    src/dsp/Voice.cpp
+    src/dsp/SynthEngine.cpp
 )
 target_include_directories(pdhybrid_dsp PUBLIC src)
 target_compile_features(pdhybrid_dsp PUBLIC cxx_std_17)

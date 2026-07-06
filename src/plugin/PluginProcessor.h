@@ -1,16 +1,15 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
-#include "dsp/PhaseDistortionOscillator.h"
-#include "dsp/LadderFilter.h"
-#include "dsp/OverdriveAmp.h"
-#include "dsp/MultiStageEnvelope.h"
+#include "dsp/SynthEngine.h"
+#include <vector>
 
 /**
-    Minimal vertical-slice synth: one PD oscillator -> JUCE ADSR gate -> gain,
-    driven by MIDI (monophonic). Intentionally thin -- each real module (filter,
-    overdrive, multi-stage envelope, polyphony) will be built test-first in the
-    DSP core and wired in here as it goes green. The editor is a generic,
+    Polyphonic hybrid synth: drives the headless SynthEngine (PD osc -> ladder
+    filter -> overdrive -> multi-stage envelope, per voice). MIDI is rendered
+    sample-accurately by splitting each block at event boundaries. Per-note
+    expression (pitch bend / pressure / CC74 timbre) is keyed by MIDI channel,
+    which covers both MPE and legacy controllers. The editor is a generic,
     auto-generated parameter panel for now.
 */
 class PDHybridAudioProcessor : public juce::AudioProcessor
@@ -46,11 +45,13 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
-    pdhybrid::PhaseDistortionOscillator osc;
-    pdhybrid::LadderFilter filter;
-    pdhybrid::OverdriveAmp amp;
-    pdhybrid::MultiStageEnvelope env;
-    int    currentNote = -1;
+    void pushParams();
+    void handleMidiMessage (const juce::MidiMessage& msg);
+    void renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
+
+    pdhybrid::SynthEngine engine;
+    std::vector<float>    scratch;              // mono render buffer
+    double                pitchBendRangeSemis = 2.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDHybridAudioProcessor)
 };

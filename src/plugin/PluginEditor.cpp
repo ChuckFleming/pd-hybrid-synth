@@ -93,7 +93,9 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     filter.combos = { filterTypeBox };
     filter.knobs  = { &addKnob ("cutoff", "Cutoff"),
                       &addKnob ("resonance", "Resonance"),
-                      &addKnob ("filterMorph", "Morph") };
+                      &addKnob ("filterMorph", "Morph"),
+                      &addKnob ("keyTrack", "Key Track"),
+                      &addKnob ("filterEnvAmount", "Env Amt") };
 
     // --- Overdrive ---
     Section drive;
@@ -125,7 +127,15 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                      &addKnob ("modEnvS", "Sustain"),
                      &addKnob ("modEnvR", "Release") };
 
-    sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv };
+    // --- Filter Envelope ---
+    Section filterEnv;
+    filterEnv.title = "Filter Envelope";
+    filterEnv.knobs = { &addKnob ("filterEnvA", "Attack"),
+                        &addKnob ("filterEnvD", "Decay"),
+                        &addKnob ("filterEnvS", "Sustain"),
+                        &addKnob ("filterEnvR", "Release") };
+
+    sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv };
 
     // --- Modulation matrix rows ---
     for (int i = 0; i < 4; ++i)
@@ -148,8 +158,8 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
     const int u    = kKnobW + kPad;
     const int rowH = kHeaderH + 18 + kKnobH + kPad;
-    setSize (8 * u + 4 * kPad,
-             kTitleH + 4 * rowH + kHeaderH + 4 * kMatrixRowH + 2 * kPad);
+    setSize (10 * u + 4 * kPad,
+             kTitleH + 5 * rowH + kHeaderH + 4 * kMatrixRowH + 2 * kPad);
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)
@@ -216,10 +226,18 @@ void PDHybridEditor::resized()
         layoutRow (b, row.removeFromLeft (wb * u));
     };
 
-    placeRow (sections[0], 5, sections[2], 3);   // Osc A   | Mixer
-    placeRow (sections[1], 5, sections[3], 3);   // Osc B   | Filter
+    auto placeSingle = [&] (Section& a, int wa)
+    {
+        auto row = area.removeFromTop (rowH);
+        row.removeFromLeft (kPad);
+        layoutRow (a, row.removeFromLeft (wa * u));
+    };
+
+    placeRow (sections[0], 5, sections[2], 3);   // Osc A     | Mixer
+    placeRow (sections[1], 5, sections[3], 5);   // Osc B     | Filter (+ key track / env amt)
     placeRow (sections[4], 3, sections[5], 4);   // Overdrive | Amp Envelope
-    placeRow (sections[6], 2, sections[7], 4);   // LFO       | Mod Envelope
+    placeRow (sections[8], 4, sections[7], 4);   // Filter Env| Mod Envelope
+    placeSingle (sections[6], 2);                // LFO
 
     // Modulation matrix.
     matrixBounds = area.reduced (kPad, 0).withTrimmedBottom (kPad);

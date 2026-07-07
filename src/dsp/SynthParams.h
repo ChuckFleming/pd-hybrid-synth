@@ -52,6 +52,9 @@ struct SynthParams
     double     cutoffHz     = 8000.0;
     double     resonance    = 0.20;
     double     filterMorph  = 0.0;   // PD-reso amount / comb damping / allpass dispersion
+    double     keyTrack     = 0.0;   // 0..1 cutoff key-follow (1 = one octave per octave)
+    double     filterEnvAmount = 0.0;   // filter-envelope depth in octaves (bipolar)
+    double     filterEnvA = 0.01, filterEnvD = 0.20, filterEnvS = 0.0, filterEnvR = 0.30;
 
     double drive     = 1.0;
     double bias      = 0.0;

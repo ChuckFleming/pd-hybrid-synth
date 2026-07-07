@@ -57,8 +57,9 @@ private:
     CombFilter                comb_;
     AllpassDispersion         allpass_;
     OverdriveAmp              amp_;
-    MultiStageEnvelope        env_;    // amplitude envelope
-    MultiStageEnvelope        env2_;   // modulation envelope
+    MultiStageEnvelope        env_;       // amplitude envelope
+    MultiStageEnvelope        env2_;      // modulation envelope
+    MultiStageEnvelope        filterEnv_; // dedicated filter-cutoff envelope
     Lfo                       lfo_;
 
     SynthParams params_;

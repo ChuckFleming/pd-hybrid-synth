@@ -22,6 +22,7 @@ void Voice::prepare (double sampleRate)
     amp_.setOversampling (4);
     env_.setSampleRate (sampleRate);
     env2_.setSampleRate (sampleRate);
+    filterEnv_.setSampleRate (sampleRate);
     lfo_.setSampleRate (sampleRate);
 
     unitA_.reset();
@@ -34,6 +35,7 @@ void Voice::prepare (double sampleRate)
     amp_.reset();
     env_.reset();
     env2_.reset();
+    filterEnv_.reset();
     lfo_.reset();
 }
 
@@ -43,6 +45,7 @@ void Voice::setParams (const SynthParams& params)
     amp_.setBias (params.bias);
     env_.setADSR (params.attack, params.decay, params.sustain, params.release);
     env2_.setADSR (params.modEnvA, params.modEnvD, params.modEnvS, params.modEnvR);
+    filterEnv_.setADSR (params.filterEnvA, params.filterEnvD, params.filterEnvS, params.filterEnvR);
     lfo_.setFrequency (params.lfoRate);
     lfo_.setWaveform (static_cast<LfoWave> (params.lfoWave));
 
@@ -87,8 +90,14 @@ void Voice::applyModulation() noexcept
     unitA_.setPulseWidth (std::clamp (params_.oscAPulseWidth + pwMod, 0.05, 0.95));
     unitB_.setPulseWidth (std::clamp (params_.oscBPulseWidth + pwMod, 0.05, 0.95));
 
-    // Cutoff: timbre (MPE) and matrix both in octaves.
-    const double cutoff = params_.cutoffHz * std::pow (2.0, timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0);
+    // Cutoff: timbre (MPE), matrix, key tracking and the filter envelope all
+    // shift the cutoff in octaves. Key tracking follows the note relative to
+    // middle C; the filter envelope depth is bipolar (in octaves).
+    const double keyOct  = params_.keyTrack * (note_ - 60) / 12.0;
+    const double fenvOct = params_.filterEnvAmount * filterEnv_.level();
+    const double cutoff  = params_.cutoffHz
+                         * std::pow (2.0, timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0
+                                          + keyOct + fenvOct);
     const double res    = std::clamp (params_.resonance + md (ModDest::Resonance), 0.0, 1.0);
     const double morph  = std::clamp (params_.filterMorph + md (ModDest::Morph), 0.0, 1.0);
 
@@ -121,6 +130,7 @@ void Voice::start (int note, float velocity)
     pitchBend_ = 0.0;
     lfo_.reset();
     env2_.noteOn();
+    filterEnv_.noteOn();
     env_.noteOn();
     applyModulation();
 }
@@ -129,6 +139,7 @@ void Voice::release()
 {
     env_.noteOff();
     env2_.noteOff();
+    filterEnv_.noteOff();
 }
 
 float Voice::renderOneSample() noexcept
@@ -166,6 +177,7 @@ void Voice::renderBlock (float* out, int numSamples)
         out[i] += renderOneSample();
         lfo_.processSample();    // advance modulation sources in sync
         env2_.processSample();
+        filterEnv_.processSample();
     }
 }
 

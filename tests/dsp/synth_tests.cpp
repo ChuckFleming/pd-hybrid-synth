@@ -9,6 +9,7 @@
 
 #include <vector>
 #include <cmath>
+#include <algorithm>
 
 using pdhybrid::SynthEngine;
 using pdhybrid::SynthParams;
@@ -42,6 +43,29 @@ std::vector<float> renderEngine (SynthEngine& e, int n)
     std::vector<float> buf (n);
     e.renderBlock (buf.data(), n);
     return buf;
+}
+
+// Render in small blocks (like a real host) so block-rate modulation -- the LFO,
+// mod envelope and filter envelope -- actually evolves across the render.
+std::vector<float> renderChunks (SynthEngine& e, int n, int blockSize = 64)
+{
+    std::vector<float> buf (static_cast<std::size_t> (n), 0.0f);
+    for (int i = 0; i < n; i += blockSize)
+        e.renderBlock (buf.data() + i, std::min (blockSize, n - i));
+    return buf;
+}
+
+// Magnitude-weighted mean frequency -- a robust "brightness" measure.
+double centroid (const std::vector<float>& buf, double sr)
+{
+    auto spec = computeSpectrum (buf, sr);
+    double num = 0.0, den = 0.0;
+    for (std::size_t b = 1; b < spec.magnitude.size(); ++b)
+    {
+        num += spec.frequencyOfBin (b) * spec.magnitude[b];
+        den += spec.magnitude[b];
+    }
+    return den > 0.0 ? num / den : 0.0;
 }
 
 } // namespace
@@ -292,4 +316,61 @@ TEST_CASE ("Noise source produces broadband sound on its own", "[synth][osc][mix
     REQUIRE_FALSE (hasBadValues (buf));
     REQUIRE (rms (buf) > 1e-4);
     REQUIRE (peakAbs (buf) < 10.0f);
+}
+
+TEST_CASE ("Key tracking opens the filter for higher notes", "[synth][filter]")
+{
+    const double sr = 48000.0;
+
+    // Fraction of spectral energy above a fixed threshold -- rises as the filter
+    // opens and lets more harmonics through.
+    auto highEnergyFraction = [&] (double keyTrack)
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = brightSustainParams();
+        p.oscAType    = OscType::Saw;   // rich harmonics
+        p.filterType  = FilterType::Ladder;
+        p.cutoffHz    = 500.0;          // dark base cutoff
+        p.resonance   = 0.0;
+        p.keyTrack    = keyTrack;
+        e.setParams (p);
+        e.noteOn (84, 1.0f, 1);         // two octaves above the reference note
+
+        auto spec = computeSpectrum (renderEngine (e, 16384), sr);
+        const double total = totalEnergy (spec);
+        const double below = energyBelowHz (spec, 1500.0);
+        return total > 0.0 ? (total - below) / total : 0.0;
+    };
+
+    // Full key tracking raises the cutoff two octaves, letting the upper
+    // harmonics of the note pass instead of being filtered away.
+    REQUIRE (highEnergyFraction (1.0) > highEnergyFraction (0.0) * 2.0);
+}
+
+TEST_CASE ("Filter envelope sweeps the cutoff over time", "[synth][filter][env]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+
+    auto p = brightSustainParams();
+    p.oscAType        = OscType::Saw;
+    p.filterType      = FilterType::Ladder;
+    p.cutoffHz        = 400.0;      // dark base
+    p.resonance       = 0.0;
+    p.filterEnvAmount = 5.0;        // +5 octaves at full envelope
+    p.filterEnvA      = 0.001;      // snap open
+    p.filterEnvD      = 0.30;       // then slowly close
+    p.filterEnvS      = 0.0;
+    p.sustain         = 1.0;        // hold the note so we hear the sweep
+    p.release         = 0.05;
+    e.setParams (p);
+    e.noteOn (48, 1.0f, 1);         // low note so key pitch doesn't dominate
+
+    const double early = centroid (renderChunks (e, 4096), sr);   // envelope open
+    renderChunks (e, 24000);                                      // let it decay to sustain 0
+    const double late  = centroid (renderChunks (e, 4096), sr);   // envelope closed
+
+    REQUIRE (early > late * 1.3);   // the tone gets darker as the filter env falls
 }

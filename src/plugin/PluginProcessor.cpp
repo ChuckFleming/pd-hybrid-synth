@@ -60,6 +60,27 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "keyTrack", 1 }, "Filter Key Track",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "filterEnvAmount", 1 }, "Filter Env Amount",
+        juce::NormalisableRange<float> (-6.0f, 6.0f), 0.0f));   // octaves, bipolar
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "filterEnvA", 1 }, "Filter Env Attack",
+        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.01f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "filterEnvD", 1 }, "Filter Env Decay",
+        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.20f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "filterEnvS", 1 }, "Filter Env Sustain",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "filterEnvR", 1 }, "Filter Env Release",
+        juce::NormalisableRange<float> (0.001f, 3.0f, 0.0f, 0.3f), 0.30f));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "drive", 1 }, "Overdrive",
         juce::NormalisableRange<float> (1.0f, 50.0f, 0.0f, 0.3f), 1.0f));
 
@@ -169,6 +190,12 @@ void PDHybridAudioProcessor::pushParams()
     p.filterType  = static_cast<pdhybrid::FilterType> (
                         static_cast<int> (apvts.getRawParameterValue ("filterType")->load()));
     p.filterMorph = apvts.getRawParameterValue ("filterMorph")->load();
+    p.keyTrack        = apvts.getRawParameterValue ("keyTrack")->load();
+    p.filterEnvAmount = apvts.getRawParameterValue ("filterEnvAmount")->load();
+    p.filterEnvA  = apvts.getRawParameterValue ("filterEnvA")->load();
+    p.filterEnvD  = apvts.getRawParameterValue ("filterEnvD")->load();
+    p.filterEnvS  = apvts.getRawParameterValue ("filterEnvS")->load();
+    p.filterEnvR  = apvts.getRawParameterValue ("filterEnvR")->load();
     p.drive       = apvts.getRawParameterValue ("drive")->load();
     p.bias      = apvts.getRawParameterValue ("bias")->load();
     p.attack    = apvts.getRawParameterValue ("attack")->load();

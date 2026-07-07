@@ -13,6 +13,9 @@
 using pdhybrid::SynthEngine;
 using pdhybrid::SynthParams;
 using pdhybrid::FilterType;
+using pdhybrid::OscType;
+using pdhybrid::ModSource;
+using pdhybrid::ModDest;
 using pdhybrid::midiNoteToHz;
 using Catch::Approx;
 using namespace harness;
@@ -162,6 +165,37 @@ TEST_CASE ("Polyphony is capped and steals the oldest voice", "[synth][voicing]"
 
     REQUIRE (e.activeVoiceCount() == SynthEngine::kMaxVoices);
     REQUIRE_FALSE (hasBadValues (renderEngine (e, 512)));
+}
+
+TEST_CASE ("Mod matrix routes velocity to cutoff (brighter with velocity)", "[synth][mod]")
+{
+    const double sr = 48000.0;
+
+    auto highFreqEnergy = [&] (float velocity)
+    {
+        SynthParams p;
+        p.oscType   = OscType::Saw;        // rich harmonics so cutoff matters
+        p.cutoffHz  = 500.0;               // low base cutoff
+        p.resonance = 0.0;
+        p.attack = 0.001; p.decay = 0.001; p.sustain = 1.0; p.release = 0.05;
+        p.gain = 0.9;
+        p.modMatrix.setRoute (0, ModSource::Velocity, ModDest::Cutoff, 1.0); // opens filter
+
+        SynthEngine e;
+        e.setSampleRate (sr);
+        e.setParams (p);
+        e.noteOn (57, velocity, 1);        // A3 ~220 Hz
+
+        auto buf  = renderEngine (e, 16384);
+        auto spec = computeSpectrum (buf, sr);
+        // Energy above 2 kHz -> "brightness".
+        double hi = 0.0;
+        for (std::size_t k = spec.binOfFrequency (2000.0); k < spec.magnitude.size(); ++k)
+            hi += spec.magnitude[k] * spec.magnitude[k];
+        return hi;
+    };
+
+    REQUIRE (highFreqEnergy (1.0f) > highFreqEnergy (0.2f) * 3.0);
 }
 
 TEST_CASE ("Engine produces clean sound with every filter type", "[synth][filter]")

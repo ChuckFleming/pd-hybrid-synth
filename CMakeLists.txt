@@ -31,6 +31,8 @@ add_library(pdhybrid_dsp STATIC
     src/dsp/Oversampler.cpp
     src/dsp/OverdriveAmp.cpp
     src/dsp/MultiStageEnvelope.cpp
+    src/dsp/Lfo.cpp
+    src/dsp/ModMatrix.cpp
     src/dsp/Voice.cpp
     src/dsp/SynthEngine.cpp
     src/dsp/PhaseDistortionResonator.cpp

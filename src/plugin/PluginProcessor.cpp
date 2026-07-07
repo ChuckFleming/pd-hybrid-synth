@@ -63,6 +63,43 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::ParameterID { "release", 1 }, "Release",
         juce::NormalisableRange<float> (0.001f, 3.0f, 0.0f, 0.3f), 0.20f));
 
+    // --- Modulation ---
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "lfoRate", 1 }, "LFO Rate",
+        juce::NormalisableRange<float> (0.01f, 20.0f, 0.0f, 0.3f), 5.0f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "lfoWave", 1 }, "LFO Wave",
+        juce::StringArray { "Sine", "Triangle", "Square", "Saw" }, 0));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "modEnvA", 1 }, "Mod Env Attack",
+        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.01f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "modEnvD", 1 }, "Mod Env Decay",
+        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.20f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "modEnvS", 1 }, "Mod Env Sustain",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "modEnvR", 1 }, "Mod Env Release",
+        juce::NormalisableRange<float> (0.001f, 3.0f, 0.0f, 0.3f), 0.30f));
+
+    const juce::StringArray srcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
+                                       "Timbre", "Pitch Bend", "Key Track", "Mod Wheel" };
+    const juce::StringArray dstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
+                                       "Resonance", "Morph", "Drive", "Amplitude" };
+    for (int i = 1; i <= 4; ++i)
+    {
+        const auto s = juce::String (i);
+        params.push_back (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { "mod" + s + "Source", 1 }, "Mod " + s + " Source", srcNames, 0));
+        params.push_back (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { "mod" + s + "Dest", 1 }, "Mod " + s + " Dest", dstNames, 0));
+        params.push_back (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { "mod" + s + "Depth", 1 }, "Mod " + s + " Depth",
+            juce::NormalisableRange<float> (-1.0f, 1.0f), 0.0f));
+    }
+
     return { params.begin(), params.end() };
 }
 
@@ -98,6 +135,26 @@ void PDHybridAudioProcessor::pushParams()
     p.sustain   = apvts.getRawParameterValue ("sustain")->load();
     p.release   = apvts.getRawParameterValue ("release")->load();
     p.gain      = apvts.getRawParameterValue ("gain")->load();
+
+    p.lfoRate = apvts.getRawParameterValue ("lfoRate")->load();
+    p.lfoWave = static_cast<int> (apvts.getRawParameterValue ("lfoWave")->load());
+    p.modEnvA = apvts.getRawParameterValue ("modEnvA")->load();
+    p.modEnvD = apvts.getRawParameterValue ("modEnvD")->load();
+    p.modEnvS = apvts.getRawParameterValue ("modEnvS")->load();
+    p.modEnvR = apvts.getRawParameterValue ("modEnvR")->load();
+
+    p.modMatrix.clear();
+    for (int i = 1; i <= 4; ++i)
+    {
+        const auto s = juce::String (i);
+        const auto src = static_cast<pdhybrid::ModSource> (
+            static_cast<int> (apvts.getRawParameterValue ("mod" + s + "Source")->load()));
+        const auto dst = static_cast<pdhybrid::ModDest> (
+            static_cast<int> (apvts.getRawParameterValue ("mod" + s + "Dest")->load()));
+        const double depth = apvts.getRawParameterValue ("mod" + s + "Depth")->load();
+        p.modMatrix.setRoute (i - 1, src, dst, depth);
+    }
+
     engine.setParams (p);
 }
 
@@ -116,6 +173,8 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
         engine.setNotePressure (channel, msg.getChannelPressureValue() / 127.0);
     else if (msg.isController() && msg.getControllerNumber() == 74)
         engine.setNoteTimbre (channel, msg.getControllerValue() / 127.0);
+    else if (msg.isController() && msg.getControllerNumber() == 1)
+        engine.setModWheel (msg.getControllerValue() / 127.0);
     else if (msg.isAllNotesOff() || msg.isAllSoundOff())
         engine.allNotesOff();
 }

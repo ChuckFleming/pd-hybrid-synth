@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ModMatrix.h"
+
 namespace pdhybrid {
 
 enum class FilterType
@@ -40,6 +42,12 @@ struct SynthParams
     double release = 0.20;
 
     double gain    = 0.80;
+
+    // Modulation
+    double    modEnvA = 0.01, modEnvD = 0.20, modEnvS = 0.0, modEnvR = 0.30;
+    double    lfoRate = 5.0;
+    int       lfoWave = 0;
+    ModMatrix modMatrix;
 };
 
 } // namespace pdhybrid

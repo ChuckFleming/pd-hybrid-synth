@@ -33,6 +33,7 @@ public:
     void setNotePitchBend (int noteId, double semitones) noexcept;
     void setNotePressure  (int noteId, double pressure01) noexcept;
     void setNoteTimbre    (int noteId, double timbre01) noexcept;
+    void setModWheel      (double modWheel01) noexcept { modWheel_ = modWheel01; }
 
     // Renders `numSamples` of summed mono output (overwrites `out`).
     void renderBlock (float* out, int numSamples);
@@ -54,6 +55,7 @@ private:
     SynthParams   params_;
     std::uint64_t ageCounter_ = 0;
     double        sampleRate_ = 44100.0;
+    double        modWheel_   = 0.0;
 };
 
 } // namespace pdhybrid

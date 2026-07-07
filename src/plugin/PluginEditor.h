@@ -53,6 +53,18 @@ private:
     juce::ComboBox filterTypeBox;
     std::unique_ptr<ComboBoxAttachment> filterTypeAttachment;
 
+    juce::ComboBox lfoWaveBox;
+    std::unique_ptr<ComboBoxAttachment> lfoWaveAttachment;
+
+    // Modulation matrix rows: source combo, destination combo, depth knob.
+    juce::ComboBox modSrcBox[4];
+    juce::ComboBox modDestBox[4];
+    juce::Slider   modDepthSlider[4];
+    std::unique_ptr<ComboBoxAttachment> modSrcAtt[4];
+    std::unique_ptr<ComboBoxAttachment> modDestAtt[4];
+    std::unique_ptr<SliderAttachment>   modDepthAtt[4];
+    juce::Rectangle<int> matrixBounds;
+
     std::vector<Section> sections;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDHybridEditor)

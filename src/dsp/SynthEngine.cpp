@@ -112,9 +112,8 @@ void SynthEngine::renderBlock (float* out, int numSamples)
         voices_[i].setPitchBendSemitones (voiceBend_[i]);
         voices_[i].setPressure (voicePressure_[i]);
         voices_[i].setTimbre (voiceTimbre_[i]);
-
-        for (int j = 0; j < numSamples; ++j)
-            out[j] += voices_[i].render();
+        voices_[i].setModWheel (modWheel_);
+        voices_[i].renderBlock (out, numSamples);
     }
 }
 

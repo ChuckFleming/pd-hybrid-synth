@@ -27,6 +27,7 @@ add_library(pdhybrid_dsp STATIC
     src/dsp/PhaseDistortionOscillator.cpp
     src/dsp/AnalogOscillator.cpp
     src/dsp/LadderFilter.cpp
+    src/dsp/StateVariableFilter.cpp
     src/dsp/Waveshaper.cpp
     src/dsp/Oversampler.cpp
     src/dsp/OverdriveAmp.cpp

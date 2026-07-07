@@ -6,10 +6,11 @@ namespace pdhybrid {
 
 enum class FilterType
 {
-    Ladder = 0,   // analog-modeled 4-pole ladder
-    PdResonator,  // phase-distortion resonator
-    Comb,         // tuned feedback comb / waveguide
-    Allpass       // allpass dispersion
+    Ladder = 0,     // analog-modeled 4-pole ladder
+    StateVariable,  // morphable TPT state-variable (LP/BP/HP)
+    PdResonator,    // phase-distortion resonator
+    Comb,           // tuned feedback comb / waveguide
+    Allpass         // allpass dispersion
 };
 
 enum class OscType

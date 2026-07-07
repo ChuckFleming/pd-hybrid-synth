@@ -48,7 +48,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                   &addKnob ("pulseWidth", "Pulse Width") };
 
     // --- Filter (with type selector) ---
-    filterTypeBox.addItemList ({ "Ladder", "PD Resonator", "Comb", "Allpass" }, 1);
+    filterTypeBox.addItemList ({ "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }, 1);
     addAndMakeVisible (filterTypeBox);
     filterTypeAttachment = std::make_unique<ComboBoxAttachment> (proc.apvts, "filterType", filterTypeBox);
 

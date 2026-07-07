@@ -3,6 +3,7 @@
 #include "PhaseDistortionOscillator.h"
 #include "AnalogOscillator.h"
 #include "LadderFilter.h"
+#include "StateVariableFilter.h"
 #include "PhaseDistortionResonator.h"
 #include "CombFilter.h"
 #include "AllpassDispersion.h"
@@ -50,6 +51,7 @@ private:
     PhaseDistortionOscillator osc_;
     AnalogOscillator          analogOsc_;
     LadderFilter              ladder_;
+    StateVariableFilter       svf_;
     PhaseDistortionResonator  pdReso_;
     CombFilter                comb_;
     AllpassDispersion         allpass_;

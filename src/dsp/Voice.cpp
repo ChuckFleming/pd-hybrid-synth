@@ -15,6 +15,7 @@ void Voice::prepare (double sampleRate)
     osc_.setSampleRate (sampleRate);
     analogOsc_.setSampleRate (sampleRate);
     ladder_.setSampleRate (sampleRate);
+    svf_.setSampleRate (sampleRate);
     pdReso_.setSampleRate (sampleRate);
     comb_.setSampleRate (sampleRate);
     amp_.setSampleRate (sampleRate);
@@ -26,6 +27,7 @@ void Voice::prepare (double sampleRate)
     osc_.reset();
     analogOsc_.reset();
     ladder_.reset();
+    svf_.reset();
     pdReso_.reset();
     comb_.reset();
     allpass_.reset();
@@ -87,6 +89,9 @@ void Voice::applyModulation() noexcept
 
     ladder_.setCutoff (cutoff);
     ladder_.setResonance (res);
+    svf_.setCutoff (cutoff);
+    svf_.setResonance (res);
+    svf_.setMorph (morph);            // morph knob sweeps LP -> BP -> HP
     pdReso_.setFrequency (cutoff);
     pdReso_.setResonance (res);
     pdReso_.setAmount (morph);
@@ -129,6 +134,7 @@ float Voice::renderOneSample() noexcept
 
     switch (params_.filterType)
     {
+        case FilterType::StateVariable: s = svf_.processSample   (static_cast<float> (s)); break;
         case FilterType::PdResonator: s = pdReso_.processSample  (static_cast<float> (s)); break;
         case FilterType::Comb:        s = comb_.processSample    (static_cast<float> (s)); break;
         case FilterType::Allpass:     s = allpass_.processSample (static_cast<float> (s)); break;

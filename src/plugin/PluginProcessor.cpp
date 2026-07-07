@@ -29,7 +29,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "filterType", 1 }, "Filter Type",
-        juce::StringArray { "Ladder", "PD Resonator", "Comb", "Allpass" }, 0));
+        juce::StringArray { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }, 0));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "filterMorph", 1 }, "Filter Morph",

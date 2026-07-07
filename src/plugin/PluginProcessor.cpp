@@ -69,16 +69,16 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "filterEnvA", 1 }, "Filter Env Attack",
-        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.01f));
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "filterEnvD", 1 }, "Filter Env Decay",
-        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.20f));
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "filterEnvS", 1 }, "Filter Env Sustain",
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "filterEnvR", 1 }, "Filter Env Release",
-        juce::NormalisableRange<float> (0.001f, 3.0f, 0.0f, 0.3f), 0.30f));
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "drive", 1 }, "Overdrive",
@@ -101,11 +101,11 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "attack", 1 }, "Attack",
-        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.01f));
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "decay", 1 }, "Decay",
-        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.10f));
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.10f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "sustain", 1 }, "Sustain",
@@ -113,7 +113,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "release", 1 }, "Release",
-        juce::NormalisableRange<float> (0.001f, 3.0f, 0.0f, 0.3f), 0.20f));
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f));
 
     // --- Modulation ---
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
@@ -125,16 +125,16 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "modEnvA", 1 }, "Mod Env Attack",
-        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.01f));
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "modEnvD", 1 }, "Mod Env Decay",
-        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.20f));
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "modEnvS", 1 }, "Mod Env Sustain",
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "modEnvR", 1 }, "Mod Env Release",
-        juce::NormalisableRange<float> (0.001f, 3.0f, 0.0f, 0.3f), 0.30f));
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f));
 
     const juce::StringArray srcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
                                        "Timbre", "Pitch Bend", "Key Track", "Mod Wheel" };

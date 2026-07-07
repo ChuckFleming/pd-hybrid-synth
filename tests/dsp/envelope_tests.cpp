@@ -34,6 +34,22 @@ TEST_CASE ("ADSR preset hits attack peak, sustain level, and finite output", "[e
     REQUIRE (env.isActive());
 }
 
+TEST_CASE ("Envelopes support long multi-second stages", "[env][adsr]")
+{
+    const double sr = 48000.0;
+    MultiStageEnvelope env;
+    env.setSampleRate (sr);
+    env.setADSR (10.0, 5.0, 0.5, 8.0);   // slow pad-style envelope
+    env.reset();
+    env.noteOn();
+
+    auto buf = render (env, sampleAt (2.0, sr));   // 2 s into a 10 s attack
+    REQUIRE_FALSE (hasBadValues (buf));
+    REQUIRE (buf.back() > 0.05f);        // has begun rising
+    REQUIRE (buf.back() < 0.5f);         // but nowhere near the peak yet
+    REQUIRE (env.isActive());
+}
+
 TEST_CASE ("Sustain holds indefinitely until note-off", "[env][adsr]")
 {
     const double sr = 48000.0;

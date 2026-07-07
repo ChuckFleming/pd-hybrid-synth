@@ -14,7 +14,9 @@ const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double S
                                         "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
 
 const juce::StringArray kSrcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
-                                    "Timbre", "Pitch Bend", "Key Track", "Mod Wheel" };
+                                    "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2" };
+const juce::StringArray kLfoWaveNames { "Sine", "Triangle", "Square", "Saw", "Ramp Down",
+                                        "Sample & Hold", "Smooth Random", "Exponential" };
 const juce::StringArray kDstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
                                     "Resonance", "Morph", "Drive", "Amplitude" };
 }
@@ -113,11 +115,18 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                        &addKnob ("release", "Release") };
 
     // --- LFO (with waveform selector) ---
-    lfoWaveBox = &addCombo ("lfoWave", { "Sine", "Triangle", "Square", "Saw" });
+    lfoWaveBox = &addCombo ("lfoWave", kLfoWaveNames);
     Section lfo;
     lfo.title  = "LFO";
     lfo.combos = { lfoWaveBox };
     lfo.knobs  = { &addKnob ("lfoRate", "Rate") };
+
+    // --- LFO 2 ---
+    auto& lfo2WaveBox = addCombo ("lfo2Wave", kLfoWaveNames);
+    Section lfo2;
+    lfo2.title  = "LFO 2";
+    lfo2.combos = { &lfo2WaveBox };
+    lfo2.knobs  = { &addKnob ("lfo2Rate", "Rate") };
 
     // --- Mod Envelope ---
     Section modEnv;
@@ -171,10 +180,10 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                         &addKnob ("glideCurve", "Curve") };
 
     sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv,
-                 stereo, comp, delaySec, glideSec };
+                 stereo, comp, delaySec, glideSec, lfo2 };
 
     // --- Modulation matrix rows ---
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < kNumModRows; ++i)
     {
         const auto s = juce::String (i + 1);
 
@@ -195,7 +204,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     const int u    = kKnobW + kPad;
     const int rowH = kHeaderH + 18 + kKnobH + kPad;
     setSize (10 * u + 4 * kPad,
-             kTitleH + 7 * rowH + kHeaderH + 4 * kMatrixRowH + 2 * kPad);
+             kTitleH + 7 * rowH + kHeaderH + kNumModRows * kMatrixRowH + 2 * kPad);
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)
@@ -269,18 +278,13 @@ void PDHybridEditor::resized()
     placeRow (sections[6], 2, sections[9], 3);   // LFO       | Stereo / Drift
 
     placeRow (sections[10], 5, sections[11], 5);   // Compressor | Delay
-
-    {
-        auto row = area.removeFromTop (rowH);      // Glide (single section)
-        row.removeFromLeft (kPad);
-        layoutRow (sections[12], row.removeFromLeft (3 * u));
-    }
+    placeRow (sections[12], 3, sections[13], 3);   // Glide      | LFO 2
 
     // Modulation matrix.
     matrixBounds = area.reduced (kPad, 0).withTrimmedBottom (kPad);
     auto rows = matrixBounds;
     rows.removeFromTop (kHeaderH);
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < kNumModRows; ++i)
     {
         auto r = rows.removeFromTop (kMatrixRowH).reduced (2, 2);
         modSrcBox[i].setBounds  (r.removeFromLeft (180));

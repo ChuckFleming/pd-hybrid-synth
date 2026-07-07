@@ -26,6 +26,7 @@ void Voice::prepare (double sampleRate)
     env2_.setSampleRate (sampleRate);
     filterEnv_.setSampleRate (sampleRate);
     lfo_.setSampleRate (sampleRate);
+    lfo2_.setSampleRate (sampleRate);
 
     unitA_.reset();
     unitB_.reset();
@@ -39,6 +40,7 @@ void Voice::prepare (double sampleRate)
     env2_.reset();
     filterEnv_.reset();
     lfo_.reset();
+    lfo2_.reset();
 }
 
 void Voice::setParams (const SynthParams& params)
@@ -50,6 +52,8 @@ void Voice::setParams (const SynthParams& params)
     filterEnv_.setADSR (params.filterEnvA, params.filterEnvD, params.filterEnvS, params.filterEnvR);
     lfo_.setFrequency (params.lfoRate);
     lfo_.setWaveform (static_cast<LfoWave> (params.lfoWave));
+    lfo2_.setFrequency (params.lfo2Rate);
+    lfo2_.setWaveform (static_cast<LfoWave> (params.lfo2Wave));
 
     unitA_.setType   (params.oscAType);
     unitA_.setPdWave (static_cast<PdWave> (params.oscAWave));
@@ -65,6 +69,7 @@ void Voice::applyModulation() noexcept
     ModSources src;
     src[ModSource::ModEnv]    = env2_.level();
     src[ModSource::Lfo]       = lfo_.value();
+    src[ModSource::Lfo2]      = lfo2_.value();
     src[ModSource::Velocity]  = velGain_;
     src[ModSource::Pressure]  = pressure_;
     src[ModSource::Timbre]    = timbre_;
@@ -166,6 +171,7 @@ void Voice::start (int note, float velocity, double glideFromHz, double glideSam
     timbre_    = 0.0;
     pitchBend_ = 0.0;
     lfo_.reset();
+    lfo2_.reset();
     env2_.noteOn();
     filterEnv_.noteOn();
     env_.noteOn();
@@ -226,6 +232,7 @@ void Voice::renderBlock (float* left, float* right, int numSamples)
         left[i]  += static_cast<float> (s * panL_);
         right[i] += static_cast<float> (s * panR_);
         lfo_.processSample();    // advance modulation sources in sync
+        lfo2_.processSample();
         env2_.processSample();
         filterEnv_.processSample();
     }

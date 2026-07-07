@@ -167,12 +167,19 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f));
 
     // --- Modulation ---
+    const juce::StringArray lfoWaveNames { "Sine", "Triangle", "Square", "Saw",
+                                           "Ramp Down", "Sample & Hold", "Smooth Random",
+                                           "Exponential" };
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "lfoRate", 1 }, "LFO Rate",
         juce::NormalisableRange<float> (0.01f, 20.0f, 0.0f, 0.3f), 5.0f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { "lfoWave", 1 }, "LFO Wave",
-        juce::StringArray { "Sine", "Triangle", "Square", "Saw" }, 0));
+        juce::ParameterID { "lfoWave", 1 }, "LFO Wave", lfoWaveNames, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "lfo2Rate", 1 }, "LFO 2 Rate",
+        juce::NormalisableRange<float> (0.01f, 20.0f, 0.0f, 0.3f), 0.5f));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "lfo2Wave", 1 }, "LFO 2 Wave", lfoWaveNames, 0));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "modEnvA", 1 }, "Mod Env Attack",
@@ -188,10 +195,10 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f));
 
     const juce::StringArray srcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
-                                       "Timbre", "Pitch Bend", "Key Track", "Mod Wheel" };
+                                       "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2" };
     const juce::StringArray dstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
                                        "Resonance", "Morph", "Drive", "Amplitude" };
-    for (int i = 1; i <= 4; ++i)
+    for (int i = 1; i <= 6; ++i)
     {
         const auto s = juce::String (i);
         params.push_back (std::make_unique<juce::AudioParameterChoice> (
@@ -291,13 +298,15 @@ void PDHybridAudioProcessor::pushParams()
 
     p.lfoRate = apvts.getRawParameterValue ("lfoRate")->load();
     p.lfoWave = static_cast<int> (apvts.getRawParameterValue ("lfoWave")->load());
+    p.lfo2Rate = apvts.getRawParameterValue ("lfo2Rate")->load();
+    p.lfo2Wave = static_cast<int> (apvts.getRawParameterValue ("lfo2Wave")->load());
     p.modEnvA = apvts.getRawParameterValue ("modEnvA")->load();
     p.modEnvD = apvts.getRawParameterValue ("modEnvD")->load();
     p.modEnvS = apvts.getRawParameterValue ("modEnvS")->load();
     p.modEnvR = apvts.getRawParameterValue ("modEnvR")->load();
 
     p.modMatrix.clear();
-    for (int i = 1; i <= 4; ++i)
+    for (int i = 1; i <= 6; ++i)
     {
         const auto s = juce::String (i);
         const auto src = static_cast<pdhybrid::ModSource> (

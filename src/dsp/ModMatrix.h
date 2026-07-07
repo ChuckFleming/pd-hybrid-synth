@@ -13,6 +13,7 @@ enum class ModSource : int
     PitchBend,
     KeyTrack,
     ModWheel,
+    Lfo2,
     Count
 };
 

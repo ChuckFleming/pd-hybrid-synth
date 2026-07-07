@@ -88,6 +88,8 @@ struct SynthParams
     double    modEnvA = 0.01, modEnvD = 0.20, modEnvS = 0.0, modEnvR = 0.30;
     double    lfoRate = 5.0;
     int       lfoWave = 0;
+    double    lfo2Rate = 0.5;
+    int       lfo2Wave = 0;
     ModMatrix modMatrix;
 };
 

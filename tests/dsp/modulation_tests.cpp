@@ -38,7 +38,9 @@ TEST_CASE ("LFO runs at the set frequency", "[mod][lfo]")
 TEST_CASE ("LFO output stays in [-1, 1] for every waveform", "[mod][lfo]")
 {
     const double sr = 48000.0;
-    for (auto w : { LfoWave::Sine, LfoWave::Triangle, LfoWave::Square, LfoWave::Saw })
+    for (auto w : { LfoWave::Sine, LfoWave::Triangle, LfoWave::Square, LfoWave::Saw,
+                    LfoWave::RampDown, LfoWave::SampleHold, LfoWave::SmoothRandom,
+                    LfoWave::Exponential })
     {
         Lfo lfo;
         lfo.setSampleRate (sr);
@@ -51,6 +53,30 @@ TEST_CASE ("LFO output stays in [-1, 1] for every waveform", "[mod][lfo]")
         REQUIRE_FALSE (hasBadValues (buf));
         REQUIRE (peakAbs (buf) <= 1.0001f);
     }
+}
+
+TEST_CASE ("Sample & hold LFO holds a constant within each cycle", "[mod][lfo]")
+{
+    const double sr = 48000.0;
+    const double rate = 10.0;                    // 4800-sample cycle
+    Lfo lfo;
+    lfo.setSampleRate (sr);
+    lfo.setFrequency (rate);
+    lfo.setWaveform (LfoWave::SampleHold);
+    lfo.reset();
+
+    std::vector<double> v (14400);
+    for (auto& s : v) s = lfo.processSample();
+
+    // Constant across the first cycle, then it may step to a new value.
+    for (int i = 1; i < 4700; ++i)
+        REQUIRE (v[i] == Approx (v[0]));
+
+    // At least two distinct held levels appear over three cycles.
+    bool changed = false;
+    for (int i = 4900; i < 14400; ++i)
+        if (std::abs (v[i] - v[0]) > 1e-6) { changed = true; break; }
+    REQUIRE (changed);
 }
 
 TEST_CASE ("LFO advance matches sample-by-sample stepping", "[mod][lfo]")

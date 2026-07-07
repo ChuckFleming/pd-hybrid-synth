@@ -58,12 +58,13 @@ private:
     juce::ComboBox* lfoWaveBox = nullptr;
 
     // Modulation matrix rows: source combo, destination combo, depth knob.
-    juce::ComboBox modSrcBox[4];
-    juce::ComboBox modDestBox[4];
-    juce::Slider   modDepthSlider[4];
-    std::unique_ptr<ComboBoxAttachment> modSrcAtt[4];
-    std::unique_ptr<ComboBoxAttachment> modDestAtt[4];
-    std::unique_ptr<SliderAttachment>   modDepthAtt[4];
+    static constexpr int kNumModRows = 6;
+    juce::ComboBox modSrcBox[kNumModRows];
+    juce::ComboBox modDestBox[kNumModRows];
+    juce::Slider   modDepthSlider[kNumModRows];
+    std::unique_ptr<ComboBoxAttachment> modSrcAtt[kNumModRows];
+    std::unique_ptr<ComboBoxAttachment> modDestAtt[kNumModRows];
+    std::unique_ptr<SliderAttachment>   modDepthAtt[kNumModRows];
     juce::Rectangle<int> matrixBounds;
 
     std::vector<Section> sections;

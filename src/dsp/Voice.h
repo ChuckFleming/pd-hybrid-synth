@@ -64,6 +64,7 @@ private:
     MultiStageEnvelope        env2_;      // modulation envelope
     MultiStageEnvelope        filterEnv_; // dedicated filter-cutoff envelope
     Lfo                       lfo_;
+    Lfo                       lfo2_;
 
     SynthParams params_;
     double sampleRate_ = 44100.0;

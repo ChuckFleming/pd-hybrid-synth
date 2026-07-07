@@ -143,10 +143,24 @@ void Voice::applyModulation() noexcept
     panR_ = std::sin (angle);
 }
 
-void Voice::start (int note, float velocity)
+void Voice::start (int note, float velocity, double glideFromHz, double glideSamples)
 {
-    note_      = note;
-    baseFreq_  = midiNoteToHz (note);
+    note_          = note;
+    glideTargetHz_ = midiNoteToHz (note);
+    if (glideFromHz > 0.0 && glideSamples > 0.5)
+    {
+        glideStartHz_ = glideFromHz;
+        glideSamples_ = glideSamples;
+        glidePos_     = 0.0;
+        baseFreq_     = glideFromHz;
+    }
+    else
+    {
+        glideStartHz_ = glideTargetHz_;
+        glideSamples_ = 0.0;
+        glidePos_     = 1.0;
+        baseFreq_     = glideTargetHz_;
+    }
     velGain_   = velocity;
     pressure_  = 1.0;
     timbre_    = 0.0;
@@ -193,6 +207,17 @@ float Voice::renderOneSample() noexcept
 
 void Voice::renderBlock (float* left, float* right, int numSamples)
 {
+    // Advance glide (log-domain, control rate) before evaluating modulation.
+    if (glidePos_ < 1.0 && glideSamples_ > 0.0)
+    {
+        glidePos_ = std::min (1.0, glidePos_ + numSamples / glideSamples_);
+        const double exp  = params_.glideCurve > 0.0 ? params_.glideCurve : 1.0;
+        const double t    = std::pow (glidePos_, exp);
+        const double logHz = std::log (glideStartHz_)
+                           + t * (std::log (glideTargetHz_) - std::log (glideStartHz_));
+        baseFreq_ = std::exp (logHz);
+    }
+
     applyModulation();   // control-rate: evaluate the matrix once per block
 
     for (int i = 0; i < numSamples; ++i)

@@ -31,7 +31,9 @@ public:
     void prepare   (double sampleRate);
     void setParams (const SynthParams& params);
 
-    void start   (int note, float velocity);   // note-on
+    // note-on. If glideSamples > 0 and glideFromHz > 0 the pitch slides from
+    // glideFromHz to the new note over glideSamples samples.
+    void start   (int note, float velocity, double glideFromHz = 0.0, double glideSamples = 0.0);
     void release ();                            // note-off -> envelope release
 
     bool isActive() const noexcept { return env_.isActive(); }
@@ -68,6 +70,12 @@ private:
 
     int    note_      = -1;
     double baseFreq_  = 440.0;
+
+    // Glide state (log-domain ramp from start to target frequency).
+    double glideStartHz_  = 440.0;
+    double glideTargetHz_ = 440.0;
+    double glidePos_      = 1.0;    // 0..1 progress (1 = arrived)
+    double glideSamples_  = 0.0;
     double pitchBend_ = 0.0;   // semitones
     double velGain_   = 1.0;
     double pressure_  = 1.0;

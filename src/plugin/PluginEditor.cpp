@@ -162,7 +162,16 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                         &addKnob ("delayMix", "Mix"),
                         &addKnob ("delayDuck", "Ducking") };
 
-    sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv, stereo, comp, delaySec };
+    // --- Glide ---
+    auto& glideModeBox = addCombo ("glideMode", { "Off", "Always", "Legato" });
+    Section glideSec;
+    glideSec.title  = "Glide";
+    glideSec.combos = { &glideModeBox };
+    glideSec.knobs  = { &addKnob ("glideTime", "Time"),
+                        &addKnob ("glideCurve", "Curve") };
+
+    sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv,
+                 stereo, comp, delaySec, glideSec };
 
     // --- Modulation matrix rows ---
     for (int i = 0; i < 4; ++i)
@@ -186,7 +195,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     const int u    = kKnobW + kPad;
     const int rowH = kHeaderH + 18 + kKnobH + kPad;
     setSize (10 * u + 4 * kPad,
-             kTitleH + 6 * rowH + kHeaderH + 4 * kMatrixRowH + 2 * kPad);
+             kTitleH + 7 * rowH + kHeaderH + 4 * kMatrixRowH + 2 * kPad);
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)
@@ -260,6 +269,12 @@ void PDHybridEditor::resized()
     placeRow (sections[6], 2, sections[9], 3);   // LFO       | Stereo / Drift
 
     placeRow (sections[10], 5, sections[11], 5);   // Compressor | Delay
+
+    {
+        auto row = area.removeFromTop (rowH);      // Glide (single section)
+        row.removeFromLeft (kPad);
+        layoutRow (sections[12], row.removeFromLeft (3 * u));
+    }
 
     // Modulation matrix.
     matrixBounds = area.reduced (kPad, 0).withTrimmedBottom (kPad);

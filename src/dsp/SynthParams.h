@@ -22,6 +22,13 @@ enum class OscType
     Pulse
 };
 
+enum class GlideMode
+{
+    Off = 0,   // no portamento
+    Always,    // glide from the previous note every time
+    Legato     // glide only when a note is already held
+};
+
 // Per-block synth settings pushed from the host/UI down to every voice.
 struct SynthParams
 {
@@ -71,6 +78,11 @@ struct SynthParams
     double pan       = 0.0;    // -1 = hard left .. +1 = hard right
     double panSpread = 0.0;    // 0..1 amount of keyboard-position spread
     double drift     = 0.0;    // 0..1 analog-style slow pitch + PD-amount wander
+
+    // Glide / portamento.
+    GlideMode glideMode  = GlideMode::Off;
+    double    glideTime  = 0.10;   // seconds to slide to the new note
+    double    glideCurve = 1.0;    // ramp exponent (1 = linear, <1 fast-in, >1 slow-in)
 
     // Modulation
     double    modEnvA = 0.01, modEnvD = 0.20, modEnvS = 0.0, modEnvR = 0.30;

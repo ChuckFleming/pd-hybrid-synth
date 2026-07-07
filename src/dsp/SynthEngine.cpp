@@ -43,6 +43,11 @@ int SynthEngine::allocateVoice() noexcept
 
 void SynthEngine::noteOn (int note, float velocity, int noteId)
 {
+    // Count currently-held voices before allocating (legato glide condition).
+    int heldBefore = 0;
+    for (int i = 0; i < kMaxVoices; ++i)
+        if (voiceHeld_[i]) ++heldBefore;
+
     const int v = allocateVoice();
 
     voiceNote_[v]     = note;
@@ -54,7 +59,18 @@ void SynthEngine::noteOn (int note, float velocity, int noteId)
     voiceTimbre_[v]   = 0.0;
 
     voices_[v].setParams (params_);
-    voices_[v].start (note, velocity);
+
+    // Glide: slide from the previous note's pitch when enabled.
+    const bool wantGlide = (params_.glideMode == GlideMode::Always)
+                        || (params_.glideMode == GlideMode::Legato && heldBefore > 0);
+    double fromHz = 0.0, glideSamples = 0.0;
+    if (wantGlide && lastNoteHz_ > 0.0)
+    {
+        fromHz       = lastNoteHz_;
+        glideSamples = params_.glideTime * sampleRate_;
+    }
+    voices_[v].start (note, velocity, fromHz, glideSamples);
+    lastNoteHz_ = midiNoteToHz (note);
 }
 
 void SynthEngine::noteOff (int note, int noteId)

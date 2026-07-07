@@ -139,6 +139,17 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::ParameterID { "delayDuck", 1 }, "Delay Ducking",
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
 
+    // --- Glide / portamento ---
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "glideMode", 1 }, "Glide Mode",
+        juce::StringArray { "Off", "Always", "Legato" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "glideTime", 1 }, "Glide Time",
+        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.10f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "glideCurve", 1 }, "Glide Curve",
+        juce::NormalisableRange<float> (0.25f, 4.0f, 0.0f, 0.5f), 1.0f));
+
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "attack", 1 }, "Attack",
         juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f));
@@ -259,6 +270,10 @@ void PDHybridAudioProcessor::pushParams()
     p.pan       = apvts.getRawParameterValue ("pan")->load();
     p.panSpread = apvts.getRawParameterValue ("panSpread")->load();
     p.drift     = apvts.getRawParameterValue ("drift")->load();
+    p.glideMode = static_cast<pdhybrid::GlideMode> (
+        static_cast<int> (apvts.getRawParameterValue ("glideMode")->load()));
+    p.glideTime  = apvts.getRawParameterValue ("glideTime")->load();
+    p.glideCurve = apvts.getRawParameterValue ("glideCurve")->load();
 
     compressor.setThreshold (apvts.getRawParameterValue ("compThreshold")->load());
     compressor.setRatio     (apvts.getRawParameterValue ("compRatio")->load());

@@ -56,6 +56,7 @@ private:
     std::uint64_t ageCounter_ = 0;
     double        sampleRate_ = 44100.0;
     double        modWheel_   = 0.0;
+    double        lastNoteHz_ = 0.0;   // previous note's pitch, for glide
 };
 
 } // namespace pdhybrid

@@ -463,3 +463,36 @@ TEST_CASE ("Analog drift subtly wanders the voice without breaking pitch", "[syn
     auto spec = computeSpectrum (wet, sr);
     REQUIRE (spec.peakFrequency() == Approx (440.0).epsilon (0.03));
 }
+
+TEST_CASE ("Glide slides the pitch from the previous note to the target", "[synth][glide]")
+{
+    const double sr = 48000.0;
+    pdhybrid::Voice v;
+    v.prepare (sr);
+
+    SynthParams p;
+    p.oscAType = OscType::Saw;
+    p.oscALevel = 1.0;
+    p.sustain = 1.0;
+    p.glideCurve = 1.0;
+    v.setParams (p);
+
+    // Slide from A3 (220 Hz) up to A4 (440 Hz) over 0.2 s.
+    v.start (69, 1.0f, 220.0, 0.2 * sr);
+
+    const int n = 24000;
+    std::vector<float> l (n, 0.0f), r (n, 0.0f);
+    for (int i = 0; i < n; i += 64)
+        v.renderBlock (l.data() + i, r.data() + i, std::min (64, n - i));
+
+    auto slice = [&] (int from, int len)
+    {
+        return std::vector<float> (l.begin() + from, l.begin() + from + len);
+    };
+    const double early = computeSpectrum (slice (0, 4096), sr).peakFrequency();
+    const double late  = computeSpectrum (slice (n - 8192, 8192), sr).peakFrequency();
+
+    REQUIRE (early > 200.0);          // starts near the previous note
+    REQUIRE (early < late * 0.85);    // still climbing early on
+    REQUIRE (late == Approx (440.0).epsilon (0.03));   // arrives at the target
+}

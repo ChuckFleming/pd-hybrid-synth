@@ -142,7 +142,16 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                      &addKnob ("panSpread", "Spread"),
                      &addKnob ("drift", "Drift") };
 
-    sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv, stereo };
+    // --- Compressor ---
+    Section comp;
+    comp.title = "Compressor";
+    comp.knobs = { &addKnob ("compThreshold", "Threshold"),
+                   &addKnob ("compRatio", "Ratio"),
+                   &addKnob ("compAttack", "Attack"),
+                   &addKnob ("compRelease", "Release"),
+                   &addKnob ("compMakeup", "Makeup") };
+
+    sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv, stereo, comp };
 
     // --- Modulation matrix rows ---
     for (int i = 0; i < 4; ++i)
@@ -166,7 +175,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     const int u    = kKnobW + kPad;
     const int rowH = kHeaderH + 18 + kKnobH + kPad;
     setSize (10 * u + 4 * kPad,
-             kTitleH + 5 * rowH + kHeaderH + 4 * kMatrixRowH + 2 * kPad);
+             kTitleH + 6 * rowH + kHeaderH + 4 * kMatrixRowH + 2 * kPad);
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)
@@ -238,6 +247,12 @@ void PDHybridEditor::resized()
     placeRow (sections[4], 3, sections[5], 4);   // Overdrive | Amp Envelope
     placeRow (sections[8], 4, sections[7], 4);   // Filter Env| Mod Envelope
     placeRow (sections[6], 2, sections[9], 3);   // LFO       | Stereo / Drift
+
+    {
+        auto row = area.removeFromTop (rowH);    // Compressor (single section)
+        row.removeFromLeft (kPad);
+        layoutRow (sections[10], row.removeFromLeft (5 * u));
+    }
 
     // Modulation matrix.
     matrixBounds = area.reduced (kPad, 0).withTrimmedBottom (kPad);

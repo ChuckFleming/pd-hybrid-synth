@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "dsp/SynthEngine.h"
+#include "dsp/Compressor.h"
 #include <vector>
 
 /**
@@ -50,6 +51,7 @@ private:
     void renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
 
     pdhybrid::SynthEngine engine;
+    pdhybrid::Compressor  compressor;           // global output compressor
     std::vector<float>    scratchL, scratchR;   // stereo render buffers
     double                pitchBendRangeSemis = 2.0;
 

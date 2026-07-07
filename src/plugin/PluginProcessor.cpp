@@ -102,6 +102,23 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::ParameterID { "drift", 1 }, "Analog Drift",
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
 
+    // --- Output compressor (ratio 1 = bypass) ---
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "compThreshold", 1 }, "Comp Threshold",
+        juce::NormalisableRange<float> (-60.0f, 0.0f), -12.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "compRatio", 1 }, "Comp Ratio",
+        juce::NormalisableRange<float> (1.0f, 20.0f, 0.0f, 0.4f), 1.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "compAttack", 1 }, "Comp Attack",
+        juce::NormalisableRange<float> (0.0005f, 0.2f, 0.0f, 0.3f), 0.005f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "compRelease", 1 }, "Comp Release",
+        juce::NormalisableRange<float> (0.01f, 1.0f, 0.0f, 0.3f), 0.10f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "compMakeup", 1 }, "Comp Makeup",
+        juce::NormalisableRange<float> (0.0f, 24.0f), 0.0f));
+
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "attack", 1 }, "Attack",
         juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f));
@@ -168,6 +185,8 @@ PDHybridAudioProcessor::PDHybridAudioProcessor()
 void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engine.setSampleRate (sampleRate);
+    compressor.setSampleRate (sampleRate);
+    compressor.reset();
     const auto n = static_cast<std::size_t> (juce::jmax (1, samplesPerBlock));
     scratchL.assign (n, 0.0f);
     scratchR.assign (n, 0.0f);
@@ -218,6 +237,12 @@ void PDHybridAudioProcessor::pushParams()
     p.pan       = apvts.getRawParameterValue ("pan")->load();
     p.panSpread = apvts.getRawParameterValue ("panSpread")->load();
     p.drift     = apvts.getRawParameterValue ("drift")->load();
+
+    compressor.setThreshold (apvts.getRawParameterValue ("compThreshold")->load());
+    compressor.setRatio     (apvts.getRawParameterValue ("compRatio")->load());
+    compressor.setAttack    (apvts.getRawParameterValue ("compAttack")->load());
+    compressor.setRelease   (apvts.getRawParameterValue ("compRelease")->load());
+    compressor.setMakeup    (apvts.getRawParameterValue ("compMakeup")->load());
 
     p.lfoRate = apvts.getRawParameterValue ("lfoRate")->load();
     p.lfoWave = static_cast<int> (apvts.getRawParameterValue ("lfoWave")->load());
@@ -304,6 +329,11 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     }
 
     renderSegment (buffer, cursor, numSamples - cursor);
+
+    // Global output compressor across the whole block (stereo-linked).
+    if (buffer.getNumChannels() >= 2)
+        compressor.processStereo (buffer.getWritePointer (0),
+                                  buffer.getWritePointer (1), numSamples);
 }
 
 juce::AudioProcessorEditor* PDHybridAudioProcessor::createEditor()

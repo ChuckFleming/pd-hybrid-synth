@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "dsp/SynthEngine.h"
 #include "dsp/Compressor.h"
+#include "dsp/Delay.h"
 #include <vector>
 
 /**
@@ -30,7 +31,7 @@ public:
     bool acceptsMidi() const override  { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    double getTailLengthSeconds() const override { return pdhybrid::Delay::kMaxDelaySeconds; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -52,6 +53,7 @@ private:
 
     pdhybrid::SynthEngine engine;
     pdhybrid::Compressor  compressor;           // global output compressor
+    pdhybrid::Delay       delay;                // global ducking delay
     std::vector<float>    scratchL, scratchR;   // stereo render buffers
     double                pitchBendRangeSemis = 2.0;
 

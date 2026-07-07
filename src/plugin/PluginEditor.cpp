@@ -151,7 +151,18 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                    &addKnob ("compRelease", "Release"),
                    &addKnob ("compMakeup", "Makeup") };
 
-    sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv, stereo, comp };
+    // --- Delay ---
+    auto& delayModeBox = addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" });
+    Section delaySec;
+    delaySec.title  = "Delay";
+    delaySec.combos = { &delayModeBox };
+    delaySec.knobs  = { &addKnob ("delayTimeL", "Time L"),
+                        &addKnob ("delayTimeR", "Time R"),
+                        &addKnob ("delayFeedback", "Feedback"),
+                        &addKnob ("delayMix", "Mix"),
+                        &addKnob ("delayDuck", "Ducking") };
+
+    sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv, stereo, comp, delaySec };
 
     // --- Modulation matrix rows ---
     for (int i = 0; i < 4; ++i)
@@ -248,11 +259,7 @@ void PDHybridEditor::resized()
     placeRow (sections[8], 4, sections[7], 4);   // Filter Env| Mod Envelope
     placeRow (sections[6], 2, sections[9], 3);   // LFO       | Stereo / Drift
 
-    {
-        auto row = area.removeFromTop (rowH);    // Compressor (single section)
-        row.removeFromLeft (kPad);
-        layoutRow (sections[10], row.removeFromLeft (5 * u));
-    }
+    placeRow (sections[10], 5, sections[11], 5);   // Compressor | Delay
 
     // Modulation matrix.
     matrixBounds = area.reduced (kPad, 0).withTrimmedBottom (kPad);

@@ -119,6 +119,26 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::ParameterID { "compMakeup", 1 }, "Comp Makeup",
         juce::NormalisableRange<float> (0.0f, 24.0f), 0.0f));
 
+    // --- Delay (mix 0 = bypass) ---
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "delayMode", 1 }, "Delay Mode",
+        juce::StringArray { "Mono", "Stereo", "Ping-Pong" }, 1));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "delayTimeL", 1 }, "Delay Time L",
+        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.30f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "delayTimeR", 1 }, "Delay Time R",
+        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.45f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "delayFeedback", 1 }, "Delay Feedback",
+        juce::NormalisableRange<float> (0.0f, 0.95f), 0.30f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "delayMix", 1 }, "Delay Mix",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "delayDuck", 1 }, "Delay Ducking",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "attack", 1 }, "Attack",
         juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f));
@@ -187,6 +207,8 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     engine.setSampleRate (sampleRate);
     compressor.setSampleRate (sampleRate);
     compressor.reset();
+    delay.setSampleRate (sampleRate);
+    delay.reset();
     const auto n = static_cast<std::size_t> (juce::jmax (1, samplesPerBlock));
     scratchL.assign (n, 0.0f);
     scratchR.assign (n, 0.0f);
@@ -243,6 +265,14 @@ void PDHybridAudioProcessor::pushParams()
     compressor.setAttack    (apvts.getRawParameterValue ("compAttack")->load());
     compressor.setRelease   (apvts.getRawParameterValue ("compRelease")->load());
     compressor.setMakeup    (apvts.getRawParameterValue ("compMakeup")->load());
+
+    delay.setMode (static_cast<pdhybrid::DelayMode> (
+        static_cast<int> (apvts.getRawParameterValue ("delayMode")->load())));
+    delay.setTimes    (apvts.getRawParameterValue ("delayTimeL")->load(),
+                       apvts.getRawParameterValue ("delayTimeR")->load());
+    delay.setFeedback (apvts.getRawParameterValue ("delayFeedback")->load());
+    delay.setMix      (apvts.getRawParameterValue ("delayMix")->load());
+    delay.setDuck     (apvts.getRawParameterValue ("delayDuck")->load());
 
     p.lfoRate = apvts.getRawParameterValue ("lfoRate")->load();
     p.lfoWave = static_cast<int> (apvts.getRawParameterValue ("lfoWave")->load());
@@ -330,10 +360,14 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     renderSegment (buffer, cursor, numSamples - cursor);
 
-    // Global output compressor across the whole block (stereo-linked).
+    // Global output effects across the whole block: compressor then delay.
     if (buffer.getNumChannels() >= 2)
+    {
         compressor.processStereo (buffer.getWritePointer (0),
                                   buffer.getWritePointer (1), numSamples);
+        delay.processStereo (buffer.getWritePointer (0),
+                             buffer.getWritePointer (1), numSamples);
+    }
 }
 
 juce::AudioProcessorEditor* PDHybridAudioProcessor::createEditor()

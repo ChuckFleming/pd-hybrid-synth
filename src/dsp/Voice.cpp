@@ -77,15 +77,28 @@ void Voice::applyModulation() noexcept
 
     auto md = [&] (ModDest d) { return mod[static_cast<int> (d)]; };
 
+    // Analog drift: nudge two independent slow random walks (control rate) and
+    // apply a subtle wander to pitch and PD amount for an "unstable analog"
+    // feel. Bounded because each step pulls toward a fresh random target.
+    auto nextRand = [&]
+    {
+        driftRng_ = driftRng_ * 1664525u + 1013904223u;
+        return static_cast<double> (static_cast<std::int32_t> (driftRng_)) / 2147483648.0;
+    };
+    driftPitch_ += 0.05 * (nextRand() - driftPitch_);
+    driftPd_    += 0.05 * (nextRand() - driftPd_);
+    const double driftSemis = params_.drift * driftPitch_ * 0.2;   // +/- 0.2 semitone
+    const double driftPdAmt = params_.drift * driftPd_    * 0.05;  // +/- 0.05 DCW
+
     // Pitch (matrix in semitones, +/-24 at full depth). Each unit applies its
     // own octave/semi/fine tuning on top of this note pitch.
-    const double semis = pitchBend_ + md (ModDest::Pitch) * 24.0;
+    const double semis = pitchBend_ + md (ModDest::Pitch) * 24.0 + driftSemis;
     const double freq  = baseFreq_ * std::pow (2.0, semis / 12.0);
     unitA_.setBaseFrequency (freq);
     unitB_.setBaseFrequency (freq);
 
     // PD amount and pulse width are modulated equally on both slots.
-    const double pdMod = md (ModDest::PdAmount);
+    const double pdMod = md (ModDest::PdAmount) + driftPdAmt;
     const double pwMod = md (ModDest::PulseWidth) * 0.45;
     unitA_.setAmount     (std::clamp (params_.oscAAmount + pdMod, 0.0, 1.0));
     unitB_.setAmount     (std::clamp (params_.oscBAmount + pdMod, 0.0, 1.0));

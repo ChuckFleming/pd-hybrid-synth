@@ -137,9 +137,10 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
     // --- Stereo ---
     Section stereo;
-    stereo.title = "Stereo";
+    stereo.title = "Stereo / Drift";
     stereo.knobs = { &addKnob ("pan", "Pan"),
-                     &addKnob ("panSpread", "Spread") };
+                     &addKnob ("panSpread", "Spread"),
+                     &addKnob ("drift", "Drift") };
 
     sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv, stereo };
 
@@ -236,7 +237,7 @@ void PDHybridEditor::resized()
     placeRow (sections[1], 5, sections[3], 5);   // Osc B     | Filter (+ key track / env amt)
     placeRow (sections[4], 3, sections[5], 4);   // Overdrive | Amp Envelope
     placeRow (sections[8], 4, sections[7], 4);   // Filter Env| Mod Envelope
-    placeRow (sections[6], 2, sections[9], 2);   // LFO       | Stereo
+    placeRow (sections[6], 2, sections[9], 3);   // LFO       | Stereo / Drift
 
     // Modulation matrix.
     matrixBounds = area.reduced (kPad, 0).withTrimmedBottom (kPad);

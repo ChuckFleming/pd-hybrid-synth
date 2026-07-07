@@ -98,6 +98,9 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "panSpread", 1 }, "Pan Spread",
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "drift", 1 }, "Analog Drift",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "attack", 1 }, "Attack",
@@ -214,6 +217,7 @@ void PDHybridAudioProcessor::pushParams()
     p.gain      = apvts.getRawParameterValue ("gain")->load();
     p.pan       = apvts.getRawParameterValue ("pan")->load();
     p.panSpread = apvts.getRawParameterValue ("panSpread")->load();
+    p.drift     = apvts.getRawParameterValue ("drift")->load();
 
     p.lfoRate = apvts.getRawParameterValue ("lfoRate")->load();
     p.lfoWave = static_cast<int> (apvts.getRawParameterValue ("lfoWave")->load());

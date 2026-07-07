@@ -70,6 +70,7 @@ struct SynthParams
     // (low notes left, high notes right) for a wider sound.
     double pan       = 0.0;    // -1 = hard left .. +1 = hard right
     double panSpread = 0.0;    // 0..1 amount of keyboard-position spread
+    double drift     = 0.0;    // 0..1 analog-style slow pitch + PD-amount wander
 
     // Modulation
     double    modEnvA = 0.01, modEnvD = 0.20, modEnvS = 0.0, modEnvR = 0.30;

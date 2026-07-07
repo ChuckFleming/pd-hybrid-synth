@@ -433,3 +433,33 @@ TEST_CASE ("Pan spread widens low and high notes to opposite sides", "[synth][st
     REQUIRE (balance (36) < 0.0);   // low note leans left
     REQUIRE (balance (84) > 0.0);   // high note leans right
 }
+
+TEST_CASE ("Analog drift subtly wanders the voice without breaking pitch", "[synth][drift]")
+{
+    const double sr = 48000.0;
+
+    auto renderWith = [&] (double drift)
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = brightSustainParams();
+        p.drift = drift;
+        e.setParams (p);
+        e.noteOn (69, 1.0f, 1);            // A4 = 440 Hz
+        return renderChunks (e, 16384, 64); // small blocks so drift evolves
+    };
+
+    auto dry = renderWith (0.0);
+    auto wet = renderWith (1.0);
+    REQUIRE_FALSE (hasBadValues (wet));
+
+    // Drift makes the output diverge from the perfectly static version...
+    double sumSq = 0.0;
+    for (std::size_t i = 0; i < wet.size(); ++i)
+        sumSq += (wet[i] - dry[i]) * (wet[i] - dry[i]);
+    REQUIRE (std::sqrt (sumSq / wet.size()) > 1e-3);
+
+    // ...but stays subtle: the pitch is still essentially A4.
+    auto spec = computeSpectrum (wet, sr);
+    REQUIRE (spec.peakFrequency() == Approx (440.0).epsilon (0.03));
+}

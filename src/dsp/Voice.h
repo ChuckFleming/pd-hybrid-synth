@@ -78,6 +78,11 @@ private:
     double panR_      = 0.70710678;
 
     std::uint32_t rng_ = 0x2545F491u;   // per-voice white-noise generator state
+
+    // Analog drift: two independent slow random-walk values (pitch, PD amount).
+    std::uint32_t driftRng_   = 0x9E3779B9u;
+    double        driftPitch_ = 0.0;
+    double        driftPd_     = 0.0;
 };
 
 } // namespace pdhybrid

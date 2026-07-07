@@ -7,9 +7,17 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "oscType", 1 }, "Oscillator",
+        juce::StringArray { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" }, 0));
+
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "amount", 1 }, "PD Amount",
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.30f));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "pulseWidth", 1 }, "Pulse Width",
+        juce::NormalisableRange<float> (0.05f, 0.95f), 0.50f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "cutoff", 1 }, "Filter Cutoff",
@@ -74,7 +82,10 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 void PDHybridAudioProcessor::pushParams()
 {
     pdhybrid::SynthParams p;
+    p.oscType     = static_cast<pdhybrid::OscType> (
+                        static_cast<int> (apvts.getRawParameterValue ("oscType")->load()));
     p.pdAmount    = apvts.getRawParameterValue ("amount")->load();
+    p.pulseWidth  = apvts.getRawParameterValue ("pulseWidth")->load();
     p.cutoffHz    = apvts.getRawParameterValue ("cutoff")->load();
     p.resonance   = apvts.getRawParameterValue ("resonance")->load();
     p.filterType  = static_cast<pdhybrid::FilterType> (

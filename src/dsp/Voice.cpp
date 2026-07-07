@@ -12,6 +12,7 @@ void Voice::prepare (double sampleRate)
 {
     sampleRate_ = sampleRate;
     osc_.setSampleRate (sampleRate);
+    analogOsc_.setSampleRate (sampleRate);
     ladder_.setSampleRate (sampleRate);
     pdReso_.setSampleRate (sampleRate);
     comb_.setSampleRate (sampleRate);
@@ -20,6 +21,7 @@ void Voice::prepare (double sampleRate)
     env_.setSampleRate (sampleRate);
 
     osc_.reset();
+    analogOsc_.reset();
     ladder_.reset();
     pdReso_.reset();
     comb_.reset();
@@ -54,6 +56,15 @@ void Voice::setParams (const SynthParams& params)
 {
     params_ = params;
     osc_.setAmount (params.pdAmount);
+    analogOsc_.setPulseWidth (params.pulseWidth);
+    switch (params.oscType)
+    {
+        case OscType::Saw:      analogOsc_.setWaveform (AnalogWave::Saw);      break;
+        case OscType::Square:   analogOsc_.setWaveform (AnalogWave::Square);   break;
+        case OscType::Triangle: analogOsc_.setWaveform (AnalogWave::Triangle); break;
+        case OscType::Pulse:    analogOsc_.setWaveform (AnalogWave::Pulse);    break;
+        case OscType::PhaseDistortion: default: break;
+    }
     amp_.setDrive (params.drive);
     amp_.setBias (params.bias);
     env_.setADSR (params.attack, params.decay, params.sustain, params.release);
@@ -62,7 +73,9 @@ void Voice::setParams (const SynthParams& params)
 
 void Voice::updateFrequency() noexcept
 {
-    osc_.setFrequency (baseFreq_ * std::pow (2.0, pitchBend_ / 12.0));
+    const double freq = baseFreq_ * std::pow (2.0, pitchBend_ / 12.0);
+    osc_.setFrequency (freq);
+    analogOsc_.setFrequency (freq);
 }
 
 void Voice::setPitchBendSemitones (double semitones) noexcept
@@ -97,7 +110,9 @@ void Voice::release()
 
 float Voice::render() noexcept
 {
-    double s = osc_.processSample();
+    double s = (params_.oscType == OscType::PhaseDistortion)
+                   ? osc_.processSample()
+                   : analogOsc_.processSample();
 
     switch (params_.filterType)
     {

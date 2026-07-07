@@ -31,10 +31,20 @@ PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramI
 PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     : juce::AudioProcessorEditor (&p), proc (p)
 {
-    // --- Oscillator ---
+    // --- Oscillator (with type selector) ---
+    oscTypeLabel.setText ("Type", juce::dontSendNotification);
+    oscTypeLabel.setJustificationType (juce::Justification::centredLeft);
+    oscTypeLabel.setFont (juce::Font (13.0f, juce::Font::bold));
+    addAndMakeVisible (oscTypeLabel);
+
+    oscTypeBox.addItemList ({ "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" }, 1);
+    addAndMakeVisible (oscTypeBox);
+    oscTypeAttachment = std::make_unique<ComboBoxAttachment> (proc.apvts, "oscType", oscTypeBox);
+
     Section osc;
     osc.title = "Oscillator";
-    osc.knobs = { &addKnob ("amount", "PD Amount") };
+    osc.knobs = { &addKnob ("amount", "PD Amount"),
+                  &addKnob ("pulseWidth", "Pulse Width") };
 
     // --- Filter (with type selector) ---
     filterTypeLabel.setText ("Filter Type", juce::dontSendNotification);
@@ -69,8 +79,8 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
     sections = { osc, filter, drive, envelope };
 
-    setSize (4 * (kKnobW + kPad) + 2 * kPad,
-             kTitleH + 2 * (kHeaderH + kKnobH + kPad) + kPad);
+    setSize (7 * (kKnobW + kPad) + 3 * kPad,
+             kTitleH + 2 * (kHeaderH + 18 + kKnobH + kPad) + kPad);
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)
@@ -105,15 +115,20 @@ void PDHybridEditor::resized()
         s.bounds = row;
         auto header = row.removeFromTop (kHeaderH);
 
-        // Filter section: put the type selector on its header row (right side).
+        // Sections with a type selector place it on the right of their header;
+        // the section title (drawn in paint) labels it, so no extra text label.
         if (s.title == "Filter")
         {
-            auto box = header.removeFromRight (220).reduced (4, 2);
-            filterTypeBox.setBounds (box.removeFromRight (140));
-            filterTypeLabel.setBounds (box);
+            filterTypeBox.setBounds (header.removeFromRight (150).reduced (4, 3));
+            filterTypeLabel.setBounds ({});
+        }
+        else if (s.title == "Oscillator")
+        {
+            oscTypeBox.setBounds (header.removeFromRight (150).reduced (4, 3));
+            oscTypeLabel.setBounds ({});
         }
 
-        auto content = row.reduced (kPad, kPad);
+        auto content = row.reduced (kPad / 2, 0);
         for (auto* k : s.knobs)
         {
             auto cell = content.removeFromLeft (kKnobW + kPad).reduced (kPad / 2, 0);
@@ -122,15 +137,18 @@ void PDHybridEditor::resized()
         }
     };
 
-    const int rowH = kHeaderH + kKnobH + kPad;
+    const int u    = kKnobW + kPad;
+    const int rowH = kHeaderH + 18 + kKnobH + kPad;
 
-    auto top = area.removeFromTop (rowH);
-    layoutRow (sections[0], top.removeFromLeft (2 * (kKnobW + kPad)));  // Oscillator
-    layoutRow (sections[1], top);                                      // Filter
+    auto row1 = area.removeFromTop (rowH);
+    row1.removeFromLeft (kPad);
+    layoutRow (sections[0], row1.removeFromLeft (2 * u));  // Oscillator (2 knobs)
+    row1.removeFromLeft (kPad);
+    layoutRow (sections[1], row1.removeFromLeft (3 * u));  // Filter (3 knobs)
 
-    auto bottom = area.removeFromTop (rowH);
-    layoutRow (sections[2], bottom.removeFromLeft (3 * (kKnobW + kPad))); // Overdrive
-    layoutRow (sections[3], bottom);                                      // Envelope
-
-    repaint();
+    auto row2 = area.removeFromTop (rowH);
+    row2.removeFromLeft (kPad);
+    layoutRow (sections[2], row2.removeFromLeft (3 * u));  // Overdrive (3 knobs)
+    row2.removeFromLeft (kPad);
+    layoutRow (sections[3], row2.removeFromLeft (4 * u));  // Amp Envelope (4 knobs)
 }

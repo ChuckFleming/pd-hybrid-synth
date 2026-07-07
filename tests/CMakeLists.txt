@@ -9,6 +9,7 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(pdhybrid_tests
     dsp/oscillator_tests.cpp
+    dsp/analog_oscillator_tests.cpp
     dsp/filter_tests.cpp
     dsp/amp_tests.cpp
     dsp/envelope_tests.cpp

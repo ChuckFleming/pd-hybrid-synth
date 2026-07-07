@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PhaseDistortionOscillator.h"
+#include "AnalogOscillator.h"
 #include "LadderFilter.h"
 #include "PhaseDistortionResonator.h"
 #include "CombFilter.h"
@@ -44,6 +45,7 @@ private:
     void applyFilterParams()  noexcept;
 
     PhaseDistortionOscillator osc_;
+    AnalogOscillator          analogOsc_;
     LadderFilter              ladder_;
     PhaseDistortionResonator  pdReso_;
     CombFilter                comb_;

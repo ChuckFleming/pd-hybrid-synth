@@ -10,10 +10,21 @@ enum class FilterType
     Allpass       // allpass dispersion
 };
 
+enum class OscType
+{
+    PhaseDistortion = 0,   // Casio CZ-style PD
+    Saw,                   // analog PolyBLEP waveforms
+    Square,
+    Triangle,
+    Pulse
+};
+
 // Per-block synth settings pushed from the host/UI down to every voice.
 struct SynthParams
 {
-    double pdAmount  = 0.30;
+    OscType oscType    = OscType::PhaseDistortion;
+    double  pdAmount   = 0.30;
+    double  pulseWidth = 0.5;
 
     FilterType filterType   = FilterType::Ladder;
     double     cutoffHz     = 8000.0;

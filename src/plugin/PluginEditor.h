@@ -45,6 +45,10 @@ private:
 
     std::vector<std::unique_ptr<LabeledKnob>> knobs;
 
+    juce::Label    oscTypeLabel;
+    juce::ComboBox oscTypeBox;
+    std::unique_ptr<ComboBoxAttachment> oscTypeAttachment;
+
     juce::Label    filterTypeLabel;
     juce::ComboBox filterTypeBox;
     std::unique_ptr<ComboBoxAttachment> filterTypeAttachment;

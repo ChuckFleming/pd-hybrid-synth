@@ -27,6 +27,11 @@ if (-not (Test-Path $exe)) {
 }
 
 Write-Output "Running pluginval on: $vst3"
-& $exe --strictness-level 8 --validate-in-process --skip-gui-tests "$vst3"
-Write-Output "PLUGINVAL_EXIT=$LASTEXITCODE"
-exit $LASTEXITCODE
+
+# pluginval.exe is a GUI-subsystem app, so `& $exe` returns immediately without
+# waiting and never sets $LASTEXITCODE. Start-Process -Wait -PassThru gives us
+# the real exit code; the spaced VST3 path must stay quoted as one argument.
+$argLine = "--strictness-level 8 --validate-in-process --skip-gui-tests `"$vst3`""
+$proc = Start-Process -FilePath $exe -ArgumentList $argLine -Wait -PassThru -NoNewWindow
+Write-Output "PLUGINVAL_EXIT=$($proc.ExitCode)"
+exit $proc.ExitCode

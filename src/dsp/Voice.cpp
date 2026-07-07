@@ -12,8 +12,8 @@ double midiNoteToHz (int note) noexcept
 void Voice::prepare (double sampleRate)
 {
     sampleRate_ = sampleRate;
-    osc_.setSampleRate (sampleRate);
-    analogOsc_.setSampleRate (sampleRate);
+    unitA_.setSampleRate (sampleRate);
+    unitB_.setSampleRate (sampleRate);
     ladder_.setSampleRate (sampleRate);
     svf_.setSampleRate (sampleRate);
     pdReso_.setSampleRate (sampleRate);
@@ -24,8 +24,8 @@ void Voice::prepare (double sampleRate)
     env2_.setSampleRate (sampleRate);
     lfo_.setSampleRate (sampleRate);
 
-    osc_.reset();
-    analogOsc_.reset();
+    unitA_.reset();
+    unitB_.reset();
     ladder_.reset();
     svf_.reset();
     pdReso_.reset();
@@ -46,14 +46,13 @@ void Voice::setParams (const SynthParams& params)
     lfo_.setFrequency (params.lfoRate);
     lfo_.setWaveform (static_cast<LfoWave> (params.lfoWave));
 
-    switch (params.oscType)
-    {
-        case OscType::Saw:      analogOsc_.setWaveform (AnalogWave::Saw);      break;
-        case OscType::Square:   analogOsc_.setWaveform (AnalogWave::Square);   break;
-        case OscType::Triangle: analogOsc_.setWaveform (AnalogWave::Triangle); break;
-        case OscType::Pulse:    analogOsc_.setWaveform (AnalogWave::Pulse);    break;
-        case OscType::PhaseDistortion: default: break;
-    }
+    unitA_.setType   (params.oscAType);
+    unitA_.setPdWave (static_cast<PdWave> (params.oscAWave));
+    unitA_.setTuning (params.oscAOctave, params.oscASemi, params.oscAFine);
+
+    unitB_.setType   (params.oscBType);
+    unitB_.setPdWave (static_cast<PdWave> (params.oscBWave));
+    unitB_.setTuning (params.oscBOctave, params.oscBSemi, params.oscBFine);
 }
 
 void Voice::applyModulation() noexcept
@@ -73,14 +72,20 @@ void Voice::applyModulation() noexcept
 
     auto md = [&] (ModDest d) { return mod[static_cast<int> (d)]; };
 
-    // Pitch (matrix in semitones, +/-24 at full depth).
+    // Pitch (matrix in semitones, +/-24 at full depth). Each unit applies its
+    // own octave/semi/fine tuning on top of this note pitch.
     const double semis = pitchBend_ + md (ModDest::Pitch) * 24.0;
     const double freq  = baseFreq_ * std::pow (2.0, semis / 12.0);
-    osc_.setFrequency (freq);
-    analogOsc_.setFrequency (freq);
+    unitA_.setBaseFrequency (freq);
+    unitB_.setBaseFrequency (freq);
 
-    osc_.setAmount (std::clamp (params_.pdAmount + md (ModDest::PdAmount), 0.0, 1.0));
-    analogOsc_.setPulseWidth (std::clamp (params_.pulseWidth + md (ModDest::PulseWidth) * 0.45, 0.05, 0.95));
+    // PD amount and pulse width are modulated equally on both slots.
+    const double pdMod = md (ModDest::PdAmount);
+    const double pwMod = md (ModDest::PulseWidth) * 0.45;
+    unitA_.setAmount     (std::clamp (params_.oscAAmount + pdMod, 0.0, 1.0));
+    unitB_.setAmount     (std::clamp (params_.oscBAmount + pdMod, 0.0, 1.0));
+    unitA_.setPulseWidth (std::clamp (params_.oscAPulseWidth + pwMod, 0.05, 0.95));
+    unitB_.setPulseWidth (std::clamp (params_.oscBPulseWidth + pwMod, 0.05, 0.95));
 
     // Cutoff: timbre (MPE) and matrix both in octaves.
     const double cutoff = params_.cutoffHz * std::pow (2.0, timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0);
@@ -128,9 +133,14 @@ void Voice::release()
 
 float Voice::renderOneSample() noexcept
 {
-    double s = (params_.oscType == OscType::PhaseDistortion)
-                   ? osc_.processSample()
-                   : analogOsc_.processSample();
+    // White noise via a cheap LCG, mapped to [-1, 1).
+    rng_ = rng_ * 1664525u + 1013904223u;
+    const double noise = static_cast<double> (static_cast<std::int32_t> (rng_))
+                       / 2147483648.0;
+
+    double s = unitA_.processSample() * params_.oscALevel
+             + unitB_.processSample() * params_.oscBLevel
+             + noise                  * params_.noiseLevel;
 
     switch (params_.filterType)
     {

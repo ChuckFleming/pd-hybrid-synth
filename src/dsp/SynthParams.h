@@ -25,9 +25,28 @@ enum class OscType
 // Per-block synth settings pushed from the host/UI down to every voice.
 struct SynthParams
 {
-    OscType oscType    = OscType::PhaseDistortion;
-    double  pdAmount   = 0.30;
-    double  pulseWidth = 0.5;
+    // --- Oscillator A ---
+    OscType oscAType       = OscType::PhaseDistortion;
+    int     oscAWave       = 0;      // PdWave index (used when type == PhaseDistortion)
+    double  oscAAmount     = 0.30;   // PD DCW amount
+    double  oscAPulseWidth = 0.5;
+    int     oscAOctave     = 0;
+    int     oscASemi       = 0;
+    double  oscAFine       = 0.0;    // cents
+
+    // --- Oscillator B ---
+    OscType oscBType       = OscType::Saw;
+    int     oscBWave       = 0;
+    double  oscBAmount     = 0.30;
+    double  oscBPulseWidth = 0.5;
+    int     oscBOctave     = 0;
+    int     oscBSemi       = 0;
+    double  oscBFine       = 0.0;
+
+    // --- Mixer (independent sum) ---
+    double  oscALevel  = 1.0;
+    double  oscBLevel  = 0.0;   // B silent by default -> single-osc patches unchanged
+    double  noiseLevel = 0.0;
 
     FilterType filterType   = FilterType::Ladder;
     double     cutoffHz     = 8000.0;

@@ -1,7 +1,6 @@
 #pragma once
 
-#include "PhaseDistortionOscillator.h"
-#include "AnalogOscillator.h"
+#include "OscillatorUnit.h"
 #include "LadderFilter.h"
 #include "StateVariableFilter.h"
 #include "PhaseDistortionResonator.h"
@@ -11,6 +10,8 @@
 #include "MultiStageEnvelope.h"
 #include "Lfo.h"
 #include "SynthParams.h"
+
+#include <cstdint>
 
 namespace pdhybrid {
 
@@ -48,8 +49,8 @@ private:
     void  applyModulation() noexcept;   // evaluate the matrix and configure the DSP
     float renderOneSample() noexcept;
 
-    PhaseDistortionOscillator osc_;
-    AnalogOscillator          analogOsc_;
+    OscillatorUnit            unitA_;   // oscillator slot A
+    OscillatorUnit            unitB_;   // oscillator slot B
     LadderFilter              ladder_;
     StateVariableFilter       svf_;
     PhaseDistortionResonator  pdReso_;
@@ -71,6 +72,8 @@ private:
     double timbre_    = 0.0;
     double modWheel_  = 0.0;
     double ampMod_    = 1.0;    // amplitude modulation multiplier
+
+    std::uint32_t rng_ = 0x2545F491u;   // per-voice white-noise generator state
 };
 
 } // namespace pdhybrid

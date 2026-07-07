@@ -7,6 +7,11 @@ constexpr int kPad      = 12;
 constexpr int kHeaderH  = 22;
 constexpr int kTitleH   = 40;
 constexpr int kMatrixRowH = 30;
+constexpr int kComboW   = 130;
+
+const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" };
+const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
+                                        "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
 
 const juce::StringArray kSrcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
                                     "Timbre", "Pitch Bend", "Key Track", "Mod Wheel" };
@@ -34,29 +39,61 @@ PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramI
     return *knobs.back();
 }
 
+juce::ComboBox& PDHybridEditor::addCombo (const juce::String& paramId,
+                                          const juce::StringArray& items)
+{
+    auto box = std::make_unique<juce::ComboBox>();
+    box->addItemList (items, 1);
+    addAndMakeVisible (*box);
+    comboAttachments.push_back (
+        std::make_unique<ComboBoxAttachment> (proc.apvts, paramId, *box));
+    combos.push_back (std::move (box));
+    return *combos.back();
+}
+
 PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     : juce::AudioProcessorEditor (&p), proc (p)
 {
-    // --- Oscillator (with type selector) ---
-    oscTypeBox.addItemList ({ "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" }, 1);
-    addAndMakeVisible (oscTypeBox);
-    oscTypeAttachment = std::make_unique<ComboBoxAttachment> (proc.apvts, "oscType", oscTypeBox);
+    // --- Oscillator A ---
+    oscATypeBox = &addCombo ("oscAType", kOscTypeNames);
+    oscAWaveBox = &addCombo ("oscAWave", kPdWaveNames);
+    Section oscA;
+    oscA.title  = "Osc A";
+    oscA.combos = { oscATypeBox, oscAWaveBox };
+    oscA.knobs  = { &addKnob ("oscAAmount", "PD Amount"),
+                    &addKnob ("oscAPulseWidth", "Pulse Width"),
+                    &addKnob ("oscAOctave", "Octave"),
+                    &addKnob ("oscASemi", "Semitone"),
+                    &addKnob ("oscAFine", "Fine") };
 
-    Section osc;
-    osc.title = "Oscillator";
-    osc.knobs = { &addKnob ("amount", "PD Amount"),
-                  &addKnob ("pulseWidth", "Pulse Width") };
+    // --- Oscillator B ---
+    oscBTypeBox = &addCombo ("oscBType", kOscTypeNames);
+    oscBWaveBox = &addCombo ("oscBWave", kPdWaveNames);
+    Section oscB;
+    oscB.title  = "Osc B";
+    oscB.combos = { oscBTypeBox, oscBWaveBox };
+    oscB.knobs  = { &addKnob ("oscBAmount", "PD Amount"),
+                    &addKnob ("oscBPulseWidth", "Pulse Width"),
+                    &addKnob ("oscBOctave", "Octave"),
+                    &addKnob ("oscBSemi", "Semitone"),
+                    &addKnob ("oscBFine", "Fine") };
+
+    // --- Mixer ---
+    Section mixer;
+    mixer.title = "Mixer";
+    mixer.knobs = { &addKnob ("oscALevel", "Osc A"),
+                    &addKnob ("oscBLevel", "Osc B"),
+                    &addKnob ("noiseLevel", "Noise") };
 
     // --- Filter (with type selector) ---
-    filterTypeBox.addItemList ({ "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }, 1);
-    addAndMakeVisible (filterTypeBox);
-    filterTypeAttachment = std::make_unique<ComboBoxAttachment> (proc.apvts, "filterType", filterTypeBox);
-
+    filterTypeBox = &addCombo ("filterType",
+        { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" });
     Section filter;
-    filter.title = "Filter";
-    filter.knobs = { &addKnob ("cutoff", "Cutoff"),
-                     &addKnob ("resonance", "Resonance"),
-                     &addKnob ("filterMorph", "Morph") };
+    filter.title  = "Filter";
+    filter.combos = { filterTypeBox };
+    filter.knobs  = { &addKnob ("cutoff", "Cutoff"),
+                      &addKnob ("resonance", "Resonance"),
+                      &addKnob ("filterMorph", "Morph") };
 
     // --- Overdrive ---
     Section drive;
@@ -74,13 +111,11 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                        &addKnob ("release", "Release") };
 
     // --- LFO (with waveform selector) ---
-    lfoWaveBox.addItemList ({ "Sine", "Triangle", "Square", "Saw" }, 1);
-    addAndMakeVisible (lfoWaveBox);
-    lfoWaveAttachment = std::make_unique<ComboBoxAttachment> (proc.apvts, "lfoWave", lfoWaveBox);
-
+    lfoWaveBox = &addCombo ("lfoWave", { "Sine", "Triangle", "Square", "Saw" });
     Section lfo;
-    lfo.title = "LFO";
-    lfo.knobs = { &addKnob ("lfoRate", "Rate") };
+    lfo.title  = "LFO";
+    lfo.combos = { lfoWaveBox };
+    lfo.knobs  = { &addKnob ("lfoRate", "Rate") };
 
     // --- Mod Envelope ---
     Section modEnv;
@@ -90,7 +125,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                      &addKnob ("modEnvS", "Sustain"),
                      &addKnob ("modEnvR", "Release") };
 
-    sections = { osc, filter, drive, envelope, lfo, modEnv };
+    sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv };
 
     // --- Modulation matrix rows ---
     for (int i = 0; i < 4; ++i)
@@ -111,9 +146,10 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         modDepthAtt[i] = std::make_unique<SliderAttachment> (proc.apvts, "mod" + s + "Depth", modDepthSlider[i]);
     }
 
+    const int u    = kKnobW + kPad;
     const int rowH = kHeaderH + 18 + kKnobH + kPad;
-    setSize (7 * (kKnobW + kPad) + 3 * kPad,
-             kTitleH + 3 * rowH + kHeaderH + 4 * kMatrixRowH + 2 * kPad);
+    setSize (8 * u + 4 * kPad,
+             kTitleH + 4 * rowH + kHeaderH + 4 * kMatrixRowH + 2 * kPad);
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)
@@ -151,17 +187,13 @@ void PDHybridEditor::resized()
     auto area = getLocalBounds();
     area.removeFromTop (kTitleH);
 
-    auto layoutRow = [this] (Section& s, juce::Rectangle<int> row)
+    auto layoutRow = [] (Section& s, juce::Rectangle<int> row)
     {
         s.bounds = row;
         auto header = row.removeFromTop (kHeaderH);
 
-        if (s.title == "Filter")
-            filterTypeBox.setBounds (header.removeFromRight (150).reduced (4, 3));
-        else if (s.title == "Oscillator")
-            oscTypeBox.setBounds (header.removeFromRight (150).reduced (4, 3));
-        else if (s.title == "LFO")
-            lfoWaveBox.setBounds (header.removeFromRight (120).reduced (4, 3));
+        for (auto it = s.combos.rbegin(); it != s.combos.rend(); ++it)
+            (*it)->setBounds (header.removeFromRight (kComboW).reduced (4, 3));
 
         auto content = row.reduced (kPad / 2, 0);
         for (auto* k : s.knobs)
@@ -175,23 +207,19 @@ void PDHybridEditor::resized()
     const int u    = kKnobW + kPad;
     const int rowH = kHeaderH + 18 + kKnobH + kPad;
 
-    auto row1 = area.removeFromTop (rowH);
-    row1.removeFromLeft (kPad);
-    layoutRow (sections[0], row1.removeFromLeft (2 * u));   // Oscillator
-    row1.removeFromLeft (kPad);
-    layoutRow (sections[1], row1.removeFromLeft (3 * u));   // Filter
+    auto placeRow = [&] (Section& a, int wa, Section& b, int wb)
+    {
+        auto row = area.removeFromTop (rowH);
+        row.removeFromLeft (kPad);
+        layoutRow (a, row.removeFromLeft (wa * u));
+        row.removeFromLeft (kPad);
+        layoutRow (b, row.removeFromLeft (wb * u));
+    };
 
-    auto row2 = area.removeFromTop (rowH);
-    row2.removeFromLeft (kPad);
-    layoutRow (sections[2], row2.removeFromLeft (3 * u));   // Overdrive
-    row2.removeFromLeft (kPad);
-    layoutRow (sections[3], row2.removeFromLeft (4 * u));   // Amp Envelope
-
-    auto row3 = area.removeFromTop (rowH);
-    row3.removeFromLeft (kPad);
-    layoutRow (sections[4], row3.removeFromLeft (2 * u));   // LFO
-    row3.removeFromLeft (kPad);
-    layoutRow (sections[5], row3.removeFromLeft (4 * u));   // Mod Envelope
+    placeRow (sections[0], 5, sections[2], 3);   // Osc A   | Mixer
+    placeRow (sections[1], 5, sections[3], 3);   // Osc B   | Filter
+    placeRow (sections[4], 3, sections[5], 4);   // Overdrive | Amp Envelope
+    placeRow (sections[6], 2, sections[7], 4);   // LFO       | Mod Envelope
 
     // Modulation matrix.
     matrixBounds = area.reduced (kPad, 0).withTrimmedBottom (kPad);

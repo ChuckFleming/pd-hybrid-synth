@@ -31,30 +31,31 @@ private:
         std::unique_ptr<SliderAttachment> attachment;
     };
 
-    // A section holds a title and a set of knobs laid out in a row.
+    // A section holds a title, a set of knobs laid out in a row, and optional
+    // combo boxes placed in its header (right-aligned).
     struct Section
     {
         juce::String title;
         std::vector<LabeledKnob*> knobs;
+        std::vector<juce::ComboBox*> combos;
         juce::Rectangle<int> bounds;
     };
 
     LabeledKnob& addKnob (const juce::String& paramId, const juce::String& text);
+    juce::ComboBox& addCombo (const juce::String& paramId, const juce::StringArray& items);
 
     PDHybridAudioProcessor& proc;
 
     std::vector<std::unique_ptr<LabeledKnob>> knobs;
+    std::vector<std::unique_ptr<juce::ComboBox>> combos;
+    std::vector<std::unique_ptr<ComboBoxAttachment>> comboAttachments;
 
-    juce::Label    oscTypeLabel;
-    juce::ComboBox oscTypeBox;
-    std::unique_ptr<ComboBoxAttachment> oscTypeAttachment;
-
-    juce::Label    filterTypeLabel;
-    juce::ComboBox filterTypeBox;
-    std::unique_ptr<ComboBoxAttachment> filterTypeAttachment;
-
-    juce::ComboBox lfoWaveBox;
-    std::unique_ptr<ComboBoxAttachment> lfoWaveAttachment;
+    juce::ComboBox* oscATypeBox = nullptr;
+    juce::ComboBox* oscAWaveBox = nullptr;
+    juce::ComboBox* oscBTypeBox = nullptr;
+    juce::ComboBox* oscBWaveBox = nullptr;
+    juce::ComboBox* filterTypeBox = nullptr;
+    juce::ComboBox* lfoWaveBox = nullptr;
 
     // Modulation matrix rows: source combo, destination combo, depth knob.
     juce::ComboBox modSrcBox[4];

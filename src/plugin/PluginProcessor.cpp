@@ -7,17 +7,41 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { "oscType", 1 }, "Oscillator",
-        juce::StringArray { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" }, 0));
+    const juce::StringArray oscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" };
+    const juce::StringArray pdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
+                                           "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
+
+    // Two oscillator slots (A defaults to PD, B to a saw an octave down but silent).
+    auto addOscGroup = [&] (const juce::String& id, const juce::String& label,
+                            int defType, float defLevel)
+    {
+        params.push_back (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { id + "Type", 1 }, label + " Type", oscTypeNames, defType));
+        params.push_back (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { id + "Wave", 1 }, label + " PD Wave", pdWaveNames, 0));
+        params.push_back (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id + "Amount", 1 }, label + " PD Amount",
+            juce::NormalisableRange<float> (0.0f, 1.0f), 0.30f));
+        params.push_back (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id + "PulseWidth", 1 }, label + " Pulse Width",
+            juce::NormalisableRange<float> (0.05f, 0.95f), 0.50f));
+        params.push_back (std::make_unique<juce::AudioParameterInt> (
+            juce::ParameterID { id + "Octave", 1 }, label + " Octave", -3, 3, 0));
+        params.push_back (std::make_unique<juce::AudioParameterInt> (
+            juce::ParameterID { id + "Semi", 1 }, label + " Semitone", -12, 12, 0));
+        params.push_back (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id + "Fine", 1 }, label + " Fine",
+            juce::NormalisableRange<float> (-100.0f, 100.0f), 0.0f));
+        params.push_back (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id + "Level", 1 }, label + " Level",
+            juce::NormalisableRange<float> (0.0f, 1.0f), defLevel));
+    };
+    addOscGroup ("oscA", "Osc A", 0, 1.0f);   // Phase Distortion, full level
+    addOscGroup ("oscB", "Osc B", 1, 0.0f);   // Saw, silent by default
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "amount", 1 }, "PD Amount",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.30f));
-
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "pulseWidth", 1 }, "Pulse Width",
-        juce::NormalisableRange<float> (0.05f, 0.95f), 0.50f));
+        juce::ParameterID { "noiseLevel", 1 }, "Noise Level",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "cutoff", 1 }, "Filter Cutoff",
@@ -119,10 +143,27 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
 void PDHybridAudioProcessor::pushParams()
 {
     pdhybrid::SynthParams p;
-    p.oscType     = static_cast<pdhybrid::OscType> (
-                        static_cast<int> (apvts.getRawParameterValue ("oscType")->load()));
-    p.pdAmount    = apvts.getRawParameterValue ("amount")->load();
-    p.pulseWidth  = apvts.getRawParameterValue ("pulseWidth")->load();
+
+    auto readOscGroup = [&] (const juce::String& id,
+                             pdhybrid::OscType& type, int& wave, double& amount,
+                             double& pw, int& octave, int& semi, double& fine, double& level)
+    {
+        type   = static_cast<pdhybrid::OscType> (
+                     static_cast<int> (apvts.getRawParameterValue (id + "Type")->load()));
+        wave   = static_cast<int> (apvts.getRawParameterValue (id + "Wave")->load());
+        amount = apvts.getRawParameterValue (id + "Amount")->load();
+        pw     = apvts.getRawParameterValue (id + "PulseWidth")->load();
+        octave = static_cast<int> (apvts.getRawParameterValue (id + "Octave")->load());
+        semi   = static_cast<int> (apvts.getRawParameterValue (id + "Semi")->load());
+        fine   = apvts.getRawParameterValue (id + "Fine")->load();
+        level  = apvts.getRawParameterValue (id + "Level")->load();
+    };
+    readOscGroup ("oscA", p.oscAType, p.oscAWave, p.oscAAmount, p.oscAPulseWidth,
+                  p.oscAOctave, p.oscASemi, p.oscAFine, p.oscALevel);
+    readOscGroup ("oscB", p.oscBType, p.oscBWave, p.oscBAmount, p.oscBPulseWidth,
+                  p.oscBOctave, p.oscBSemi, p.oscBFine, p.oscBLevel);
+    p.noiseLevel  = apvts.getRawParameterValue ("noiseLevel")->load();
+
     p.cutoffHz    = apvts.getRawParameterValue ("cutoff")->load();
     p.resonance   = apvts.getRawParameterValue ("resonance")->load();
     p.filterType  = static_cast<pdhybrid::FilterType> (

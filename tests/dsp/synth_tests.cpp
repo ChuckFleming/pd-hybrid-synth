@@ -25,7 +25,7 @@ namespace {
 SynthParams brightSustainParams()
 {
     SynthParams p;
-    p.pdAmount = 0.10;   // few harmonics -> clean fundamental
+    p.oscAAmount = 0.10;   // few harmonics -> clean fundamental
     p.cutoffHz = 12000.0;
     p.resonance = 0.0;
     p.drive = 1.0;
@@ -174,7 +174,7 @@ TEST_CASE ("Mod matrix routes velocity to cutoff (brighter with velocity)", "[sy
     auto highFreqEnergy = [&] (float velocity)
     {
         SynthParams p;
-        p.oscType   = OscType::Saw;        // rich harmonics so cutoff matters
+        p.oscAType  = OscType::Saw;        // rich harmonics so cutoff matters
         p.cutoffHz  = 500.0;               // low base cutoff
         p.resonance = 0.0;
         p.attack = 0.001; p.decay = 0.001; p.sustain = 1.0; p.release = 0.05;
@@ -235,4 +235,61 @@ TEST_CASE ("Sub-block triggering makes note-on sample-accurate", "[synth][timing
     e.noteOn (60, 1.0f, 1);
     auto after = renderEngine (e, 4096);
     REQUIRE (peakAbs (after) > 0.05f);
+}
+
+TEST_CASE ("Per-oscillator octave tuning shifts the fundamental", "[synth][osc]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+
+    auto p = brightSustainParams();     // Osc A = PD, Osc B silent
+    p.oscAOctave = -1;                  // one octave down
+    e.setParams (p);
+    e.noteOn (69, 1.0f, 1);             // A4 -> should sound at A3 = 220 Hz
+
+    auto spec = computeSpectrum (renderEngine (e, 16384), sr);
+    REQUIRE (spec.peakFrequency() == Approx (220.0).epsilon (0.02));
+}
+
+TEST_CASE ("Second oscillator adds its own detuned pitch to the mix", "[synth][osc][mixer]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+
+    auto p = brightSustainParams();
+    p.oscAType = OscType::Saw;   p.oscALevel = 0.7;
+    p.oscBType = OscType::Saw;   p.oscBLevel = 0.7;
+    p.oscBSemi = 7;              // a fifth above
+    p.cutoffHz = 12000.0;
+    e.setParams (p);
+    e.noteOn (57, 1.0f, 1);      // A3 = 220 Hz; B a fifth up ~ 329.6 Hz
+
+    auto buf  = renderEngine (e, 16384);
+    auto spec = computeSpectrum (buf, sr);
+    REQUIRE_FALSE (hasBadValues (buf));
+    // Energy present at both oscillator pitches.
+    REQUIRE (spec.magnitudeNearHz (220.0) > 0.01);
+    REQUIRE (spec.magnitudeNearHz (329.6) > 0.01);
+}
+
+TEST_CASE ("Noise source produces broadband sound on its own", "[synth][osc][mixer]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+
+    auto p = brightSustainParams();
+    p.oscALevel = 0.0;           // silence both oscillators
+    p.oscBLevel = 0.0;
+    p.noiseLevel = 0.5;          // noise only
+    p.cutoffHz = 16000.0;
+    e.setParams (p);
+    e.noteOn (60, 1.0f, 1);
+
+    auto buf = renderEngine (e, 16384);
+    REQUIRE_FALSE (hasBadValues (buf));
+    REQUIRE (rms (buf) > 1e-4);
+    REQUIRE (peakAbs (buf) < 10.0f);
 }

@@ -135,7 +135,13 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                         &addKnob ("filterEnvS", "Sustain"),
                         &addKnob ("filterEnvR", "Release") };
 
-    sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv };
+    // --- Stereo ---
+    Section stereo;
+    stereo.title = "Stereo";
+    stereo.knobs = { &addKnob ("pan", "Pan"),
+                     &addKnob ("panSpread", "Spread") };
+
+    sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv, stereo };
 
     // --- Modulation matrix rows ---
     for (int i = 0; i < 4; ++i)
@@ -226,18 +232,11 @@ void PDHybridEditor::resized()
         layoutRow (b, row.removeFromLeft (wb * u));
     };
 
-    auto placeSingle = [&] (Section& a, int wa)
-    {
-        auto row = area.removeFromTop (rowH);
-        row.removeFromLeft (kPad);
-        layoutRow (a, row.removeFromLeft (wa * u));
-    };
-
     placeRow (sections[0], 5, sections[2], 3);   // Osc A     | Mixer
     placeRow (sections[1], 5, sections[3], 5);   // Osc B     | Filter (+ key track / env amt)
     placeRow (sections[4], 3, sections[5], 4);   // Overdrive | Amp Envelope
     placeRow (sections[8], 4, sections[7], 4);   // Filter Env| Mod Envelope
-    placeSingle (sections[6], 2);                // LFO
+    placeRow (sections[6], 2, sections[9], 2);   // LFO       | Stereo
 
     // Modulation matrix.
     matrixBounds = area.reduced (kPad, 0).withTrimmedBottom (kPad);

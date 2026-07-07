@@ -38,21 +38,34 @@ SynthParams brightSustainParams()
     return p;
 }
 
+struct Stereo { std::vector<float> left, right; };
+
+Stereo renderStereo (SynthEngine& e, int n)
+{
+    Stereo s { std::vector<float> (n), std::vector<float> (n) };
+    e.renderBlock (s.left.data(), s.right.data(), n);
+    return s;
+}
+
+// The engine is stereo; most tests only need one representative channel. With
+// the default centre pan both channels are identical.
 std::vector<float> renderEngine (SynthEngine& e, int n)
 {
-    std::vector<float> buf (n);
-    e.renderBlock (buf.data(), n);
-    return buf;
+    return renderStereo (e, n).left;
 }
 
 // Render in small blocks (like a real host) so block-rate modulation -- the LFO,
 // mod envelope and filter envelope -- actually evolves across the render.
 std::vector<float> renderChunks (SynthEngine& e, int n, int blockSize = 64)
 {
-    std::vector<float> buf (static_cast<std::size_t> (n), 0.0f);
+    std::vector<float> l (static_cast<std::size_t> (n), 0.0f);
+    std::vector<float> r (static_cast<std::size_t> (n), 0.0f);
     for (int i = 0; i < n; i += blockSize)
-        e.renderBlock (buf.data() + i, std::min (blockSize, n - i));
-    return buf;
+    {
+        const int m = std::min (blockSize, n - i);
+        e.renderBlock (l.data() + i, r.data() + i, m);
+    }
+    return l;
 }
 
 // Magnitude-weighted mean frequency -- a robust "brightness" measure.
@@ -373,4 +386,50 @@ TEST_CASE ("Filter envelope sweeps the cutoff over time", "[synth][filter][env]"
     const double late  = centroid (renderChunks (e, 4096), sr);   // envelope closed
 
     REQUIRE (early > late * 1.3);   // the tone gets darker as the filter env falls
+}
+
+TEST_CASE ("Master pan places a voice in the stereo field", "[synth][stereo][pan]")
+{
+    const double sr = 48000.0;
+
+    auto energies = [&] (double pan)
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = brightSustainParams();
+        p.pan = pan;
+        e.setParams (p);
+        e.noteOn (60, 1.0f, 1);
+        auto s = renderStereo (e, 8192);
+        return std::pair<double, double> { rms (s.left), rms (s.right) };
+    };
+
+    auto [cl, cr] = energies (0.0);
+    REQUIRE (cl == Approx (cr).epsilon (0.01));     // centre: balanced
+
+    auto [ll, lr] = energies (-1.0);
+    REQUIRE (ll > lr * 10.0);                        // hard left
+
+    auto [rl, rr] = energies (1.0);
+    REQUIRE (rr > rl * 10.0);                        // hard right
+}
+
+TEST_CASE ("Pan spread widens low and high notes to opposite sides", "[synth][stereo][pan]")
+{
+    const double sr = 48000.0;
+
+    auto balance = [&] (int note)   // right RMS minus left RMS
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = brightSustainParams();
+        p.panSpread = 1.0;          // full keyboard spread
+        e.setParams (p);
+        e.noteOn (note, 1.0f, 1);
+        auto s = renderStereo (e, 8192);
+        return rms (s.right) - rms (s.left);
+    };
+
+    REQUIRE (balance (36) < 0.0);   // low note leans left
+    REQUIRE (balance (84) > 0.0);   // high note leans right
 }

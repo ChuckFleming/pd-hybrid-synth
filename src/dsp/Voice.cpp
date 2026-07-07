@@ -4,6 +4,8 @@
 
 namespace pdhybrid {
 
+static constexpr double kPi = 3.14159265358979323846;
+
 double midiNoteToHz (int note) noexcept
 {
     return 440.0 * std::pow (2.0, (note - 69) / 12.0);
@@ -118,6 +120,14 @@ void Voice::applyModulation() noexcept
     amp_.setDrive (params_.drive * std::pow (2.0, md (ModDest::Drive) * 2.0));
 
     ampMod_ = std::clamp (1.0 + md (ModDest::Amplitude), 0.0, 4.0);
+
+    // Stereo position: master pan plus keyboard-position spread, then equal-power
+    // constant-power law (centre = -3 dB each side).
+    const double pan   = std::clamp (params_.pan
+                                     + params_.panSpread * (note_ - 60) / 24.0, -1.0, 1.0);
+    const double angle = (pan + 1.0) * 0.25 * kPi;   // 0..pi/2
+    panL_ = std::cos (angle);
+    panR_ = std::sin (angle);
 }
 
 void Voice::start (int note, float velocity)
@@ -168,13 +178,15 @@ float Voice::renderOneSample() noexcept
     return static_cast<float> (s * e * velGain_ * pressure_ * ampMod_ * params_.gain);
 }
 
-void Voice::renderBlock (float* out, int numSamples)
+void Voice::renderBlock (float* left, float* right, int numSamples)
 {
     applyModulation();   // control-rate: evaluate the matrix once per block
 
     for (int i = 0; i < numSamples; ++i)
     {
-        out[i] += renderOneSample();
+        const float s = renderOneSample();
+        left[i]  += static_cast<float> (s * panL_);
+        right[i] += static_cast<float> (s * panR_);
         lfo_.processSample();    // advance modulation sources in sync
         env2_.processSample();
         filterEnv_.processSample();

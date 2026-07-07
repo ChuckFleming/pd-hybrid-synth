@@ -98,10 +98,13 @@ void SynthEngine::setNoteTimbre (int noteId, double timbre01) noexcept
             voiceTimbre_[i] = timbre01;
 }
 
-void SynthEngine::renderBlock (float* out, int numSamples)
+void SynthEngine::renderBlock (float* left, float* right, int numSamples)
 {
     for (int j = 0; j < numSamples; ++j)
-        out[j] = 0.0f;
+    {
+        left[j]  = 0.0f;
+        right[j] = 0.0f;
+    }
 
     for (int i = 0; i < kMaxVoices; ++i)
     {
@@ -113,7 +116,7 @@ void SynthEngine::renderBlock (float* out, int numSamples)
         voices_[i].setPressure (voicePressure_[i]);
         voices_[i].setTimbre (voiceTimbre_[i]);
         voices_[i].setModWheel (modWheel_);
-        voices_[i].renderBlock (out, numSamples);
+        voices_[i].renderBlock (left, right, numSamples);
     }
 }
 

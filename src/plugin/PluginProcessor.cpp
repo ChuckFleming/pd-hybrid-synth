@@ -93,6 +93,13 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.80f));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "pan", 1 }, "Pan",
+        juce::NormalisableRange<float> (-1.0f, 1.0f), 0.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "panSpread", 1 }, "Pan Spread",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "attack", 1 }, "Attack",
         juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.01f));
 
@@ -158,7 +165,9 @@ PDHybridAudioProcessor::PDHybridAudioProcessor()
 void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engine.setSampleRate (sampleRate);
-    scratch.assign (static_cast<std::size_t> (juce::jmax (1, samplesPerBlock)), 0.0f);
+    const auto n = static_cast<std::size_t> (juce::jmax (1, samplesPerBlock));
+    scratchL.assign (n, 0.0f);
+    scratchR.assign (n, 0.0f);
 }
 
 void PDHybridAudioProcessor::pushParams()
@@ -203,6 +212,8 @@ void PDHybridAudioProcessor::pushParams()
     p.sustain   = apvts.getRawParameterValue ("sustain")->load();
     p.release   = apvts.getRawParameterValue ("release")->load();
     p.gain      = apvts.getRawParameterValue ("gain")->load();
+    p.pan       = apvts.getRawParameterValue ("pan")->load();
+    p.panSpread = apvts.getRawParameterValue ("panSpread")->load();
 
     p.lfoRate = apvts.getRawParameterValue ("lfoRate")->load();
     p.lfoWave = static_cast<int> (apvts.getRawParameterValue ("lfoWave")->load());
@@ -253,13 +264,20 @@ void PDHybridAudioProcessor::renderSegment (juce::AudioBuffer<float>& buffer,
     if (numSamples <= 0)
         return;
 
-    if (static_cast<int> (scratch.size()) < numSamples)
-        scratch.resize (static_cast<std::size_t> (numSamples));
+    if (static_cast<int> (scratchL.size()) < numSamples)
+    {
+        scratchL.resize (static_cast<std::size_t> (numSamples));
+        scratchR.resize (static_cast<std::size_t> (numSamples));
+    }
 
-    engine.renderBlock (scratch.data(), numSamples);
+    engine.renderBlock (scratchL.data(), scratchR.data(), numSamples);
 
-    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-        buffer.copyFrom (ch, startSample, scratch.data(), numSamples);
+    const int numCh = buffer.getNumChannels();
+    if (numCh > 0) buffer.copyFrom (0, startSample, scratchL.data(), numSamples);
+    if (numCh > 1) buffer.copyFrom (1, startSample, scratchR.data(), numSamples);
+    // Any further channels get the left signal.
+    for (int ch = 2; ch < numCh; ++ch)
+        buffer.copyFrom (ch, startSample, scratchL.data(), numSamples);
 }
 
 void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,

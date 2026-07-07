@@ -66,6 +66,11 @@ struct SynthParams
 
     double gain    = 0.80;
 
+    // Stereo placement: master pan plus a per-voice spread by keyboard position
+    // (low notes left, high notes right) for a wider sound.
+    double pan       = 0.0;    // -1 = hard left .. +1 = hard right
+    double panSpread = 0.0;    // 0..1 amount of keyboard-position spread
+
     // Modulation
     double    modEnvA = 0.01, modEnvD = 0.20, modEnvS = 0.0, modEnvR = 0.30;
     double    lfoRate = 5.0;

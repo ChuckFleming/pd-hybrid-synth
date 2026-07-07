@@ -42,8 +42,9 @@ public:
     void setTimbre             (double timbre01)   noexcept { timbre_ = timbre01; }
     void setModWheel           (double modWheel01) noexcept { modWheel_ = modWheel01; }
 
-    // Adds `numSamples` of this voice's output into `out`.
-    void renderBlock (float* out, int numSamples);
+    // Adds `numSamples` of this voice's output into the stereo `left`/`right`
+    // buffers, panned to its stereo position.
+    void renderBlock (float* left, float* right, int numSamples);
 
 private:
     void  applyModulation() noexcept;   // evaluate the matrix and configure the DSP
@@ -73,6 +74,8 @@ private:
     double timbre_    = 0.0;
     double modWheel_  = 0.0;
     double ampMod_    = 1.0;    // amplitude modulation multiplier
+    double panL_      = 0.70710678;   // equal-power pan gains (default centre)
+    double panR_      = 0.70710678;
 
     std::uint32_t rng_ = 0x2545F491u;   // per-voice white-noise generator state
 };

@@ -50,7 +50,7 @@ private:
     void renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
 
     pdhybrid::SynthEngine engine;
-    std::vector<float>    scratch;              // mono render buffer
+    std::vector<float>    scratchL, scratchR;   // stereo render buffers
     double                pitchBendRangeSemis = 2.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDHybridAudioProcessor)

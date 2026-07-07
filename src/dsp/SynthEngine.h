@@ -35,8 +35,8 @@ public:
     void setNoteTimbre    (int noteId, double timbre01) noexcept;
     void setModWheel      (double modWheel01) noexcept { modWheel_ = modWheel01; }
 
-    // Renders `numSamples` of summed mono output (overwrites `out`).
-    void renderBlock (float* out, int numSamples);
+    // Renders `numSamples` of summed stereo output (overwrites `left`/`right`).
+    void renderBlock (float* left, float* right, int numSamples);
 
     int activeVoiceCount() const noexcept;
 

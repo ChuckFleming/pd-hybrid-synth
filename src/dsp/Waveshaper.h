@@ -4,8 +4,15 @@ namespace pdhybrid {
 
 enum class ShaperCurve
 {
-    Tanh,   // symmetric soft clip (odd harmonics only)
-    Cubic   // symmetric cubic soft clip (odd harmonics only)
+    Tanh,      // symmetric soft clip (odd harmonics)
+    Cubic,     // symmetric cubic soft clip (odd harmonics)
+    HardClip,  // brick-wall clip (bright, odd)
+    Tube,      // asymmetric soft clip (even + odd)
+    Diode,     // asymmetric diode-pair (buzzy, even)
+    Fuzz,      // high-gain near-square
+    Rectify,   // full-wave rectifier (octave up)
+    Wavefold,  // sine wavefolder (metallic)
+    Foldback   // triangle foldback
 };
 
 /**

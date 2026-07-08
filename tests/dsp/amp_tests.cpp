@@ -16,6 +16,53 @@ using namespace harness;
 
 static constexpr double kTwoPi = 6.283185307179586476925287;
 
+TEST_CASE ("Every drive type stays finite and bounded", "[amp][shaper]")
+{
+    for (auto c : { ShaperCurve::Tanh, ShaperCurve::Cubic, ShaperCurve::HardClip,
+                    ShaperCurve::Tube, ShaperCurve::Diode, ShaperCurve::Fuzz,
+                    ShaperCurve::Rectify, ShaperCurve::Wavefold, ShaperCurve::Foldback })
+    {
+        Waveshaper s;
+        s.setCurve (c);
+        s.setDrive (6.0);
+        for (int i = 0; i < 400; ++i)
+        {
+            const double x = -5.0 + 10.0 * i / 399.0;
+            const double y = s.process (static_cast<float> (x));
+            REQUIRE (std::isfinite (y));
+            REQUIRE (std::abs (y) <= 1.05);
+        }
+    }
+}
+
+TEST_CASE ("Hard clip clamps to unity", "[amp][shaper]")
+{
+    Waveshaper s;
+    s.setCurve (ShaperCurve::HardClip);
+    s.setDrive (4.0);
+    REQUIRE (s.process (5.0f)  == Approx (1.0));
+    REQUIRE (s.process (-5.0f) == Approx (-1.0));
+}
+
+TEST_CASE ("Bit crush quantises the output to a few levels", "[amp][crush]")
+{
+    OverdriveAmp amp;
+    amp.setSampleRate (48000.0);
+    amp.setOversampling (1);
+    amp.setDcBlock (false);
+    amp.setCurve (ShaperCurve::HardClip);
+    amp.setDrive (1.0);
+    amp.setCrushBits (2.0);   // 2 levels per polarity
+    amp.reset();
+
+    std::vector<float> vals;
+    for (int i = 0; i < 2000; ++i)
+        vals.push_back (amp.processSample (static_cast<float> (std::sin (kTwoPi * 100.0 * i / 48000.0))));
+    std::sort (vals.begin(), vals.end());
+    vals.erase (std::unique (vals.begin(), vals.end()), vals.end());
+    REQUIRE (vals.size() <= 6);
+}
+
 TEST_CASE ("Waveshaper transfer curve is monotonic, bounded and odd-symmetric", "[amp][shaper]")
 {
     Waveshaper s;

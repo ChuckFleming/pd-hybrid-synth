@@ -107,6 +107,9 @@ struct SynthParams
 
     double drive     = 1.0;
     double bias      = 0.0;
+    int    driveType = 0;      // ShaperCurve index
+    double crushBits = 16.0;   // bit-depth reduction (>= 16 = off)
+    double downsample = 1.0;   // sample-rate reduction factor (1 = off)
 
     double attack  = 0.01;
     double decay   = 0.10;

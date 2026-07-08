@@ -190,11 +190,16 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     lfo2.knobs  = { &addKnob ("lfo2Rate", "Rate") };
 
     // --- Overdrive ---
+    auto& driveTypeBox = addCombo ("driveType",
+        { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz", "Rectify", "Wavefold", "Foldback" });
     Section drive;
-    drive.title = "Overdrive";
-    drive.knobs = { &addKnob ("drive", "Drive"),
-                    &addKnob ("bias", "Bias"),
-                    &addKnob ("gain", "Gain") };
+    drive.title  = "Overdrive";
+    drive.combos = { &driveTypeBox };
+    drive.knobs  = { &addKnob ("drive", "Drive"),
+                     &addKnob ("bias", "Bias"),
+                     &addKnob ("gain", "Gain"),
+                     &addKnob ("crushBits", "Crush"),
+                     &addKnob ("downsample", "Downsmpl") };
 
     // --- Compressor ---
     Section comp;

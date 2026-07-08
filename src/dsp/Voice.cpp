@@ -46,6 +46,9 @@ void Voice::setParams (const SynthParams& params)
 {
     params_ = params;
     amp_.setBias (params.bias);
+    amp_.setCurve (static_cast<ShaperCurve> (params.driveType));
+    amp_.setCrushBits (params.crushBits);
+    amp_.setDownsample (static_cast<int> (params.downsample));
     env_.setADSR (params.attack, params.decay, params.sustain, params.release);
     env2_.setADSR (params.modEnvA, params.modEnvD, params.modEnvS, params.modEnvR);
     filterEnv_.setADSR (params.filterEnvA, params.filterEnvD, params.filterEnvS, params.filterEnvR);

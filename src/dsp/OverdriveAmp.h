@@ -19,11 +19,15 @@ public:
     void setBias        (double bias) noexcept         { shaper_.setBias (bias); }
     void setCurve       (ShaperCurve c) noexcept       { shaper_.setCurve (c); }
     void setDcBlock     (bool on) noexcept             { dcBlock_ = on; }
+    void setCrushBits   (double bits) noexcept         { crushBits_ = bits; }   // >= 16 = off
+    void setDownsample  (int factor) noexcept          { downsample_ = factor < 1 ? 1 : factor; }
 
     void reset() noexcept
     {
         os_.reset();
         dcX1_ = dcY1_ = 0.0;
+        dsCounter_ = 0;
+        dsHeld_ = 0.0f;
     }
 
     float processSample (float x) noexcept;
@@ -39,6 +43,12 @@ private:
     bool   dcBlock_ = true;
     double dcX1_ = 0.0, dcY1_ = 0.0;
     static constexpr double kDcR = 0.9995;
+
+    // Lo-fi "dirt" stages (run at base rate so their aliasing is intentional).
+    double crushBits_  = 16.0;   // >= 16 = no bit reduction
+    int    downsample_ = 1;      // 1 = no sample-rate reduction
+    int    dsCounter_  = 0;
+    float  dsHeld_     = 0.0f;
 };
 
 } // namespace pdhybrid

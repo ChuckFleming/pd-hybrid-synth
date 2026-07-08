@@ -143,9 +143,19 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("filter2EnvR", "Filter 2 Env Release",
         juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f, sec);
 
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "driveType", 1 }, "Drive Type",
+        juce::StringArray { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz",
+                            "Rectify", "Wavefold", "Foldback" }, 0));
     pf ("drive", "Overdrive", juce::NormalisableRange<float> (1.0f, 50.0f, 0.0f, 0.3f), 1.0f, mult);
 
     pf ("bias", "Overdrive Bias", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    pf ("crushBits", "Bit Crush", juce::NormalisableRange<float> (1.0f, 16.0f), 16.0f,
+        sv ([] (float v) { return v >= 15.95f ? juce::String ("off") : juce::String (v, 1) + " bit"; },
+            [] (const juce::String& t) { return t.startsWithIgnoreCase ("off") ? 16.0f : t.getFloatValue(); }));
+    pf ("downsample", "Downsample", juce::NormalisableRange<float> (1.0f, 50.0f, 1.0f), 1.0f,
+        sv ([] (float v) { return v <= 1.0f ? juce::String ("off") : juce::String ("/") + juce::String ((int) v); },
+            [] (const juce::String& t) { return t.startsWithIgnoreCase ("off") ? 1.0f : t.getFloatValue(); }));
 
     pf ("gain", "Gain", juce::NormalisableRange<float> (0.0f, 1.0f), 0.80f, pct);
 
@@ -351,6 +361,9 @@ void PDHybridAudioProcessor::pushParams()
     p.filter2EnvS = apvts.getRawParameterValue ("filter2EnvS")->load();
     p.filter2EnvR = apvts.getRawParameterValue ("filter2EnvR")->load();
     p.drive       = apvts.getRawParameterValue ("drive")->load();
+    p.driveType   = static_cast<int> (apvts.getRawParameterValue ("driveType")->load());
+    p.crushBits   = apvts.getRawParameterValue ("crushBits")->load();
+    p.downsample  = apvts.getRawParameterValue ("downsample")->load();
     p.bias      = apvts.getRawParameterValue ("bias")->load();
     p.attack    = apvts.getRawParameterValue ("attack")->load();
     p.decay     = apvts.getRawParameterValue ("decay")->load();

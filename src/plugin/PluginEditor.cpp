@@ -207,9 +207,11 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
     // --- Delay ---
     auto& delayModeBox = addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" });
+    auto& delaySyncLBox = addCombo ("delaySyncL", kSyncNames);
+    auto& delaySyncRBox = addCombo ("delaySyncR", kSyncNames);
     Section delaySec;
     delaySec.title  = "Delay";
-    delaySec.combos = { &delayModeBox };
+    delaySec.combos = { &delayModeBox, &delaySyncLBox, &delaySyncRBox };
     delaySec.knobs  = { &addKnob ("delayTimeL", "Time L"),
                         &addKnob ("delayTimeR", "Time R"),
                         &addKnob ("delayFeedback", "Fbk"),

@@ -172,6 +172,12 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "delayMode", 1 }, "Delay Mode",
         juce::StringArray { "Mono", "Stereo", "Ping-Pong" }, 1));
+    const juce::StringArray delaySyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
+                                             "1/4.", "1/8.", "1/4T", "1/8T" };
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "delaySyncL", 1 }, "Delay Sync L", delaySyncNames, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "delaySyncR", 1 }, "Delay Sync R", delaySyncNames, 0));
     pf ("delayTimeL", "Delay Time L",
         juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.30f, sec);
     pf ("delayTimeR", "Delay Time R",
@@ -368,20 +374,25 @@ void PDHybridAudioProcessor::pushParams()
     compressor.setRelease   (apvts.getRawParameterValue ("compRelease")->load());
     compressor.setMakeup    (apvts.getRawParameterValue ("compMakeup")->load());
 
-    delay.setMode (static_cast<pdhybrid::DelayMode> (
-        static_cast<int> (apvts.getRawParameterValue ("delayMode")->load())));
-    delay.setTimes    (apvts.getRawParameterValue ("delayTimeL")->load(),
-                       apvts.getRawParameterValue ("delayTimeR")->load());
-    delay.setFeedback (apvts.getRawParameterValue ("delayFeedback")->load());
-    delay.setMix      (apvts.getRawParameterValue ("delayMix")->load());
-    delay.setDuck     (apvts.getRawParameterValue ("delayDuck")->load());
-
-    // Host tempo for LFO sync (falls back to 120 BPM when the host has none).
+    // Host tempo for LFO + delay sync (falls back to 120 BPM when the host has none).
     double bpm = 120.0;
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition())
             if (auto b = pos->getBpm())
                 bpm = *b;
+
+    delay.setMode (static_cast<pdhybrid::DelayMode> (
+        static_cast<int> (apvts.getRawParameterValue ("delayMode")->load())));
+    const int dSyncL = static_cast<int> (apvts.getRawParameterValue ("delaySyncL")->load());
+    const int dSyncR = static_cast<int> (apvts.getRawParameterValue ("delaySyncR")->load());
+    const double delayL = dSyncL == 0 ? apvts.getRawParameterValue ("delayTimeL")->load()
+                                      : pdhybrid::syncedDelaySeconds (bpm, dSyncL - 1);
+    const double delayR = dSyncR == 0 ? apvts.getRawParameterValue ("delayTimeR")->load()
+                                      : pdhybrid::syncedDelaySeconds (bpm, dSyncR - 1);
+    delay.setTimes    (delayL, delayR);
+    delay.setFeedback (apvts.getRawParameterValue ("delayFeedback")->load());
+    delay.setMix      (apvts.getRawParameterValue ("delayMix")->load());
+    delay.setDuck     (apvts.getRawParameterValue ("delayDuck")->load());
 
     const int lfoSync  = static_cast<int> (apvts.getRawParameterValue ("lfoSync")->load());
     const int lfo2Sync = static_cast<int> (apvts.getRawParameterValue ("lfo2Sync")->load());

@@ -2,6 +2,7 @@
 #include <catch2/catch_approx.hpp>
 
 #include "dsp/Delay.h"
+#include "dsp/SynthParams.h"
 #include "harness/SignalStats.h"
 
 #include <vector>
@@ -31,6 +32,15 @@ float peakIn (const std::vector<float>& b, int from, int to)
 }
 
 } // namespace
+
+TEST_CASE ("Tempo-synced delay time matches the note division", "[delay][sync]")
+{
+    using pdhybrid::syncedDelaySeconds;
+    REQUIRE (syncedDelaySeconds (120.0, 2) == Approx (0.5));   // 1/4 at 120 BPM = 0.5 s
+    REQUIRE (syncedDelaySeconds (120.0, 3) == Approx (0.25));  // 1/8
+    REQUIRE (syncedDelaySeconds (140.0, 2) == Approx (60.0 / 140.0));
+    REQUIRE (syncedDelaySeconds (120.0, 0) <= 2.0);            // 1/1 clamped to the 2 s max
+}
 
 TEST_CASE ("Delay reproduces the input after the set time", "[delay]")
 {

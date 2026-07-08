@@ -48,6 +48,18 @@ inline double syncedLfoHz (double bpm, int divIndex) noexcept
     return (bpm / 60.0) * mult[divIndex];
 }
 
+// Delay time (seconds) for a tempo-sync note division at the given BPM. Same
+// division order as the LFO sync. Clamped to the delay's 2 s maximum.
+inline double syncedDelaySeconds (double bpm, int divIndex) noexcept
+{
+    static const double beats[] = { 4.0, 2.0, 1.0, 0.5, 0.25,
+                                    1.5, 0.75, 2.0 / 3.0, 1.0 / 3.0 };
+    if (divIndex < 0) divIndex = 0;
+    if (divIndex > 8) divIndex = 8;
+    const double t = beats[divIndex] * 60.0 / (bpm > 1.0 ? bpm : 120.0);
+    return t < 0.001 ? 0.001 : (t > 2.0 ? 2.0 : t);
+}
+
 // Per-block synth settings pushed from the host/UI down to every voice.
 struct SynthParams
 {

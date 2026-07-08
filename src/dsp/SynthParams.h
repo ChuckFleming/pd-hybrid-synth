@@ -134,6 +134,9 @@ struct SynthParams
     double czRate[8]  = { 0.02, 0.15, 0.10, 0.30, 0.50, 0.40, 0.60, 0.50 };  // seconds
     double czLevel[8] = { 1.00, 0.80, 0.60, 0.50, 0.50, 0.30, 0.15, 0.00 };  // 0..1
 
+    // Macro sources (also usable as global mod sources).
+    double macro1 = 0.0, macro2 = 0.0;
+
     ModMatrix modMatrix;
 };
 

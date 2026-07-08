@@ -90,6 +90,13 @@ void Voice::applyModulation() noexcept
     src[ModSource::KeyTrack]  = (note_ - 60) / 48.0;
     src[ModSource::ModWheel]  = modWheel_;
     src[ModSource::MultiEnv]  = multiEnv_.level();
+    src[ModSource::AmpEnv]     = env_.level();
+    src[ModSource::FilterEnvA] = filterEnv_.level();
+    src[ModSource::FilterEnvB] = filter2Env_.level();
+    src[ModSource::Random]     = randomMod_;
+    src[ModSource::Macro1]     = params_.macro1;
+    src[ModSource::Macro2]     = params_.macro2;
+    // GlobalLfo stays 0 here; it drives the global dests in the processor.
 
     double mod[ModMatrix::kNumDests];
     params_.modMatrix.evaluate (src, mod);
@@ -106,7 +113,8 @@ void Voice::applyModulation() noexcept
     // Pitch (matrix in semitones, +/-24 at full depth). Each unit applies its
     // own octave/semi/fine tuning on top of this note pitch.
     const double semis = pitchBend_ + md (ModDest::Pitch) * 24.0 + driftSemis
-                       + unisonDetuneCents_ / 100.0;
+                       + unisonDetuneCents_ / 100.0
+                       + md (ModDest::Detune) * 0.5;   // +/- 50 cents at full depth
     const double freq  = baseFreq_ * std::pow (2.0, semis / 12.0);
     unitA_.setBaseFrequency (freq);
     unitB_.setBaseFrequency (freq);
@@ -124,9 +132,11 @@ void Voice::applyModulation() noexcept
     // middle C; the filter envelope depth is bipolar (in octaves).
     const double keyOct   = params_.keyTrack * (note_ - 60) / 12.0;
     const double czOct    = params_.czAmount * multiEnv_.level();   // CZ multi-stage -> cutoff
-    const double baseOct  = timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0 + keyOct + driftCutOct + czOct;
-    const double octA     = baseOct + params_.filterEnvAmount  * filterEnv_.level();
-    const double octB     = baseOct + params_.filter2EnvAmount * filter2Env_.level();
+    const double sharedOct = timbre_ * 3.0 + keyOct + driftCutOct + czOct;
+    const double octA     = sharedOct + md (ModDest::Cutoff) * 4.0
+                          + params_.filterEnvAmount  * filterEnv_.level();
+    const double octB     = sharedOct + md (ModDest::Filter2Cutoff) * 4.0
+                          + params_.filter2EnvAmount * filter2Env_.level();
     const double resMod   = md (ModDest::Resonance);
     const double morphMod = md (ModDest::Morph);
 
@@ -141,11 +151,15 @@ void Voice::applyModulation() noexcept
 
     ampMod_ = std::clamp (1.0 + md (ModDest::Amplitude), 0.0, 4.0);
 
-    // Stereo position: master pan plus keyboard-position spread, then equal-power
-    // constant-power law (centre = -3 dB each side).
+    // Mixer levels after matrix modulation.
+    oscALevelMod_ = std::clamp (params_.oscALevel + md (ModDest::OscALevel), 0.0, 1.0);
+    oscBLevelMod_ = std::clamp (params_.oscBLevel + md (ModDest::OscBLevel), 0.0, 1.0);
+
+    // Stereo position: master pan plus keyboard-position spread and matrix pan,
+    // then equal-power constant-power law (centre = -3 dB each side).
     const double pan   = std::clamp (params_.pan
                                      + params_.panSpread * (note_ - 60) / 24.0
-                                     + unisonPan_, -1.0, 1.0);
+                                     + unisonPan_ + md (ModDest::Pan), -1.0, 1.0);
     const double angle = (pan + 1.0) * 0.25 * kPi;   // 0..pi/2
     panL_ = std::cos (angle);
     panR_ = std::sin (angle);
@@ -190,6 +204,8 @@ void Voice::start (int note, float velocity, double glideFromHz, double glideSam
     pressure_  = 1.0;
     timbre_    = 0.0;
     pitchBend_ = 0.0;
+    rng_ = rng_ * 1664525u + 1013904223u;   // fresh per-note sample & hold value
+    randomMod_ = static_cast<double> (static_cast<std::int32_t> (rng_)) / 2147483648.0;
     lfo_.reset();
     lfo2_.reset();
     env2_.noteOn();
@@ -213,10 +229,10 @@ float Voice::renderOneSample() noexcept
 {
     // Sum the active sources only; skipping silent ones keeps the hot path cheap
     // (Osc A always runs, Osc B and the noise generator are skipped at level 0).
-    double s = unitA_.processSample() * params_.oscALevel;
+    double s = unitA_.processSample() * oscALevelMod_;
 
-    if (params_.oscBLevel > 1.0e-5)
-        s += unitB_.processSample() * params_.oscBLevel;
+    if (oscBLevelMod_ > 1.0e-5)
+        s += unitB_.processSample() * oscBLevelMod_;
 
     if (params_.noiseLevel > 1.0e-5)
     {

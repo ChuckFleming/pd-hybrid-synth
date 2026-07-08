@@ -51,11 +51,19 @@ private:
     void handleMidiMessage (const juce::MidiMessage& msg);
     void renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
 
+    void applyGlobalModulation (juce::AudioBuffer<float>& buffer, int numSamples);
+
     pdhybrid::SynthEngine engine;
     pdhybrid::Compressor  compressor;           // global output compressor
     pdhybrid::Delay       delay;                // global ducking delay
     std::vector<float>    scratchL, scratchR;   // stereo render buffers
     double                pitchBendRangeSemis = 2.0;
+
+    // Global modulation pass (processor-level sources -> global FX destinations).
+    pdhybrid::Lfo         globalLfo;
+    pdhybrid::ModMatrix   globalMatrix;
+    double                macro1_ = 0.0, macro2_ = 0.0, modWheel_ = 0.0;
+    double                delayMixBase_ = 0.0, delayFbBase_ = 0.30;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDHybridAudioProcessor)
 };

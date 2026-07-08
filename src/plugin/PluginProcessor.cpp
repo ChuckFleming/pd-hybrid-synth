@@ -217,6 +217,14 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "lfo2Sync", 1 }, "LFO 2 Sync", syncNames, 0));
 
+    // Global LFO + macros (sources for the global modulation pass).
+    pf ("globalLfoRate", "Global LFO Rate",
+        juce::NormalisableRange<float> (0.01f, 20.0f, 0.0f, 0.3f), 0.5f, rate);
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "globalLfoWave", 1 }, "Global LFO Wave", lfoWaveNames, 0));
+    pf ("macro1", "Macro 1", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    pf ("macro2", "Macro 2", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+
     pf ("modEnvA", "Mod Env Attack",
         juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f, sec);
     pf ("modEnvD", "Mod Env Decay",
@@ -242,10 +250,13 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     const juce::StringArray srcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
                                        "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2",
-                                       "Multi Env" };
+                                       "Multi Env", "Amp Env", "Filt Env A", "Filt Env B",
+                                       "Random", "Global LFO", "Macro 1", "Macro 2" };
     const juce::StringArray dstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
-                                       "Resonance", "Morph", "Drive", "Amplitude" };
-    for (int i = 1; i <= 6; ++i)
+                                       "Resonance", "Morph", "Drive", "Amplitude", "Pan",
+                                       "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
+                                       "Delay Mix", "Delay Fbk", "Master Pan" };
+    for (int i = 1; i <= pdhybrid::ModMatrix::kNumSlots; ++i)
     {
         const auto s = juce::String (i);
         params.push_back (std::make_unique<juce::AudioParameterChoice> (
@@ -273,6 +284,8 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     compressor.reset();
     delay.setSampleRate (sampleRate);
     delay.reset();
+    globalLfo.setSampleRate (sampleRate);
+    globalLfo.reset();
     const auto n = static_cast<std::size_t> (juce::jmax (1, samplesPerBlock));
     scratchL.assign (n, 0.0f);
     scratchR.assign (n, 0.0f);
@@ -392,8 +405,11 @@ void PDHybridAudioProcessor::pushParams()
         p.czLevel[i - 1] = apvts.getRawParameterValue ("czLevel" + s)->load();
     }
 
+    p.macro1 = apvts.getRawParameterValue ("macro1")->load();
+    p.macro2 = apvts.getRawParameterValue ("macro2")->load();
+
     p.modMatrix.clear();
-    for (int i = 1; i <= 6; ++i)
+    for (int i = 1; i <= pdhybrid::ModMatrix::kNumSlots; ++i)
     {
         const auto s = juce::String (i);
         const auto src = static_cast<pdhybrid::ModSource> (
@@ -405,6 +421,42 @@ void PDHybridAudioProcessor::pushParams()
     }
 
     engine.setParams (p);
+
+    // Cache what the global modulation pass needs.
+    globalMatrix  = p.modMatrix;
+    macro1_       = p.macro1;
+    macro2_       = p.macro2;
+    delayMixBase_ = apvts.getRawParameterValue ("delayMix")->load();
+    delayFbBase_  = apvts.getRawParameterValue ("delayFeedback")->load();
+    globalLfo.setFrequency (apvts.getRawParameterValue ("globalLfoRate")->load());
+    globalLfo.setWaveform (static_cast<pdhybrid::LfoWave> (
+        static_cast<int> (apvts.getRawParameterValue ("globalLfoWave")->load())));
+}
+
+void PDHybridAudioProcessor::applyGlobalModulation (juce::AudioBuffer<float>& buffer, int numSamples)
+{
+    pdhybrid::ModSources g;                       // per-voice-only sources stay 0 here
+    g[pdhybrid::ModSource::GlobalLfo] = globalLfo.value();
+    g[pdhybrid::ModSource::Macro1]    = macro1_;
+    g[pdhybrid::ModSource::Macro2]    = macro2_;
+    g[pdhybrid::ModSource::ModWheel]  = modWheel_;
+    globalLfo.advance (numSamples);
+
+    double gm[pdhybrid::ModMatrix::kNumDests];
+    globalMatrix.evaluate (g, gm);
+    auto md = [&] (pdhybrid::ModDest d) { return gm[static_cast<int> (d)]; };
+
+    delay.setMix      (juce::jlimit (0.0, 1.0,  delayMixBase_ + md (pdhybrid::ModDest::DelayMix)));
+    delay.setFeedback (juce::jlimit (0.0, 0.95, delayFbBase_  + md (pdhybrid::ModDest::DelayFeedback)));
+
+    const double mp = juce::jlimit (-1.0, 1.0, md (pdhybrid::ModDest::MasterPan));
+    if (std::abs (mp) > 1.0e-4 && buffer.getNumChannels() >= 2)
+    {
+        const float gl = static_cast<float> (mp <= 0.0 ? 1.0 : 1.0 - mp);   // linear balance
+        const float gr = static_cast<float> (mp >= 0.0 ? 1.0 : 1.0 + mp);
+        buffer.applyGain (0, 0, numSamples, gl);
+        buffer.applyGain (1, 0, numSamples, gr);
+    }
 }
 
 void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
@@ -423,7 +475,10 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
     else if (msg.isController() && msg.getControllerNumber() == 74)
         engine.setNoteTimbre (channel, msg.getControllerValue() / 127.0);
     else if (msg.isController() && msg.getControllerNumber() == 1)
-        engine.setModWheel (msg.getControllerValue() / 127.0);
+    {
+        modWheel_ = msg.getControllerValue() / 127.0;
+        engine.setModWheel (modWheel_);
+    }
     else if (msg.isAllNotesOff() || msg.isAllSoundOff())
         engine.allNotesOff();
 }
@@ -470,6 +525,9 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     }
 
     renderSegment (buffer, cursor, numSamples - cursor);
+
+    // Global modulation (sets delay mix/feedback + master pan for this block).
+    applyGlobalModulation (buffer, numSamples);
 
     // Global output effects across the whole block: compressor then delay.
     if (buffer.getNumChannels() >= 2)

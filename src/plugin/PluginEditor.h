@@ -63,7 +63,7 @@ private:
     juce::ComboBox* lfoWaveBox = nullptr;
 
     // Modulation matrix rows: source combo, destination combo, depth knob.
-    static constexpr int kNumModRows = 6;
+    static constexpr int kNumModRows = 10;
     juce::ComboBox modSrcBox[kNumModRows];
     juce::ComboBox modDestBox[kNumModRows];
     juce::Slider   modDepthSlider[kNumModRows];

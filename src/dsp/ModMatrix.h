@@ -15,6 +15,13 @@ enum class ModSource : int
     ModWheel,
     Lfo2,
     MultiEnv,
+    AmpEnv,
+    FilterEnvA,
+    FilterEnvB,
+    Random,       // per-note sample & hold
+    GlobalLfo,    // global (processor-level) sources
+    Macro1,
+    Macro2,
     Count
 };
 
@@ -24,11 +31,19 @@ enum class ModDest : int
     Pitch,        // semitones
     PdAmount,
     PulseWidth,
-    Cutoff,       // octaves
+    Cutoff,       // octaves (Filter A)
     Resonance,
     Morph,
     Drive,        // octaves of gain
     Amplitude,
+    Pan,          // per-voice pan
+    OscALevel,
+    OscBLevel,
+    Detune,       // cents (both oscillators)
+    Filter2Cutoff, // octaves (Filter B)
+    DelayMix,     // global dests below (applied in the processor)
+    DelayFeedback,
+    MasterPan,
     Count
 };
 
@@ -56,7 +71,7 @@ struct ModSources
 class ModMatrix
 {
 public:
-    static constexpr int kNumSlots  = 6;
+    static constexpr int kNumSlots  = 10;
     static constexpr int kNumDests  = static_cast<int> (ModDest::Count);
 
     void clear() noexcept;

@@ -434,6 +434,28 @@ TEST_CASE ("CZ multi-stage envelope sweeps the filter cutoff", "[synth][multi]")
     REQUIRE (early > late * 1.2);   // the multi-stage shape opens then settles the filter
 }
 
+TEST_CASE ("Mod matrix can route a new source to a new destination", "[synth][mod]")
+{
+    const double sr = 48000.0;
+
+    auto oscBEnergy = [&] (double macro)
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = brightSustainParams();
+        p.oscAType = OscType::Saw; p.oscALevel = 0.5;
+        p.oscBType = OscType::Saw; p.oscBLevel = 0.0; p.oscBSemi = 7;  // a fifth up
+        p.cutoffHz = 12000.0;
+        p.macro1 = macro;
+        p.modMatrix.setRoute (0, ModSource::Macro1, ModDest::OscBLevel, 1.0);
+        e.setParams (p);
+        e.noteOn (57, 1.0f, 1);   // A3 = 220 Hz; Osc B ~ 329.6 Hz
+        return computeSpectrum (renderEngine (e, 16384), sr).magnitudeNearHz (329.6);
+    };
+
+    REQUIRE (oscBEnergy (1.0) > oscBEnergy (0.0) * 4.0);   // macro -> Osc B level brings it in
+}
+
 TEST_CASE ("Master pan places a voice in the stereo field", "[synth][stereo][pan]")
 {
     const double sr = 48000.0;

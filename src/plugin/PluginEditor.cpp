@@ -23,7 +23,9 @@ const juce::StringArray kLfoWaveNames { "Sine", "Triangle", "Square", "Saw", "Ra
 const juce::StringArray kSyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
                                      "1/4.", "1/8.", "1/4T", "1/8T" };
 const juce::StringArray kDstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
-                                    "Resonance", "Morph", "Drive", "Amplitude" };
+                                    "Resonance", "Morph", "Drive", "Amplitude", "Pan",
+                                    "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
+                                    "Delay Mix", "Delay Fbk", "Master Pan" };
 }
 
 PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramId,
@@ -354,12 +356,13 @@ void PDHybridEditor::resized()
     const int b3 = stackColumn (kPad, b2 + kPad, 8 * kCellW, { 17 });
     rightEdge = juce::jmax (rightEdge, kPad + 8 * kCellW + kPad);
 
-    // Band 4: Modulation matrix (2 columns x 3 rows).
+    // Band 4: Modulation matrix (2 columns x 5 rows, 10 slots).
+    const int matRows = kNumModRows / 2;
     const int matW = rightEdge - kPad - kPad;
-    matrixBounds = { kPad, b3 + kPad, matW, kHeaderH + 3 * kMatrixRowH + kPad };
+    matrixBounds = { kPad, b3 + kPad, matW, kHeaderH + matRows * kMatrixRowH + kPad };
     auto marea = matrixBounds;
     marea.removeFromTop (kHeaderH);
-    for (int rowI = 0; rowI < 3; ++rowI)
+    for (int rowI = 0; rowI < matRows; ++rowI)
     {
         auto row = marea.removeFromTop (kMatrixRowH).reduced (2, 2);
         const int half = row.getWidth() / 2;

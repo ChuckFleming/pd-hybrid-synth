@@ -83,6 +83,9 @@ private:
     double timbre_    = 0.0;
     double modWheel_  = 0.0;
     double ampMod_    = 1.0;    // amplitude modulation multiplier
+    double oscALevelMod_ = 1.0; // mixer levels after matrix modulation
+    double oscBLevelMod_ = 0.0;
+    double randomMod_ = 0.0;    // per-note sample & hold random source
     double panL_      = 0.70710678;   // equal-power pan gains (default centre)
     double panR_      = 0.70710678;
     double unisonDetuneCents_ = 0.0;  // per-voice unison detune

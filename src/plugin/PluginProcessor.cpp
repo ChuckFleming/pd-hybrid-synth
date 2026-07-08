@@ -133,6 +133,16 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("filter2Res", "Filter 2 Resonance", juce::NormalisableRange<float> (0.0f, 1.0f), 0.20f, pct);
     pf ("filter2Morph", "Filter 2 Morph", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
+    pf ("filter2EnvAmount", "Filter 2 Env Amount",
+        juce::NormalisableRange<float> (-6.0f, 6.0f), 0.0f, oct);
+    pf ("filter2EnvA", "Filter 2 Env Attack",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f, sec);
+    pf ("filter2EnvD", "Filter 2 Env Decay",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f, sec);
+    pf ("filter2EnvS", "Filter 2 Env Sustain", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    pf ("filter2EnvR", "Filter 2 Env Release",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f, sec);
+
     pf ("drive", "Overdrive", juce::NormalisableRange<float> (1.0f, 50.0f, 0.0f, 0.3f), 1.0f, mult);
 
     pf ("bias", "Overdrive Bias", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
@@ -300,6 +310,11 @@ void PDHybridAudioProcessor::pushParams()
     p.filter2Cutoff = apvts.getRawParameterValue ("filter2Cutoff")->load();
     p.filter2Res    = apvts.getRawParameterValue ("filter2Res")->load();
     p.filter2Morph  = apvts.getRawParameterValue ("filter2Morph")->load();
+    p.filter2EnvAmount = apvts.getRawParameterValue ("filter2EnvAmount")->load();
+    p.filter2EnvA = apvts.getRawParameterValue ("filter2EnvA")->load();
+    p.filter2EnvD = apvts.getRawParameterValue ("filter2EnvD")->load();
+    p.filter2EnvS = apvts.getRawParameterValue ("filter2EnvS")->load();
+    p.filter2EnvR = apvts.getRawParameterValue ("filter2EnvR")->load();
     p.drive       = apvts.getRawParameterValue ("drive")->load();
     p.bias      = apvts.getRawParameterValue ("bias")->load();
     p.attack    = apvts.getRawParameterValue ("attack")->load();

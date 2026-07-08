@@ -388,6 +388,31 @@ TEST_CASE ("Filter envelope sweeps the cutoff over time", "[synth][filter][env]"
     REQUIRE (early > late * 1.3);   // the tone gets darker as the filter env falls
 }
 
+TEST_CASE ("Filter B has its own envelope, independent of Filter A", "[synth][filter][env]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+
+    auto p = brightSustainParams();
+    p.oscAType        = OscType::Saw;
+    p.filterRouting   = pdhybrid::FilterRouting::Series;   // A -> B
+    p.filterType      = FilterType::Ladder;  p.cutoffHz     = 16000.0; p.resonance = 0.0;
+    p.filterEnvAmount = 0.0;                                // Filter A: wide open, no env
+    p.filter2Type     = FilterType::Ladder;  p.filter2Cutoff = 400.0;  p.filter2Res = 0.0;
+    p.filter2EnvAmount = 5.0;                               // Filter B: its own env sweep
+    p.filter2EnvA = 0.001; p.filter2EnvD = 0.30; p.filter2EnvS = 0.0;
+    p.sustain = 1.0;
+    e.setParams (p);
+    e.noteOn (48, 1.0f, 1);
+
+    const double early = centroid (renderChunks (e, 4096), sr);   // B env open
+    renderChunks (e, 24000);                                      // let B env decay
+    const double late  = centroid (renderChunks (e, 4096), sr);   // B env closed
+
+    REQUIRE (early > late * 1.3);   // Filter B's own envelope shapes the tone
+}
+
 TEST_CASE ("Master pan places a voice in the stereo field", "[synth][stereo][pan]")
 {
     const double sr = 48000.0;

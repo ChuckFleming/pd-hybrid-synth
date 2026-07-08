@@ -90,6 +90,8 @@ struct SynthParams
     double        filter2Cutoff = 8000.0;
     double        filter2Res    = 0.20;
     double        filter2Morph  = 0.0;
+    double        filter2EnvAmount = 0.0;   // Filter B env depth (octaves, bipolar)
+    double        filter2EnvA = 0.01, filter2EnvD = 0.20, filter2EnvS = 0.0, filter2EnvR = 0.30;
 
     double drive     = 1.0;
     double bias      = 0.0;

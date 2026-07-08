@@ -60,7 +60,8 @@ private:
     OverdriveAmp              amp_;
     MultiStageEnvelope        env_;       // amplitude envelope
     MultiStageEnvelope        env2_;      // modulation envelope
-    MultiStageEnvelope        filterEnv_; // dedicated filter-cutoff envelope
+    MultiStageEnvelope        filterEnv_;  // Filter A cutoff envelope
+    MultiStageEnvelope        filter2Env_; // Filter B cutoff envelope
     Lfo                       lfo_;
     Lfo                       lfo2_;
 

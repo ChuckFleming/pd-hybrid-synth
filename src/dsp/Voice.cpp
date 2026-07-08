@@ -23,6 +23,7 @@ void Voice::prepare (double sampleRate)
     env_.setSampleRate (sampleRate);
     env2_.setSampleRate (sampleRate);
     filterEnv_.setSampleRate (sampleRate);
+    filter2Env_.setSampleRate (sampleRate);
     lfo_.setSampleRate (sampleRate);
     lfo2_.setSampleRate (sampleRate);
 
@@ -34,6 +35,7 @@ void Voice::prepare (double sampleRate)
     env_.reset();
     env2_.reset();
     filterEnv_.reset();
+    filter2Env_.reset();
     lfo_.reset();
     lfo2_.reset();
 }
@@ -45,6 +47,7 @@ void Voice::setParams (const SynthParams& params)
     env_.setADSR (params.attack, params.decay, params.sustain, params.release);
     env2_.setADSR (params.modEnvA, params.modEnvD, params.modEnvS, params.modEnvR);
     filterEnv_.setADSR (params.filterEnvA, params.filterEnvD, params.filterEnvS, params.filterEnvR);
+    filter2Env_.setADSR (params.filter2EnvA, params.filter2EnvD, params.filter2EnvS, params.filter2EnvR);
     lfo_.setFrequency (params.lfoRate);
     lfo_.setWaveform (static_cast<LfoWave> (params.lfoWave));
     lfo2_.setFrequency (params.lfo2Rate);
@@ -108,17 +111,17 @@ void Voice::applyModulation() noexcept
     // Cutoff: timbre (MPE), matrix, key tracking and the filter envelope all
     // shift the cutoff in octaves. Key tracking follows the note relative to
     // middle C; the filter envelope depth is bipolar (in octaves).
-    const double keyOct  = params_.keyTrack * (note_ - 60) / 12.0;
-    const double fenvOct = params_.filterEnvAmount * filterEnv_.level();
-    const double modOct  = timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0 + keyOct + fenvOct
-                         + driftCutOct;
+    const double keyOct   = params_.keyTrack * (note_ - 60) / 12.0;
+    const double baseOct  = timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0 + keyOct + driftCutOct;
+    const double octA     = baseOct + params_.filterEnvAmount  * filterEnv_.level();
+    const double octB     = baseOct + params_.filter2EnvAmount * filter2Env_.level();
     const double resMod   = md (ModDest::Resonance);
     const double morphMod = md (ModDest::Morph);
 
-    filterA_.configure (params_.cutoffHz * std::pow (2.0, modOct),
+    filterA_.configure (params_.cutoffHz * std::pow (2.0, octA),
                         std::clamp (params_.resonance + resMod, 0.0, 1.0),
                         std::clamp (params_.filterMorph + morphMod, 0.0, 1.0));
-    filterB_.configure (params_.filter2Cutoff * std::pow (2.0, modOct),
+    filterB_.configure (params_.filter2Cutoff * std::pow (2.0, octB),
                         std::clamp (params_.filter2Res + resMod, 0.0, 1.0),
                         std::clamp (params_.filter2Morph + morphMod, 0.0, 1.0));
 
@@ -179,6 +182,7 @@ void Voice::start (int note, float velocity, double glideFromHz, double glideSam
     lfo2_.reset();
     env2_.noteOn();
     filterEnv_.noteOn();
+    filter2Env_.noteOn();
     env_.noteOn();
     applyModulation();
 }
@@ -188,6 +192,7 @@ void Voice::release()
     env_.noteOff();
     env2_.noteOff();
     filterEnv_.noteOff();
+    filter2Env_.noteOff();
 }
 
 float Voice::renderOneSample() noexcept
@@ -251,6 +256,7 @@ void Voice::renderBlock (float* left, float* right, int numSamples)
         lfo2_.processSample();
         env2_.processSample();
         filterEnv_.processSample();
+        filter2Env_.processSample();
     }
 }
 

@@ -135,7 +135,8 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     filter2.combos = { &filterRoutingBox, &filter2TypeBox };
     filter2.knobs  = { &addKnob ("filter2Cutoff", "Cutoff"),
                        &addKnob ("filter2Res", "Reso"),
-                       &addKnob ("filter2Morph", "Morph") };
+                       &addKnob ("filter2Morph", "Morph"),
+                       &addKnob ("filter2EnvAmount", "Env Amt") };
 
     // --- Amp Envelope ---
     Section envelope;
@@ -152,6 +153,14 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                         &addKnob ("filterEnvD", "Dec"),
                         &addKnob ("filterEnvS", "Sus"),
                         &addKnob ("filterEnvR", "Rel") };
+
+    // --- Filter 2 Envelope ---
+    Section filter2Env;
+    filter2Env.title = "Filter 2 Env";
+    filter2Env.knobs = { &addKnob ("filter2EnvA", "Atk"),
+                         &addKnob ("filter2EnvD", "Dec"),
+                         &addKnob ("filter2EnvS", "Sus"),
+                         &addKnob ("filter2EnvR", "Rel") };
 
     // --- Mod Envelope ---
     Section modEnv;
@@ -228,7 +237,8 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
     // Index order below is referenced by resized().
     sections = { oscA, oscB, mixer, filter, envelope, lfo, modEnv, filterEnv,   // 0..7
-                 stereo, comp, delaySec, glideSec, lfo2, unison, filter2, drive }; // 8..15
+                 stereo, comp, delaySec, glideSec, lfo2, unison, filter2, drive, // 8..15
+                 filter2Env };                                                   // 16
 
     // --- Modulation matrix (6 slots) ---
     for (int i = 0; i < kNumModRows; ++i)
@@ -324,7 +334,7 @@ void PDHybridEditor::resized()
     x = kPad;
     const int y2 = b1 + kPad;
     int b2 = y2;
-    b2 = juce::jmax (b2, stackColumn (x, y2, w2, { 4, 7, 6 }));    x += w2 + kPad;  // Amp/Filter/Mod env
+    b2 = juce::jmax (b2, stackColumn (x, y2, w2, { 4, 7, 16, 6 })); x += w2 + kPad;  // Amp / Filter A / Filter B / Mod env
     b2 = juce::jmax (b2, stackColumn (x, y2, 2 * kCellW, { 5, 12 })); x += 2 * kCellW + kPad; // LFO, LFO 2
     b2 = juce::jmax (b2, stackColumn (x, y2, w4, { 15, 9, 10 }));  x += w4 + kPad;  // Overdrive, Compressor, Delay
     rightEdge = juce::jmax (rightEdge, x);

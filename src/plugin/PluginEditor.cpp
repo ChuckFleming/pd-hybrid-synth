@@ -179,8 +179,15 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     glideSec.knobs  = { &addKnob ("glideTime", "Time"),
                         &addKnob ("glideCurve", "Curve") };
 
+    // --- Unison ---
+    Section unison;
+    unison.title = "Unison";
+    unison.knobs = { &addKnob ("unisonVoices", "Voices"),
+                     &addKnob ("unisonDetune", "Detune"),
+                     &addKnob ("unisonWidth", "Width") };
+
     sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv,
-                 stereo, comp, delaySec, glideSec, lfo2 };
+                 stereo, comp, delaySec, glideSec, lfo2, unison };
 
     // --- Modulation matrix rows ---
     for (int i = 0; i < kNumModRows; ++i)
@@ -204,7 +211,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     const int u    = kKnobW + kPad;
     const int rowH = kHeaderH + 18 + kKnobH + kPad;
     setSize (10 * u + 4 * kPad,
-             kTitleH + 7 * rowH + kHeaderH + kNumModRows * kMatrixRowH + 2 * kPad);
+             kTitleH + 8 * rowH + kHeaderH + kNumModRows * kMatrixRowH + 2 * kPad);
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)
@@ -279,6 +286,12 @@ void PDHybridEditor::resized()
 
     placeRow (sections[10], 5, sections[11], 5);   // Compressor | Delay
     placeRow (sections[12], 3, sections[13], 3);   // Glide      | LFO 2
+
+    {
+        auto row = area.removeFromTop (rowH);      // Unison (single section)
+        row.removeFromLeft (kPad);
+        layoutRow (sections[14], row.removeFromLeft (3 * u));
+    }
 
     // Modulation matrix.
     matrixBounds = area.reduced (kPad, 0).withTrimmedBottom (kPad);

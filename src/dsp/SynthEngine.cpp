@@ -48,18 +48,6 @@ void SynthEngine::noteOn (int note, float velocity, int noteId)
     for (int i = 0; i < kMaxVoices; ++i)
         if (voiceHeld_[i]) ++heldBefore;
 
-    const int v = allocateVoice();
-
-    voiceNote_[v]     = note;
-    voiceId_[v]       = noteId;
-    voiceHeld_[v]     = true;
-    voiceAge_[v]      = ageCounter_++;
-    voiceBend_[v]     = 0.0;
-    voicePressure_[v] = 1.0;
-    voiceTimbre_[v]   = 0.0;
-
-    voices_[v].setParams (params_);
-
     // Glide: slide from the previous note's pitch when enabled.
     const bool wantGlide = (params_.glideMode == GlideMode::Always)
                         || (params_.glideMode == GlideMode::Legato && heldBefore > 0);
@@ -69,7 +57,31 @@ void SynthEngine::noteOn (int note, float velocity, int noteId)
         fromHz       = lastNoteHz_;
         glideSamples = params_.glideTime * sampleRate_;
     }
-    voices_[v].start (note, velocity, fromHz, glideSamples);
+
+    // Unison: stack N detuned, pan-spread sub-voices under the same note id, so
+    // one note-off releases the whole stack.
+    const int n = params_.unisonVoices < 1 ? 1
+                : (params_.unisonVoices > 6 ? 6 : params_.unisonVoices);
+
+    for (int k = 0; k < n; ++k)
+    {
+        const int v = allocateVoice();
+
+        voiceNote_[v]     = note;
+        voiceId_[v]       = noteId;
+        voiceHeld_[v]     = true;
+        voiceAge_[v]      = ageCounter_++;
+        voiceBend_[v]     = 0.0;
+        voicePressure_[v] = 1.0;
+        voiceTimbre_[v]   = 0.0;
+
+        const double spread = (n == 1) ? 0.0 : (2.0 * k / (n - 1) - 1.0);   // -1..1
+        voices_[v].setParams (params_);
+        voices_[v].setUnison (params_.unisonDetune * spread,
+                              params_.unisonWidth  * spread);
+        voices_[v].start (note, velocity, fromHz, glideSamples);
+    }
+
     lastNoteHz_ = midiNoteToHz (note);
 }
 

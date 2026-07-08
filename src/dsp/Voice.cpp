@@ -97,7 +97,8 @@ void Voice::applyModulation() noexcept
 
     // Pitch (matrix in semitones, +/-24 at full depth). Each unit applies its
     // own octave/semi/fine tuning on top of this note pitch.
-    const double semis = pitchBend_ + md (ModDest::Pitch) * 24.0 + driftSemis;
+    const double semis = pitchBend_ + md (ModDest::Pitch) * 24.0 + driftSemis
+                       + unisonDetuneCents_ / 100.0;
     const double freq  = baseFreq_ * std::pow (2.0, semis / 12.0);
     unitA_.setBaseFrequency (freq);
     unitB_.setBaseFrequency (freq);
@@ -142,7 +143,8 @@ void Voice::applyModulation() noexcept
     // Stereo position: master pan plus keyboard-position spread, then equal-power
     // constant-power law (centre = -3 dB each side).
     const double pan   = std::clamp (params_.pan
-                                     + params_.panSpread * (note_ - 60) / 24.0, -1.0, 1.0);
+                                     + params_.panSpread * (note_ - 60) / 24.0
+                                     + unisonPan_, -1.0, 1.0);
     const double angle = (pan + 1.0) * 0.25 * kPi;   // 0..pi/2
     panL_ = std::cos (angle);
     panR_ = std::sin (angle);

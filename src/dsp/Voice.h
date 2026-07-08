@@ -44,6 +44,10 @@ public:
     void setTimbre             (double timbre01)   noexcept { timbre_ = timbre01; }
     void setModWheel           (double modWheel01) noexcept { modWheel_ = modWheel01; }
 
+    // Per-voice unison offsets (detune in cents, pan add in [-1, 1]).
+    void setUnison (double detuneCents, double panOffset) noexcept
+    { unisonDetuneCents_ = detuneCents; unisonPan_ = panOffset; }
+
     // Adds `numSamples` of this voice's output into the stereo `left`/`right`
     // buffers, panned to its stereo position.
     void renderBlock (float* left, float* right, int numSamples);
@@ -85,6 +89,8 @@ private:
     double ampMod_    = 1.0;    // amplitude modulation multiplier
     double panL_      = 0.70710678;   // equal-power pan gains (default centre)
     double panR_      = 0.70710678;
+    double unisonDetuneCents_ = 0.0;  // per-voice unison detune
+    double unisonPan_         = 0.0;  // per-voice unison pan offset
 
     std::uint32_t rng_ = 0x2545F491u;   // per-voice white-noise generator state
 

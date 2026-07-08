@@ -102,6 +102,16 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::ParameterID { "drift", 1 }, "Analog Drift",
         juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
 
+    // --- Unison ---
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "unisonVoices", 1 }, "Unison Voices", 1, 6, 1));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "unisonDetune", 1 }, "Unison Detune",
+        juce::NormalisableRange<float> (0.0f, 50.0f), 15.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "unisonWidth", 1 }, "Unison Width",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f));
+
     // --- Output compressor (ratio 1 = bypass) ---
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "compThreshold", 1 }, "Comp Threshold",
@@ -277,6 +287,9 @@ void PDHybridAudioProcessor::pushParams()
     p.pan       = apvts.getRawParameterValue ("pan")->load();
     p.panSpread = apvts.getRawParameterValue ("panSpread")->load();
     p.drift     = apvts.getRawParameterValue ("drift")->load();
+    p.unisonVoices = static_cast<int> (apvts.getRawParameterValue ("unisonVoices")->load());
+    p.unisonDetune = apvts.getRawParameterValue ("unisonDetune")->load();
+    p.unisonWidth  = apvts.getRawParameterValue ("unisonWidth")->load();
     p.glideMode = static_cast<pdhybrid::GlideMode> (
         static_cast<int> (apvts.getRawParameterValue ("glideMode")->load()));
     p.glideTime  = apvts.getRawParameterValue ("glideTime")->load();

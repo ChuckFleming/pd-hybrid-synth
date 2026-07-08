@@ -496,3 +496,45 @@ TEST_CASE ("Glide slides the pitch from the previous note to the target", "[synt
     REQUIRE (early < late * 0.85);    // still climbing early on
     REQUIRE (late == Approx (440.0).epsilon (0.03));   // arrives at the target
 }
+
+TEST_CASE ("Unison stacks detuned voices and widens the field", "[synth][unison]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+
+    auto p = brightSustainParams();
+    p.oscAType     = OscType::Saw;
+    p.unisonDetune = 20.0;   // cents
+    p.unisonWidth  = 1.0;
+
+    // Single voice reference.
+    p.unisonVoices = 1;
+    e.setParams (p);
+    e.noteOn (57, 1.0f, 1);  // A3 = 220 Hz
+    REQUIRE (e.activeVoiceCount() == 1);
+    const double singleRms = rms (renderStereo (e, 16384).left);
+
+    // Five-voice unison stack under one note id.
+    SynthEngine e2;
+    e2.setSampleRate (sr);
+    p.unisonVoices = 5;
+    e2.setParams (p);
+    e2.noteOn (57, 1.0f, 1);
+    REQUIRE (e2.activeVoiceCount() == 5);        // a whole stack of sub-voices
+
+    auto s = renderStereo (e2, 16384);
+    REQUIRE_FALSE (hasBadValues (s.left));
+
+    // Stacking several voices adds level over the single voice...
+    REQUIRE (rms (s.left) > singleRms * 1.5);
+
+    // ...and full width pushes the outer voices to opposite sides.
+    double diff = 0.0, ref = 0.0;
+    for (std::size_t i = 0; i < s.left.size(); ++i)
+    {
+        diff += (s.left[i] - s.right[i]) * (s.left[i] - s.right[i]);
+        ref  += s.left[i] * s.left[i];
+    }
+    REQUIRE (diff > ref * 0.01);                 // a genuinely stereo result
+}

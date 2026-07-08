@@ -79,6 +79,11 @@ struct SynthParams
     double panSpread = 0.0;    // 0..1 amount of keyboard-position spread
     double drift     = 0.0;    // 0..1 analog-style slow pitch + PD-amount wander
 
+    // Unison: stack several detuned, pan-spread sub-voices per note.
+    int    unisonVoices = 1;    // 1..6 (1 = off)
+    double unisonDetune = 15.0; // max detune in cents
+    double unisonWidth  = 0.5;  // 0..1 stereo spread of the stack
+
     // Glide / portamento.
     GlideMode glideMode  = GlideMode::Off;
     double    glideTime  = 0.10;   // seconds to slide to the new note

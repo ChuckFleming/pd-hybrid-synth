@@ -16,10 +16,8 @@ void Voice::prepare (double sampleRate)
     sampleRate_ = sampleRate;
     unitA_.setSampleRate (sampleRate);
     unitB_.setSampleRate (sampleRate);
-    ladder_.setSampleRate (sampleRate);
-    svf_.setSampleRate (sampleRate);
-    pdReso_.setSampleRate (sampleRate);
-    comb_.setSampleRate (sampleRate);
+    filterA_.setSampleRate (sampleRate);
+    filterB_.setSampleRate (sampleRate);
     amp_.setSampleRate (sampleRate);
     amp_.setOversampling (4);
     env_.setSampleRate (sampleRate);
@@ -30,11 +28,8 @@ void Voice::prepare (double sampleRate)
 
     unitA_.reset();
     unitB_.reset();
-    ladder_.reset();
-    svf_.reset();
-    pdReso_.reset();
-    comb_.reset();
-    allpass_.reset();
+    filterA_.reset();
+    filterB_.reset();
     amp_.reset();
     env_.reset();
     env2_.reset();
@@ -62,6 +57,9 @@ void Voice::setParams (const SynthParams& params)
     unitB_.setType   (params.oscBType);
     unitB_.setPdWave (static_cast<PdWave> (params.oscBWave));
     unitB_.setTuning (params.oscBOctave, params.oscBSemi, params.oscBFine);
+
+    filterA_.setType (params.filterType);
+    filterB_.setType (params.filter2Type);
 }
 
 void Voice::applyModulation() noexcept
@@ -116,25 +114,16 @@ void Voice::applyModulation() noexcept
     // middle C; the filter envelope depth is bipolar (in octaves).
     const double keyOct  = params_.keyTrack * (note_ - 60) / 12.0;
     const double fenvOct = params_.filterEnvAmount * filterEnv_.level();
-    const double cutoff  = params_.cutoffHz
-                         * std::pow (2.0, timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0
-                                          + keyOct + fenvOct);
-    const double res    = std::clamp (params_.resonance + md (ModDest::Resonance), 0.0, 1.0);
-    const double morph  = std::clamp (params_.filterMorph + md (ModDest::Morph), 0.0, 1.0);
+    const double modOct  = timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0 + keyOct + fenvOct;
+    const double resMod   = md (ModDest::Resonance);
+    const double morphMod = md (ModDest::Morph);
 
-    ladder_.setCutoff (cutoff);
-    ladder_.setResonance (res);
-    svf_.setCutoff (cutoff);
-    svf_.setResonance (res);
-    svf_.setMorph (morph);            // morph knob sweeps LP -> BP -> HP
-    pdReso_.setFrequency (cutoff);
-    pdReso_.setResonance (res);
-    pdReso_.setAmount (morph);
-    comb_.setFrequency (cutoff);
-    comb_.setFeedback (0.5 + 0.49 * res);
-    comb_.setDamping (morph);
-    allpass_.setCoefficient (-0.95 + 1.9 * res);
-    allpass_.setStages (2 + static_cast<int> (morph * 10.0));
+    filterA_.configure (params_.cutoffHz * std::pow (2.0, modOct),
+                        std::clamp (params_.resonance + resMod, 0.0, 1.0),
+                        std::clamp (params_.filterMorph + morphMod, 0.0, 1.0));
+    filterB_.configure (params_.filter2Cutoff * std::pow (2.0, modOct),
+                        std::clamp (params_.filter2Res + resMod, 0.0, 1.0),
+                        std::clamp (params_.filter2Morph + morphMod, 0.0, 1.0));
 
     amp_.setDrive (params_.drive * std::pow (2.0, md (ModDest::Drive) * 2.0));
 
@@ -198,14 +187,19 @@ float Voice::renderOneSample() noexcept
              + unitB_.processSample() * params_.oscBLevel
              + noise                  * params_.noiseLevel;
 
-    switch (params_.filterType)
+    const float in = static_cast<float> (s);
+    switch (params_.filterRouting)
     {
-        case FilterType::StateVariable: s = svf_.processSample   (static_cast<float> (s)); break;
-        case FilterType::PdResonator: s = pdReso_.processSample  (static_cast<float> (s)); break;
-        case FilterType::Comb:        s = comb_.processSample    (static_cast<float> (s)); break;
-        case FilterType::Allpass:     s = allpass_.processSample (static_cast<float> (s)); break;
-        case FilterType::Ladder:
-        default:                      s = ladder_.processSample  (static_cast<float> (s)); break;
+        case FilterRouting::Series:
+            s = filterB_.processSample (filterA_.processSample (in));
+            break;
+        case FilterRouting::Parallel:
+            s = 0.5f * (filterA_.processSample (in) + filterB_.processSample (in));
+            break;
+        case FilterRouting::Single:
+        default:
+            s = filterA_.processSample (in);
+            break;
     }
 
     s = amp_.processSample (static_cast<float> (s));

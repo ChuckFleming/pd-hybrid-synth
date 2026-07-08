@@ -190,8 +190,19 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                      &addKnob ("unisonDetune", "Detune"),
                      &addKnob ("unisonWidth", "Width") };
 
+    // --- Filter 2 (with routing) ---
+    auto& filterRoutingBox = addCombo ("filterRouting", { "Single", "Series", "Parallel" });
+    auto& filter2TypeBox   = addCombo ("filter2Type",
+        { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" });
+    Section filter2;
+    filter2.title  = "Filter 2";
+    filter2.combos = { &filterRoutingBox, &filter2TypeBox };
+    filter2.knobs  = { &addKnob ("filter2Cutoff", "Cutoff"),
+                       &addKnob ("filter2Res", "Resonance"),
+                       &addKnob ("filter2Morph", "Morph") };
+
     sections = { oscA, oscB, mixer, filter, drive, envelope, lfo, modEnv, filterEnv,
-                 stereo, comp, delaySec, glideSec, lfo2, unison };
+                 stereo, comp, delaySec, glideSec, lfo2, unison, filter2 };
 
     // --- Modulation matrix rows ---
     for (int i = 0; i < kNumModRows; ++i)
@@ -290,12 +301,7 @@ void PDHybridEditor::resized()
 
     placeRow (sections[10], 5, sections[11], 5);   // Compressor | Delay
     placeRow (sections[12], 3, sections[13], 3);   // Glide      | LFO 2
-
-    {
-        auto row = area.removeFromTop (rowH);      // Unison (single section)
-        row.removeFromLeft (kPad);
-        layoutRow (sections[14], row.removeFromLeft (3 * u));
-    }
+    placeRow (sections[14], 3, sections[15], 5);   // Unison     | Filter 2
 
     // Modulation matrix.
     matrixBounds = area.reduced (kPad, 0).withTrimmedBottom (kPad);

@@ -80,6 +80,24 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::ParameterID { "filterEnvR", 1 }, "Filter Env Release",
         juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f));
 
+    // --- Filter B + routing ---
+    const juce::StringArray filterTypeNames { "Ladder", "State Variable", "PD Resonator",
+                                              "Comb", "Allpass" };
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "filterRouting", 1 }, "Filter Routing",
+        juce::StringArray { "Single", "Series", "Parallel" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "filter2Type", 1 }, "Filter 2 Type", filterTypeNames, 0));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "filter2Cutoff", 1 }, "Filter 2 Cutoff",
+        juce::NormalisableRange<float> (20.0f, 18000.0f, 0.0f, 0.3f), 8000.0f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "filter2Res", 1 }, "Filter 2 Resonance",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.20f));
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "filter2Morph", 1 }, "Filter 2 Morph",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "drive", 1 }, "Overdrive",
         juce::NormalisableRange<float> (1.0f, 50.0f, 0.0f, 0.3f), 1.0f));
@@ -283,6 +301,13 @@ void PDHybridAudioProcessor::pushParams()
     p.filterEnvD  = apvts.getRawParameterValue ("filterEnvD")->load();
     p.filterEnvS  = apvts.getRawParameterValue ("filterEnvS")->load();
     p.filterEnvR  = apvts.getRawParameterValue ("filterEnvR")->load();
+    p.filterRouting = static_cast<pdhybrid::FilterRouting> (
+        static_cast<int> (apvts.getRawParameterValue ("filterRouting")->load()));
+    p.filter2Type   = static_cast<pdhybrid::FilterType> (
+        static_cast<int> (apvts.getRawParameterValue ("filter2Type")->load()));
+    p.filter2Cutoff = apvts.getRawParameterValue ("filter2Cutoff")->load();
+    p.filter2Res    = apvts.getRawParameterValue ("filter2Res")->load();
+    p.filter2Morph  = apvts.getRawParameterValue ("filter2Morph")->load();
     p.drive       = apvts.getRawParameterValue ("drive")->load();
     p.bias      = apvts.getRawParameterValue ("bias")->load();
     p.attack    = apvts.getRawParameterValue ("attack")->load();

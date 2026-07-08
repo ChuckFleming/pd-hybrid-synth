@@ -1,11 +1,7 @@
 #pragma once
 
 #include "OscillatorUnit.h"
-#include "LadderFilter.h"
-#include "StateVariableFilter.h"
-#include "PhaseDistortionResonator.h"
-#include "CombFilter.h"
-#include "AllpassDispersion.h"
+#include "FilterUnit.h"
 #include "OverdriveAmp.h"
 #include "MultiStageEnvelope.h"
 #include "Lfo.h"
@@ -58,11 +54,8 @@ private:
 
     OscillatorUnit            unitA_;   // oscillator slot A
     OscillatorUnit            unitB_;   // oscillator slot B
-    LadderFilter              ladder_;
-    StateVariableFilter       svf_;
-    PhaseDistortionResonator  pdReso_;
-    CombFilter                comb_;
-    AllpassDispersion         allpass_;
+    FilterUnit                filterA_; // filter slot A
+    FilterUnit                filterB_; // filter slot B
     OverdriveAmp              amp_;
     MultiStageEnvelope        env_;       // amplitude envelope
     MultiStageEnvelope        env2_;      // modulation envelope

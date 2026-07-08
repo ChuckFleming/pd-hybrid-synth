@@ -29,6 +29,13 @@ enum class GlideMode
     Legato     // glide only when a note is already held
 };
 
+enum class FilterRouting
+{
+    Single = 0,   // filter A only
+    Series,       // filter A -> filter B
+    Parallel      // filter A + filter B, mixed
+};
+
 // LFO frequency (Hz) for a tempo-sync division at the given BPM. `divIndex`
 // selects 1/1, 1/2, 1/4, 1/8, 1/16, dotted-1/4, dotted-1/8, 1/4-triplet,
 // 1/8-triplet (0..8). Factors are cycles-per-beat.
@@ -74,6 +81,13 @@ struct SynthParams
     double     keyTrack     = 0.0;   // 0..1 cutoff key-follow (1 = one octave per octave)
     double     filterEnvAmount = 0.0;   // filter-envelope depth in octaves (bipolar)
     double     filterEnvA = 0.01, filterEnvD = 0.20, filterEnvS = 0.0, filterEnvR = 0.30;
+
+    // Second filter + routing. Filter A reuses the fields above.
+    FilterRouting filterRouting = FilterRouting::Single;
+    FilterType    filter2Type   = FilterType::Ladder;
+    double        filter2Cutoff = 8000.0;
+    double        filter2Res    = 0.20;
+    double        filter2Morph  = 0.0;
 
     double drive     = 1.0;
     double bias      = 0.0;

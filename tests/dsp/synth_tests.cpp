@@ -497,6 +497,51 @@ TEST_CASE ("Glide slides the pitch from the previous note to the target", "[synt
     REQUIRE (late == Approx (440.0).epsilon (0.03));   // arrives at the target
 }
 
+TEST_CASE ("Series filter routing rolls off the highs more steeply", "[synth][filter][routing]")
+{
+    const double sr = 48000.0;
+    using pdhybrid::FilterRouting;
+
+    auto highFraction = [&] (FilterRouting routing)
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = brightSustainParams();
+        p.oscAType      = OscType::Saw;
+        p.filterType    = FilterType::Ladder;   p.cutoffHz     = 700.0; p.resonance = 0.0;
+        p.filter2Type   = FilterType::Ladder;   p.filter2Cutoff = 700.0; p.filter2Res = 0.0;
+        p.filterRouting = routing;
+        e.setParams (p);
+        e.noteOn (60, 1.0f, 1);
+
+        auto spec = computeSpectrum (renderEngine (e, 16384), sr);
+        const double total = totalEnergy (spec);
+        return total > 0.0 ? (total - energyBelowHz (spec, 2000.0)) / total : 0.0;
+    };
+
+    // Two lowpasses in series are steeper than one -> less energy up high.
+    REQUIRE (highFraction (FilterRouting::Series) < highFraction (FilterRouting::Single) * 0.7);
+}
+
+TEST_CASE ("Parallel filter routing stays clean and audible", "[synth][filter][routing]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+    auto p = brightSustainParams();
+    p.oscAType      = OscType::Saw;
+    p.filterType    = FilterType::Ladder;      p.cutoffHz     = 600.0;
+    p.filter2Type   = FilterType::StateVariable; p.filter2Cutoff = 4000.0; p.filter2Morph = 1.0;
+    p.filterRouting = pdhybrid::FilterRouting::Parallel;
+    e.setParams (p);
+    e.noteOn (60, 1.0f, 1);
+
+    auto buf = renderEngine (e, 16384);
+    REQUIRE_FALSE (hasBadValues (buf));
+    REQUIRE (rms (buf) > 1e-4);
+    REQUIRE (peakAbs (buf) < 10.0f);
+}
+
 TEST_CASE ("Unison stacks detuned voices and widens the field", "[synth][unison]")
 {
     const double sr = 48000.0;

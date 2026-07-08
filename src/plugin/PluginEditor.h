@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
+#include "SynthLookAndFeel.h"
 #include <memory>
 #include <vector>
 
@@ -15,7 +16,7 @@ class PDHybridEditor : public juce::AudioProcessorEditor
 {
 public:
     explicit PDHybridEditor (PDHybridAudioProcessor&);
-    ~PDHybridEditor() override = default;
+    ~PDHybridEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -46,6 +47,7 @@ private:
     juce::ComboBox& addCombo (const juce::String& paramId, const juce::StringArray& items);
 
     PDHybridAudioProcessor& proc;
+    SynthLookAndFeel lnf;
 
     std::vector<std::unique_ptr<LabeledKnob>> knobs;
     std::vector<std::unique_ptr<juce::ComboBox>> combos;

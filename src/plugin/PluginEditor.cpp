@@ -1,10 +1,10 @@
 #include "PluginEditor.h"
 
 namespace {
-constexpr int kKnobW    = 58;
-constexpr int kKnobH    = 46;   // rotary + text box below
+constexpr int kKnobW    = 66;
+constexpr int kKnobH    = 64;   // rotary + text box below
 constexpr int kLabelH   = 14;
-constexpr int kCellW    = 64;   // one knob cell (knob + gutter)
+constexpr int kCellW    = 72;   // one knob cell (knob + gutter)
 constexpr int kCellH    = kLabelH + kKnobH;
 constexpr int kHeaderH  = 20;
 constexpr int kComboRowH = 22;
@@ -59,9 +59,16 @@ juce::ComboBox& PDHybridEditor::addCombo (const juce::String& paramId,
     return *combos.back();
 }
 
+PDHybridEditor::~PDHybridEditor()
+{
+    setLookAndFeel (nullptr);
+}
+
 PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     : juce::AudioProcessorEditor (&p), proc (p)
 {
+    setLookAndFeel (&lnf);
+
     // --- Oscillator A (tuning + per-osc EQ) ---
     oscATypeBox = &addCombo ("oscAType", kOscTypeNames);
     oscAWaveBox = &addCombo ("oscAWave", kPdWaveNames);

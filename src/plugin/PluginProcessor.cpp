@@ -7,6 +7,60 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
+    // Human-friendly value formatting: each unit gets a string-from-value plus a
+    // matching value-from-string so typed edits round-trip. `pf` pushes a float
+    // parameter with the given formatter attributes.
+    using Attr = juce::AudioParameterFloatAttributes;
+    auto sv = [] (std::function<juce::String(float)> toStr,
+                  std::function<float(const juce::String&)> fromStr)
+    {
+        return Attr().withStringFromValueFunction ([toStr] (float v, int) { return toStr (v); })
+                     .withValueFromStringFunction ([fromStr] (const juce::String& t) { return fromStr (t); });
+    };
+    auto pct = sv ([] (float x) { return juce::String (juce::roundToInt (x * 100.0f)) + " %"; },
+                   [] (const juce::String& t) { return t.getFloatValue() * 0.01f; });
+    auto hz  = sv ([] (float x) { return x >= 1000.0f ? juce::String (x / 1000.0f, 1) + " kHz"
+                                                      : juce::String (juce::roundToInt (x)) + " Hz"; },
+                   [] (const juce::String& t) { float f = t.getFloatValue();
+                                                return t.containsIgnoreCase ("k") ? f * 1000.0f : f; });
+    auto db  = sv ([] (float x) { int d = juce::roundToInt (x);
+                                  return juce::String (d > 0 ? "+" : "") + juce::String (d) + " dB"; },
+                   [] (const juce::String& t) { return t.getFloatValue(); });
+    auto sec = sv ([] (float x) { return x < 1.0f ? juce::String (juce::roundToInt (x * 1000.0f)) + " ms"
+                                                  : juce::String (x, 2) + " s"; },
+                   [] (const juce::String& t) { float f = t.getFloatValue();
+                                                return t.containsIgnoreCase ("ms") ? f * 0.001f : f; });
+    auto cnt = sv ([] (float x) { int d = juce::roundToInt (x);
+                                  return juce::String (d > 0 ? "+" : "") + juce::String (d) + " ct"; },
+                   [] (const juce::String& t) { return t.getFloatValue(); });
+    auto oct = sv ([] (float x) { return juce::String (x > 0 ? "+" : "") + juce::String (x, 1) + " oct"; },
+                   [] (const juce::String& t) { return t.getFloatValue(); });
+    auto rate = sv ([] (float x) { return juce::String (x, 2) + " Hz"; },
+                    [] (const juce::String& t) { return t.getFloatValue(); });
+    auto ratio = sv ([] (float x) { return juce::String (x, 1) + ":1"; },
+                     [] (const juce::String& t) { return t.getFloatValue(); });
+    auto mult = sv ([] (float x) { return juce::String (x, 1) + "x"; },
+                    [] (const juce::String& t) { return t.getFloatValue(); });
+    auto pan = sv ([] (float x) { int p = juce::roundToInt (x * 100.0f);
+                                  return p == 0 ? juce::String ("C")
+                                       : (p < 0 ? "L" + juce::String (-p) : "R" + juce::String (p)); },
+                   [] (const juce::String& t) { auto u = t.trim().toUpperCase();
+                                                if (u.startsWithChar ('L')) return -u.substring (1).getFloatValue() * 0.01f;
+                                                if (u.startsWithChar ('R')) return  u.substring (1).getFloatValue() * 0.01f;
+                                                if (u.startsWithChar ('C')) return 0.0f;
+                                                return t.getFloatValue() * 0.01f; });
+    auto amt = sv ([] (float x) { return juce::String (x > 0 ? "+" : "") + juce::String (x, 2); },
+                   [] (const juce::String& t) { return t.getFloatValue(); });
+    auto num2 = sv ([] (float x) { return juce::String (x, 2); },
+                    [] (const juce::String& t) { return t.getFloatValue(); });
+
+    auto pf = [&] (const juce::String& id, const juce::String& name,
+                   juce::NormalisableRange<float> range, float def, const Attr& attr)
+    {
+        params.push_back (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id, 1 }, name, range, def, attr));
+    };
+
     const juce::StringArray oscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" };
     const juce::StringArray pdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                            "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
@@ -19,73 +73,52 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::ParameterID { id + "Type", 1 }, label + " Type", oscTypeNames, defType));
         params.push_back (std::make_unique<juce::AudioParameterChoice> (
             juce::ParameterID { id + "Wave", 1 }, label + " PD Wave", pdWaveNames, 0));
-        params.push_back (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { id + "Amount", 1 }, label + " PD Amount",
-            juce::NormalisableRange<float> (0.0f, 1.0f), 0.30f));
-        params.push_back (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { id + "PulseWidth", 1 }, label + " Pulse Width",
-            juce::NormalisableRange<float> (0.05f, 0.95f), 0.50f));
+        pf (id + "Amount", label + " PD Amount",
+            juce::NormalisableRange<float> (0.0f, 1.0f), 0.30f, pct);
+        pf (id + "PulseWidth", label + " Pulse Width",
+            juce::NormalisableRange<float> (0.05f, 0.95f), 0.50f, pct);
         params.push_back (std::make_unique<juce::AudioParameterInt> (
             juce::ParameterID { id + "Octave", 1 }, label + " Octave", -3, 3, 0));
         params.push_back (std::make_unique<juce::AudioParameterInt> (
             juce::ParameterID { id + "Semi", 1 }, label + " Semitone", -12, 12, 0));
-        params.push_back (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { id + "Fine", 1 }, label + " Fine",
-            juce::NormalisableRange<float> (-100.0f, 100.0f), 0.0f));
-        params.push_back (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { id + "Level", 1 }, label + " Level",
-            juce::NormalisableRange<float> (0.0f, 1.0f), defLevel));
+        pf (id + "Fine", label + " Fine",
+            juce::NormalisableRange<float> (-100.0f, 100.0f), 0.0f, cnt);
+        pf (id + "Level", label + " Level",
+            juce::NormalisableRange<float> (0.0f, 1.0f), defLevel, pct);
         const juce::NormalisableRange<float> eqRange (-18.0f, 18.0f);
-        params.push_back (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { id + "EqLow", 1 },  label + " EQ Low",  eqRange, 0.0f));
-        params.push_back (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { id + "EqMid", 1 },  label + " EQ Mid",  eqRange, 0.0f));
-        params.push_back (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { id + "EqHigh", 1 }, label + " EQ High", eqRange, 0.0f));
+        pf (id + "EqLow",  label + " EQ Low",  eqRange, 0.0f, db);
+        pf (id + "EqMid",  label + " EQ Mid",  eqRange, 0.0f, db);
+        pf (id + "EqHigh", label + " EQ High", eqRange, 0.0f, db);
     };
     addOscGroup ("oscA", "Osc A", 0, 1.0f);   // Phase Distortion, full level
     addOscGroup ("oscB", "Osc B", 1, 0.0f);   // Saw, silent by default
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "noiseLevel", 1 }, "Noise Level",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+    pf ("noiseLevel", "Noise Level", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "cutoff", 1 }, "Filter Cutoff",
-        juce::NormalisableRange<float> (20.0f, 18000.0f, 0.0f, 0.3f), 8000.0f));
+    pf ("cutoff", "Filter Cutoff",
+        juce::NormalisableRange<float> (20.0f, 18000.0f, 0.0f, 0.3f), 8000.0f, hz);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "resonance", 1 }, "Filter Resonance",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.20f));
+    pf ("resonance", "Filter Resonance", juce::NormalisableRange<float> (0.0f, 1.0f), 0.20f, pct);
 
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "filterType", 1 }, "Filter Type",
         juce::StringArray { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }, 0));
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "filterMorph", 1 }, "Filter Morph",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+    pf ("filterMorph", "Filter Morph", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "keyTrack", 1 }, "Filter Key Track",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+    pf ("keyTrack", "Filter Key Track", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "filterEnvAmount", 1 }, "Filter Env Amount",
-        juce::NormalisableRange<float> (-6.0f, 6.0f), 0.0f));   // octaves, bipolar
+    pf ("filterEnvAmount", "Filter Env Amount",
+        juce::NormalisableRange<float> (-6.0f, 6.0f), 0.0f, oct);   // octaves, bipolar
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "filterEnvA", 1 }, "Filter Env Attack",
-        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "filterEnvD", 1 }, "Filter Env Decay",
-        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "filterEnvS", 1 }, "Filter Env Sustain",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "filterEnvR", 1 }, "Filter Env Release",
-        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f));
+    pf ("filterEnvA", "Filter Env Attack",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f, sec);
+    pf ("filterEnvD", "Filter Env Decay",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f, sec);
+    pf ("filterEnvS", "Filter Env Sustain",
+        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    pf ("filterEnvR", "Filter Env Release",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f, sec);
 
     // --- Filter B + routing ---
     const juce::StringArray filterTypeNames { "Ladder", "State Variable", "PD Resonator",
@@ -95,145 +128,92 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::StringArray { "Single", "Series", "Parallel" }, 0));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "filter2Type", 1 }, "Filter 2 Type", filterTypeNames, 0));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "filter2Cutoff", 1 }, "Filter 2 Cutoff",
-        juce::NormalisableRange<float> (20.0f, 18000.0f, 0.0f, 0.3f), 8000.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "filter2Res", 1 }, "Filter 2 Resonance",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.20f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "filter2Morph", 1 }, "Filter 2 Morph",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+    pf ("filter2Cutoff", "Filter 2 Cutoff",
+        juce::NormalisableRange<float> (20.0f, 18000.0f, 0.0f, 0.3f), 8000.0f, hz);
+    pf ("filter2Res", "Filter 2 Resonance", juce::NormalisableRange<float> (0.0f, 1.0f), 0.20f, pct);
+    pf ("filter2Morph", "Filter 2 Morph", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "drive", 1 }, "Overdrive",
-        juce::NormalisableRange<float> (1.0f, 50.0f, 0.0f, 0.3f), 1.0f));
+    pf ("drive", "Overdrive", juce::NormalisableRange<float> (1.0f, 50.0f, 0.0f, 0.3f), 1.0f, mult);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "bias", 1 }, "Overdrive Bias",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+    pf ("bias", "Overdrive Bias", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "gain", 1 }, "Gain",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.80f));
+    pf ("gain", "Gain", juce::NormalisableRange<float> (0.0f, 1.0f), 0.80f, pct);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "pan", 1 }, "Pan",
-        juce::NormalisableRange<float> (-1.0f, 1.0f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "panSpread", 1 }, "Pan Spread",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "drift", 1 }, "Analog Drift",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+    pf ("pan", "Pan", juce::NormalisableRange<float> (-1.0f, 1.0f), 0.0f, pan);
+    pf ("panSpread", "Pan Spread", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    pf ("drift", "Analog Drift", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
     // --- Unison ---
     params.push_back (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { "unisonVoices", 1 }, "Unison Voices", 1, 6, 1));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "unisonDetune", 1 }, "Unison Detune",
-        juce::NormalisableRange<float> (0.0f, 50.0f), 15.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "unisonWidth", 1 }, "Unison Width",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f));
+    pf ("unisonDetune", "Unison Detune", juce::NormalisableRange<float> (0.0f, 50.0f), 15.0f, cnt);
+    pf ("unisonWidth", "Unison Width", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
 
     // --- Output compressor (ratio 1 = bypass) ---
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "compThreshold", 1 }, "Comp Threshold",
-        juce::NormalisableRange<float> (-60.0f, 0.0f), -12.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "compRatio", 1 }, "Comp Ratio",
-        juce::NormalisableRange<float> (1.0f, 20.0f, 0.0f, 0.4f), 1.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "compAttack", 1 }, "Comp Attack",
-        juce::NormalisableRange<float> (0.0005f, 0.2f, 0.0f, 0.3f), 0.005f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "compRelease", 1 }, "Comp Release",
-        juce::NormalisableRange<float> (0.01f, 1.0f, 0.0f, 0.3f), 0.10f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "compMakeup", 1 }, "Comp Makeup",
-        juce::NormalisableRange<float> (0.0f, 24.0f), 0.0f));
+    pf ("compThreshold", "Comp Threshold", juce::NormalisableRange<float> (-60.0f, 0.0f), -12.0f, db);
+    pf ("compRatio", "Comp Ratio", juce::NormalisableRange<float> (1.0f, 20.0f, 0.0f, 0.4f), 1.0f, ratio);
+    pf ("compAttack", "Comp Attack",
+        juce::NormalisableRange<float> (0.0005f, 0.2f, 0.0f, 0.3f), 0.005f, sec);
+    pf ("compRelease", "Comp Release",
+        juce::NormalisableRange<float> (0.01f, 1.0f, 0.0f, 0.3f), 0.10f, sec);
+    pf ("compMakeup", "Comp Makeup", juce::NormalisableRange<float> (0.0f, 24.0f), 0.0f, db);
 
     // --- Delay (mix 0 = bypass) ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "delayMode", 1 }, "Delay Mode",
         juce::StringArray { "Mono", "Stereo", "Ping-Pong" }, 1));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "delayTimeL", 1 }, "Delay Time L",
-        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.30f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "delayTimeR", 1 }, "Delay Time R",
-        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.45f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "delayFeedback", 1 }, "Delay Feedback",
-        juce::NormalisableRange<float> (0.0f, 0.95f), 0.30f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "delayMix", 1 }, "Delay Mix",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "delayDuck", 1 }, "Delay Ducking",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
+    pf ("delayTimeL", "Delay Time L",
+        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.30f, sec);
+    pf ("delayTimeR", "Delay Time R",
+        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.45f, sec);
+    pf ("delayFeedback", "Delay Feedback", juce::NormalisableRange<float> (0.0f, 0.95f), 0.30f, pct);
+    pf ("delayMix", "Delay Mix", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    pf ("delayDuck", "Delay Ducking", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
     // --- Glide / portamento ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "glideMode", 1 }, "Glide Mode",
         juce::StringArray { "Off", "Always", "Legato" }, 0));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "glideTime", 1 }, "Glide Time",
-        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.10f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "glideCurve", 1 }, "Glide Curve",
-        juce::NormalisableRange<float> (0.25f, 4.0f, 0.0f, 0.5f), 1.0f));
+    pf ("glideTime", "Glide Time",
+        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.10f, sec);
+    pf ("glideCurve", "Glide Curve",
+        juce::NormalisableRange<float> (0.25f, 4.0f, 0.0f, 0.5f), 1.0f, num2);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "attack", 1 }, "Attack",
-        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f));
+    pf ("attack", "Attack",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f, sec);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "decay", 1 }, "Decay",
-        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.10f));
+    pf ("decay", "Decay",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.10f, sec);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "sustain", 1 }, "Sustain",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.70f));
+    pf ("sustain", "Sustain", juce::NormalisableRange<float> (0.0f, 1.0f), 0.70f, pct);
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "release", 1 }, "Release",
-        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f));
+    pf ("release", "Release",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f, sec);
 
     // --- Modulation ---
     const juce::StringArray lfoWaveNames { "Sine", "Triangle", "Square", "Saw",
                                            "Ramp Down", "Sample & Hold", "Smooth Random",
                                            "Exponential" };
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "lfoRate", 1 }, "LFO Rate",
-        juce::NormalisableRange<float> (0.01f, 20.0f, 0.0f, 0.3f), 5.0f));
+    pf ("lfoRate", "LFO Rate", juce::NormalisableRange<float> (0.01f, 20.0f, 0.0f, 0.3f), 5.0f, rate);
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "lfoWave", 1 }, "LFO Wave", lfoWaveNames, 0));
     const juce::StringArray syncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
                                         "1/4.", "1/8.", "1/4T", "1/8T" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "lfoSync", 1 }, "LFO Sync", syncNames, 0));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "lfo2Rate", 1 }, "LFO 2 Rate",
-        juce::NormalisableRange<float> (0.01f, 20.0f, 0.0f, 0.3f), 0.5f));
+    pf ("lfo2Rate", "LFO 2 Rate", juce::NormalisableRange<float> (0.01f, 20.0f, 0.0f, 0.3f), 0.5f, rate);
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "lfo2Wave", 1 }, "LFO 2 Wave", lfoWaveNames, 0));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "lfo2Sync", 1 }, "LFO 2 Sync", syncNames, 0));
 
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "modEnvA", 1 }, "Mod Env Attack",
-        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "modEnvD", 1 }, "Mod Env Decay",
-        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "modEnvS", 1 }, "Mod Env Sustain",
-        juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "modEnvR", 1 }, "Mod Env Release",
-        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f));
+    pf ("modEnvA", "Mod Env Attack",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.01f, sec);
+    pf ("modEnvD", "Mod Env Decay",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f, sec);
+    pf ("modEnvS", "Mod Env Sustain", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    pf ("modEnvR", "Mod Env Release",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f, sec);
 
     const juce::StringArray srcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
                                        "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2" };
@@ -246,9 +226,8 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::ParameterID { "mod" + s + "Source", 1 }, "Mod " + s + " Source", srcNames, 0));
         params.push_back (std::make_unique<juce::AudioParameterChoice> (
             juce::ParameterID { "mod" + s + "Dest", 1 }, "Mod " + s + " Dest", dstNames, 0));
-        params.push_back (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { "mod" + s + "Depth", 1 }, "Mod " + s + " Depth",
-            juce::NormalisableRange<float> (-1.0f, 1.0f), 0.0f));
+        pf ("mod" + s + "Depth", "Mod " + s + " Depth",
+            juce::NormalisableRange<float> (-1.0f, 1.0f), 0.0f, amt);
     }
 
     return { params.begin(), params.end() };

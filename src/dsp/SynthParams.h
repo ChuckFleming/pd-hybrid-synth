@@ -125,6 +125,15 @@ struct SynthParams
     int       lfoWave = 0;
     double    lfo2Rate = 0.5;
     int       lfo2Wave = 0;
+
+    // CZ-style 8-stage multi-envelope (rate/level per stage + one sustain stage).
+    // Routed to the filter cutoff via czAmount (octaves, bipolar) so it acts as a
+    // multi-stage filter envelope; also available as ModSource::MultiEnv.
+    double czAmount  = 0.0;                 // octaves, bipolar (0 = off)
+    int    czSustain = 5;                   // 1-based sustain stage
+    double czRate[8]  = { 0.02, 0.15, 0.10, 0.30, 0.50, 0.40, 0.60, 0.50 };  // seconds
+    double czLevel[8] = { 1.00, 0.80, 0.60, 0.50, 0.50, 0.30, 0.15, 0.00 };  // 0..1
+
     ModMatrix modMatrix;
 };
 

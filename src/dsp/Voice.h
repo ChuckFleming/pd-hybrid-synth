@@ -62,6 +62,7 @@ private:
     MultiStageEnvelope        env2_;      // modulation envelope
     MultiStageEnvelope        filterEnv_;  // Filter A cutoff envelope
     MultiStageEnvelope        filter2Env_; // Filter B cutoff envelope
+    MultiStageEnvelope        multiEnv_;   // CZ-style 8-stage envelope (-> cutoff / matrix)
     Lfo                       lfo_;
     Lfo                       lfo2_;
 

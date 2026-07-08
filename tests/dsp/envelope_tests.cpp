@@ -34,6 +34,29 @@ TEST_CASE ("ADSR preset hits attack peak, sustain level, and finite output", "[e
     REQUIRE (env.isActive());
 }
 
+TEST_CASE ("CZ-style 8-stage envelope holds at its sustain stage then releases", "[env][multi]")
+{
+    const double sr = 48000.0;
+    MultiStageEnvelope env;
+    env.setSampleRate (sr);
+
+    const double lv[8] = { 1.0, 0.5, 0.8, 0.3, 0.6, 0.2, 0.1, 0.0 };
+    std::vector<EnvStage> stages;
+    for (int i = 0; i < 8; ++i)
+        stages.push_back ({ lv[i], 0.05, 0.0 });
+    env.setStages (stages, 3);   // sustain at stage index 3 (level 0.3)
+    env.reset();
+    env.noteOn();
+
+    auto held = render (env, sampleAt (0.6, sr));   // past the first 4 stages, then holding
+    REQUIRE (held.back() == Approx (0.3).margin (0.02));
+    REQUIRE (env.isActive());
+
+    env.noteOff();
+    auto rel = render (env, sampleAt (0.4, sr));     // remaining stages ramp to 0
+    REQUIRE (rel.back() == Approx (0.0).margin (0.02));
+}
+
 TEST_CASE ("Envelopes support long multi-second stages", "[env][adsr]")
 {
     const double sr = 48000.0;

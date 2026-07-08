@@ -413,6 +413,27 @@ TEST_CASE ("Filter B has its own envelope, independent of Filter A", "[synth][fi
     REQUIRE (early > late * 1.3);   // Filter B's own envelope shapes the tone
 }
 
+TEST_CASE ("CZ multi-stage envelope sweeps the filter cutoff", "[synth][multi]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+
+    auto p = brightSustainParams();
+    p.oscAType   = OscType::Saw;
+    p.filterType = FilterType::Ladder;  p.cutoffHz = 300.0;  p.resonance = 0.0;
+    p.czAmount   = 5.0;      // strong routing to cutoff; default shape decays 1.0 -> 0.5 sustain
+    p.sustain    = 1.0;
+    e.setParams (p);
+    e.noteOn (48, 1.0f, 1);
+
+    const double early = centroid (renderChunks (e, 4096), sr);   // high early stages
+    renderChunks (e, 24000);                                      // settle to the sustain stage
+    const double late  = centroid (renderChunks (e, 4096), sr);
+
+    REQUIRE (early > late * 1.2);   // the multi-stage shape opens then settles the filter
+}
+
 TEST_CASE ("Master pan places a voice in the stereo field", "[synth][stereo][pan]")
 {
     const double sr = 48000.0;

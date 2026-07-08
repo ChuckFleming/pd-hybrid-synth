@@ -14,6 +14,7 @@ enum class ModSource : int
     KeyTrack,
     ModWheel,
     Lfo2,
+    MultiEnv,
     Count
 };
 

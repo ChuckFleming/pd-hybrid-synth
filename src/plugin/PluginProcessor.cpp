@@ -225,8 +225,24 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("modEnvR", "Mod Env Release",
         juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f, sec);
 
+    // --- CZ-style multi-stage envelope (8 rate/level stages) ---
+    pf ("czAmount", "Multi Env Amount", juce::NormalisableRange<float> (-6.0f, 6.0f), 0.0f, oct);
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "czSustain", 1 }, "Multi Env Sustain", 1, 8, 5));
+    const float czRateDef[8]  = { 0.02f, 0.15f, 0.10f, 0.30f, 0.50f, 0.40f, 0.60f, 0.50f };
+    const float czLevelDef[8] = { 1.00f, 0.80f, 0.60f, 0.50f, 0.50f, 0.30f, 0.15f, 0.00f };
+    for (int i = 1; i <= 8; ++i)
+    {
+        const auto s = juce::String (i);
+        pf ("czRate" + s, "Multi Env Rate " + s,
+            juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), czRateDef[i - 1], sec);
+        pf ("czLevel" + s, "Multi Env Level " + s,
+            juce::NormalisableRange<float> (0.0f, 1.0f), czLevelDef[i - 1], pct);
+    }
+
     const juce::StringArray srcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
-                                       "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2" };
+                                       "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2",
+                                       "Multi Env" };
     const juce::StringArray dstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
                                        "Resonance", "Morph", "Drive", "Amplitude" };
     for (int i = 1; i <= 6; ++i)
@@ -366,6 +382,15 @@ void PDHybridAudioProcessor::pushParams()
     p.modEnvD = apvts.getRawParameterValue ("modEnvD")->load();
     p.modEnvS = apvts.getRawParameterValue ("modEnvS")->load();
     p.modEnvR = apvts.getRawParameterValue ("modEnvR")->load();
+
+    p.czAmount  = apvts.getRawParameterValue ("czAmount")->load();
+    p.czSustain = static_cast<int> (apvts.getRawParameterValue ("czSustain")->load());
+    for (int i = 1; i <= 8; ++i)
+    {
+        const auto s = juce::String (i);
+        p.czRate[i - 1]  = apvts.getRawParameterValue ("czRate" + s)->load();
+        p.czLevel[i - 1] = apvts.getRawParameterValue ("czLevel" + s)->load();
+    }
 
     p.modMatrix.clear();
     for (int i = 1; i <= 6; ++i)

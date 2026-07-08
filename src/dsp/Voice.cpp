@@ -24,6 +24,7 @@ void Voice::prepare (double sampleRate)
     env2_.setSampleRate (sampleRate);
     filterEnv_.setSampleRate (sampleRate);
     filter2Env_.setSampleRate (sampleRate);
+    multiEnv_.setSampleRate (sampleRate);
     lfo_.setSampleRate (sampleRate);
     lfo2_.setSampleRate (sampleRate);
 
@@ -36,6 +37,7 @@ void Voice::prepare (double sampleRate)
     env2_.reset();
     filterEnv_.reset();
     filter2Env_.reset();
+    multiEnv_.reset();
     lfo_.reset();
     lfo2_.reset();
 }
@@ -48,6 +50,14 @@ void Voice::setParams (const SynthParams& params)
     env2_.setADSR (params.modEnvA, params.modEnvD, params.modEnvS, params.modEnvR);
     filterEnv_.setADSR (params.filterEnvA, params.filterEnvD, params.filterEnvS, params.filterEnvR);
     filter2Env_.setADSR (params.filter2EnvA, params.filter2EnvD, params.filter2EnvS, params.filter2EnvR);
+
+    // CZ multi-stage envelope: 8 {level,time} stages, one sustain stage.
+    std::vector<EnvStage> czStages;
+    czStages.reserve (8);
+    for (int i = 0; i < 8; ++i)
+        czStages.push_back ({ params.czLevel[i], params.czRate[i], 0.0 });
+    multiEnv_.setStages (czStages, std::clamp (params.czSustain - 1, 0, 7));
+
     lfo_.setFrequency (params.lfoRate);
     lfo_.setWaveform (static_cast<LfoWave> (params.lfoWave));
     lfo2_.setFrequency (params.lfo2Rate);
@@ -79,6 +89,7 @@ void Voice::applyModulation() noexcept
     src[ModSource::PitchBend] = pitchBend_ / 12.0;
     src[ModSource::KeyTrack]  = (note_ - 60) / 48.0;
     src[ModSource::ModWheel]  = modWheel_;
+    src[ModSource::MultiEnv]  = multiEnv_.level();
 
     double mod[ModMatrix::kNumDests];
     params_.modMatrix.evaluate (src, mod);
@@ -112,7 +123,8 @@ void Voice::applyModulation() noexcept
     // shift the cutoff in octaves. Key tracking follows the note relative to
     // middle C; the filter envelope depth is bipolar (in octaves).
     const double keyOct   = params_.keyTrack * (note_ - 60) / 12.0;
-    const double baseOct  = timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0 + keyOct + driftCutOct;
+    const double czOct    = params_.czAmount * multiEnv_.level();   // CZ multi-stage -> cutoff
+    const double baseOct  = timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0 + keyOct + driftCutOct + czOct;
     const double octA     = baseOct + params_.filterEnvAmount  * filterEnv_.level();
     const double octB     = baseOct + params_.filter2EnvAmount * filter2Env_.level();
     const double resMod   = md (ModDest::Resonance);
@@ -183,6 +195,7 @@ void Voice::start (int note, float velocity, double glideFromHz, double glideSam
     env2_.noteOn();
     filterEnv_.noteOn();
     filter2Env_.noteOn();
+    multiEnv_.noteOn();
     env_.noteOn();
     applyModulation();
 }
@@ -193,6 +206,7 @@ void Voice::release()
     env2_.noteOff();
     filterEnv_.noteOff();
     filter2Env_.noteOff();
+    multiEnv_.noteOff();
 }
 
 float Voice::renderOneSample() noexcept
@@ -257,6 +271,7 @@ void Voice::renderBlock (float* left, float* right, int numSamples)
         env2_.processSample();
         filterEnv_.processSample();
         filter2Env_.processSample();
+        multiEnv_.processSample();
     }
 }
 

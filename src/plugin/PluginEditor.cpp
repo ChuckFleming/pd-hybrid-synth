@@ -16,7 +16,8 @@ const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Tr
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                         "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
 const juce::StringArray kSrcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
-                                    "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2" };
+                                    "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2",
+                                    "Multi Env" };
 const juce::StringArray kLfoWaveNames { "Sine", "Triangle", "Square", "Saw", "Ramp Down",
                                         "Sample & Hold", "Smooth Random", "Exponential" };
 const juce::StringArray kSyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
@@ -235,10 +236,20 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                      &addKnob ("unisonDetune", "Detune"),
                      &addKnob ("unisonWidth", "Width") };
 
+    // --- CZ multi-stage envelope (8 rate + 8 level, laid out in aligned rows) ---
+    Section multiEnvSec;
+    multiEnvSec.title = "Multi-Stage Env (CZ)  ->  filter";
+    for (int i = 1; i <= 8; ++i)
+        multiEnvSec.knobs.push_back (&addKnob ("czRate" + juce::String (i), "R" + juce::String (i)));
+    for (int i = 1; i <= 8; ++i)
+        multiEnvSec.knobs.push_back (&addKnob ("czLevel" + juce::String (i), "L" + juce::String (i)));
+    multiEnvSec.knobs.push_back (&addKnob ("czAmount", "Amt"));
+    multiEnvSec.knobs.push_back (&addKnob ("czSustain", "Sus", 0));
+
     // Index order below is referenced by resized().
     sections = { oscA, oscB, mixer, filter, envelope, lfo, modEnv, filterEnv,   // 0..7
                  stereo, comp, delaySec, glideSec, lfo2, unison, filter2, drive, // 8..15
-                 filter2Env };                                                   // 16
+                 filter2Env, multiEnvSec };                                      // 16, 17
 
     // --- Modulation matrix (6 slots) ---
     for (int i = 0; i < kNumModRows; ++i)
@@ -339,9 +350,13 @@ void PDHybridEditor::resized()
     b2 = juce::jmax (b2, stackColumn (x, y2, w4, { 15, 9, 10 }));  x += w4 + kPad;  // Overdrive, Compressor, Delay
     rightEdge = juce::jmax (rightEdge, x);
 
-    // Band 3: Modulation matrix (2 columns x 3 rows).
+    // Band 3: CZ multi-stage envelope, 8 columns so rates/levels align in rows.
+    const int b3 = stackColumn (kPad, b2 + kPad, 8 * kCellW, { 17 });
+    rightEdge = juce::jmax (rightEdge, kPad + 8 * kCellW + kPad);
+
+    // Band 4: Modulation matrix (2 columns x 3 rows).
     const int matW = rightEdge - kPad - kPad;
-    matrixBounds = { kPad, b2 + kPad, matW, kHeaderH + 3 * kMatrixRowH + kPad };
+    matrixBounds = { kPad, b3 + kPad, matW, kHeaderH + 3 * kMatrixRowH + kPad };
     auto marea = matrixBounds;
     marea.removeFromTop (kHeaderH);
     for (int rowI = 0; rowI < 3; ++rowI)

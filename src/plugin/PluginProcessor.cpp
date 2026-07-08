@@ -35,6 +35,13 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         params.push_back (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { id + "Level", 1 }, label + " Level",
             juce::NormalisableRange<float> (0.0f, 1.0f), defLevel));
+        const juce::NormalisableRange<float> eqRange (-18.0f, 18.0f);
+        params.push_back (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id + "EqLow", 1 },  label + " EQ Low",  eqRange, 0.0f));
+        params.push_back (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id + "EqMid", 1 },  label + " EQ Mid",  eqRange, 0.0f));
+        params.push_back (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { id + "EqHigh", 1 }, label + " EQ High", eqRange, 0.0f));
     };
     addOscGroup ("oscA", "Osc A", 0, 1.0f);   // Phase Distortion, full level
     addOscGroup ("oscB", "Osc B", 1, 0.0f);   // Saw, silent by default
@@ -272,7 +279,8 @@ void PDHybridAudioProcessor::pushParams()
 
     auto readOscGroup = [&] (const juce::String& id,
                              pdhybrid::OscType& type, int& wave, double& amount,
-                             double& pw, int& octave, int& semi, double& fine, double& level)
+                             double& pw, int& octave, int& semi, double& fine, double& level,
+                             double& eqLow, double& eqMid, double& eqHigh)
     {
         type   = static_cast<pdhybrid::OscType> (
                      static_cast<int> (apvts.getRawParameterValue (id + "Type")->load()));
@@ -283,11 +291,16 @@ void PDHybridAudioProcessor::pushParams()
         semi   = static_cast<int> (apvts.getRawParameterValue (id + "Semi")->load());
         fine   = apvts.getRawParameterValue (id + "Fine")->load();
         level  = apvts.getRawParameterValue (id + "Level")->load();
+        eqLow  = apvts.getRawParameterValue (id + "EqLow")->load();
+        eqMid  = apvts.getRawParameterValue (id + "EqMid")->load();
+        eqHigh = apvts.getRawParameterValue (id + "EqHigh")->load();
     };
     readOscGroup ("oscA", p.oscAType, p.oscAWave, p.oscAAmount, p.oscAPulseWidth,
-                  p.oscAOctave, p.oscASemi, p.oscAFine, p.oscALevel);
+                  p.oscAOctave, p.oscASemi, p.oscAFine, p.oscALevel,
+                  p.oscAEqLow, p.oscAEqMid, p.oscAEqHigh);
     readOscGroup ("oscB", p.oscBType, p.oscBWave, p.oscBAmount, p.oscBPulseWidth,
-                  p.oscBOctave, p.oscBSemi, p.oscBFine, p.oscBLevel);
+                  p.oscBOctave, p.oscBSemi, p.oscBFine, p.oscBLevel,
+                  p.oscBEqLow, p.oscBEqMid, p.oscBEqHigh);
     p.noiseLevel  = apvts.getRawParameterValue ("noiseLevel")->load();
 
     p.cutoffHz    = apvts.getRawParameterValue ("cutoff")->load();

@@ -8,12 +8,14 @@ void OscillatorUnit::setSampleRate (double sampleRateHz) noexcept
     pd_.setSampleRate (sampleRateHz);
     pd_.setOversampling (4);          // anti-alias the aggressive CZ waves
     analog_.setSampleRate (sampleRateHz);
+    eq_.setSampleRate (sampleRateHz);
 }
 
 void OscillatorUnit::reset() noexcept
 {
     pd_.reset();
     analog_.reset();
+    eq_.reset();
 }
 
 void OscillatorUnit::setType (OscType type) noexcept
@@ -51,8 +53,9 @@ float OscillatorUnit::processSample() noexcept
     // approach) wasted roughly half the oscillator cost. The trade-off is a
     // possible small discontinuity if the type is switched live mid-note, which
     // is a rare, user-initiated action.
-    return (type_ == OscType::PhaseDistortion) ? pd_.processSample()
-                                               : analog_.processSample();
+    const float raw = (type_ == OscType::PhaseDistortion) ? pd_.processSample()
+                                                          : analog_.processSample();
+    return eq_.processSample (raw);
 }
 
 } // namespace pdhybrid

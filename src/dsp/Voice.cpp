@@ -53,10 +53,12 @@ void Voice::setParams (const SynthParams& params)
     unitA_.setType   (params.oscAType);
     unitA_.setPdWave (static_cast<PdWave> (params.oscAWave));
     unitA_.setTuning (params.oscAOctave, params.oscASemi, params.oscAFine);
+    unitA_.setEq     (params.oscAEqLow, params.oscAEqMid, params.oscAEqHigh);
 
     unitB_.setType   (params.oscBType);
     unitB_.setPdWave (static_cast<PdWave> (params.oscBWave));
     unitB_.setTuning (params.oscBOctave, params.oscBSemi, params.oscBFine);
+    unitB_.setEq     (params.oscBEqLow, params.oscBEqMid, params.oscBEqHigh);
 
     filterA_.setType (params.filterType);
     filterB_.setType (params.filter2Type);

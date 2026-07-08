@@ -19,6 +19,7 @@ add_executable(pdhybrid_tests
     dsp/nontraditional_filter_tests.cpp
     dsp/compressor_tests.cpp
     dsp/delay_tests.cpp
+    dsp/osc_eq_tests.cpp
     harness/Fft.cpp
     harness/Spectrum.cpp
 )

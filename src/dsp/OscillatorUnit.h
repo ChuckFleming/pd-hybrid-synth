@@ -2,6 +2,7 @@
 
 #include "PhaseDistortionOscillator.h"
 #include "AnalogOscillator.h"
+#include "OscEq.h"
 #include "SynthParams.h"   // OscType
 
 namespace pdhybrid {
@@ -21,6 +22,8 @@ public:
 
     void setType       (OscType type) noexcept;
     void setPdWave     (PdWave wave) noexcept   { pd_.setWave (wave); }
+    void setEq         (double lowDb, double midDb, double highDb) noexcept
+    { eq_.setGains (lowDb, midDb, highDb); }
     void setAmount     (double amount01) noexcept { pd_.setAmount (amount01); }
     void setPulseWidth (double pulseWidth01) noexcept { analog_.setPulseWidth (pulseWidth01); }
 
@@ -34,6 +37,7 @@ public:
 private:
     PhaseDistortionOscillator pd_;
     AnalogOscillator          analog_;
+    OscEq                     eq_;
     OscType type_    = OscType::PhaseDistortion;
     double  tuneMul_ = 1.0;
     double  baseHz_  = 440.0;

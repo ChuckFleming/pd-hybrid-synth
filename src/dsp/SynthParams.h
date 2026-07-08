@@ -59,6 +59,7 @@ struct SynthParams
     int     oscAOctave     = 0;
     int     oscASemi       = 0;
     double  oscAFine       = 0.0;    // cents
+    double  oscAEqLow = 0.0, oscAEqMid = 0.0, oscAEqHigh = 0.0;   // per-osc EQ, dB
 
     // --- Oscillator B ---
     OscType oscBType       = OscType::Saw;
@@ -68,6 +69,7 @@ struct SynthParams
     int     oscBOctave     = 0;
     int     oscBSemi       = 0;
     double  oscBFine       = 0.0;
+    double  oscBEqLow = 0.0, oscBEqMid = 0.0, oscBEqHigh = 0.0;   // per-osc EQ, dB
 
     // --- Mixer (independent sum) ---
     double  oscALevel  = 1.0;

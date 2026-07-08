@@ -50,6 +50,7 @@ public:
 
 private:
     void  applyModulation() noexcept;   // evaluate the matrix and configure the DSP
+    void  advanceDrift    (int numSamples) noexcept;   // step the drift random walks
     float renderOneSample() noexcept;
 
     OscillatorUnit            unitA_;   // oscillator slot A
@@ -87,10 +88,12 @@ private:
 
     std::uint32_t rng_ = 0x2545F491u;   // per-voice white-noise generator state
 
-    // Analog drift: two independent slow random-walk values (pitch, PD amount).
+    // Analog drift: three independent slow random-walk values (pitch, PD amount,
+    // filter cutoff), advanced at a buffer-size-independent rate.
     std::uint32_t driftRng_   = 0x9E3779B9u;
     double        driftPitch_ = 0.0;
     double        driftPd_     = 0.0;
+    double        driftCut_    = 0.0;
 };
 
 } // namespace pdhybrid

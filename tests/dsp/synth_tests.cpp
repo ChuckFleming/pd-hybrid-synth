@@ -434,34 +434,40 @@ TEST_CASE ("Pan spread widens low and high notes to opposite sides", "[synth][st
     REQUIRE (balance (84) > 0.0);   // high note leans right
 }
 
-TEST_CASE ("Analog drift subtly wanders the voice without breaking pitch", "[synth][drift]")
+TEST_CASE ("Analog drift wanders the voice audibly without breaking pitch", "[synth][drift]")
 {
     const double sr = 48000.0;
 
-    auto renderWith = [&] (double drift)
+    auto renderWith = [&] (double drift, int blockSize)
     {
         SynthEngine e;
         e.setSampleRate (sr);
         auto p = brightSustainParams();
         p.drift = drift;
         e.setParams (p);
-        e.noteOn (69, 1.0f, 1);            // A4 = 440 Hz
-        return renderChunks (e, 16384, 64); // small blocks so drift evolves
+        e.noteOn (69, 1.0f, 1);                 // A4 = 440 Hz
+        return renderChunks (e, 16384, blockSize);
     };
 
-    auto dry = renderWith (0.0);
-    auto wet = renderWith (1.0);
+    auto dry = renderWith (0.0, 64);
+    auto wet = renderWith (1.0, 64);
     REQUIRE_FALSE (hasBadValues (wet));
 
-    // Drift makes the output diverge from the perfectly static version...
+    // Drift makes the output diverge clearly from the perfectly static version...
     double sumSq = 0.0;
     for (std::size_t i = 0; i < wet.size(); ++i)
         sumSq += (wet[i] - dry[i]) * (wet[i] - dry[i]);
-    REQUIRE (std::sqrt (sumSq / wet.size()) > 1e-3);
+    REQUIRE (std::sqrt (sumSq / wet.size()) > 5e-3);
 
-    // ...but stays subtle: the pitch is still essentially A4.
+    // ...but stays musical: the pitch is still within a semitone of A4.
     auto spec = computeSpectrum (wet, sr);
-    REQUIRE (spec.peakFrequency() == Approx (440.0).epsilon (0.03));
+    REQUIRE (spec.peakFrequency() == Approx (440.0).epsilon (0.06));
+
+    // The wander speed is buffer-size independent: the RMS of a large-block
+    // render is close to a small-block render (both drift at the same rate).
+    const double rmsSmall = rms (wet);
+    const double rmsLarge = rms (renderWith (1.0, 512));
+    REQUIRE (rmsLarge == Approx (rmsSmall).epsilon (0.25));
 }
 
 TEST_CASE ("Glide slides the pitch from the previous note to the target", "[synth][glide]")

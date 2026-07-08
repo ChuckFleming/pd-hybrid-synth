@@ -80,18 +80,12 @@ void Voice::applyModulation() noexcept
 
     auto md = [&] (ModDest d) { return mod[static_cast<int> (d)]; };
 
-    // Analog drift: nudge two independent slow random walks (control rate) and
-    // apply a subtle wander to pitch and PD amount for an "unstable analog"
-    // feel. Bounded because each step pulls toward a fresh random target.
-    auto nextRand = [&]
-    {
-        driftRng_ = driftRng_ * 1664525u + 1013904223u;
-        return static_cast<double> (static_cast<std::int32_t> (driftRng_)) / 2147483648.0;
-    };
-    driftPitch_ += 0.05 * (nextRand() - driftPitch_);
-    driftPd_    += 0.05 * (nextRand() - driftPd_);
-    const double driftSemis = params_.drift * driftPitch_ * 0.2;   // +/- 0.2 semitone
-    const double driftPdAmt = params_.drift * driftPd_    * 0.05;  // +/- 0.05 DCW
+    // Analog drift: apply the current random-walk values (advanced per block by
+    // advanceDrift) to pitch, PD amount and filter cutoff for an "unstable
+    // analog" feel driven entirely by the single drift knob.
+    const double driftSemis  = params_.drift * driftPitch_ * 0.45;   // +/- 0.45 semitone
+    const double driftPdAmt  = params_.drift * driftPd_    * 0.18;   // +/- 0.18 DCW
+    const double driftCutOct = params_.drift * driftCut_   * 0.15;   // +/- 0.15 octave
 
     // Pitch (matrix in semitones, +/-24 at full depth). Each unit applies its
     // own octave/semi/fine tuning on top of this note pitch.
@@ -114,7 +108,8 @@ void Voice::applyModulation() noexcept
     // middle C; the filter envelope depth is bipolar (in octaves).
     const double keyOct  = params_.keyTrack * (note_ - 60) / 12.0;
     const double fenvOct = params_.filterEnvAmount * filterEnv_.level();
-    const double modOct  = timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0 + keyOct + fenvOct;
+    const double modOct  = timbre_ * 3.0 + md (ModDest::Cutoff) * 4.0 + keyOct + fenvOct
+                         + driftCutOct;
     const double resMod   = md (ModDest::Resonance);
     const double morphMod = md (ModDest::Morph);
 
@@ -137,6 +132,23 @@ void Voice::applyModulation() noexcept
     const double angle = (pan + 1.0) * 0.25 * kPi;   // 0..pi/2
     panL_ = std::cos (angle);
     panR_ = std::sin (angle);
+}
+
+void Voice::advanceDrift (int numSamples) noexcept
+{
+    // Pull each random walk toward a fresh target with a time-constant-based
+    // coefficient, so the wander speed is the same regardless of block size.
+    auto nextRand = [&]
+    {
+        driftRng_ = driftRng_ * 1664525u + 1013904223u;
+        return static_cast<double> (static_cast<std::int32_t> (driftRng_)) / 2147483648.0;
+    };
+    const double tau  = 0.2;   // ~200 ms wander time constant
+    const double coef = 1.0 - std::exp (-static_cast<double> (numSamples)
+                                        / (sampleRate_ * tau));
+    driftPitch_ += coef * (nextRand() - driftPitch_);
+    driftPd_    += coef * (nextRand() - driftPd_);
+    driftCut_   += coef * (nextRand() - driftCut_);
 }
 
 void Voice::start (int note, float velocity, double glideFromHz, double glideSamples)
@@ -225,6 +237,7 @@ void Voice::renderBlock (float* left, float* right, int numSamples)
         baseFreq_ = std::exp (logHz);
     }
 
+    advanceDrift (numSamples);
     applyModulation();   // control-rate: evaluate the matrix once per block
 
     for (int i = 0; i < numSamples; ++i)

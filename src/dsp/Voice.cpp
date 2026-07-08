@@ -178,14 +178,19 @@ void Voice::release()
 
 float Voice::renderOneSample() noexcept
 {
-    // White noise via a cheap LCG, mapped to [-1, 1).
-    rng_ = rng_ * 1664525u + 1013904223u;
-    const double noise = static_cast<double> (static_cast<std::int32_t> (rng_))
-                       / 2147483648.0;
+    // Sum the active sources only; skipping silent ones keeps the hot path cheap
+    // (Osc A always runs, Osc B and the noise generator are skipped at level 0).
+    double s = unitA_.processSample() * params_.oscALevel;
 
-    double s = unitA_.processSample() * params_.oscALevel
-             + unitB_.processSample() * params_.oscBLevel
-             + noise                  * params_.noiseLevel;
+    if (params_.oscBLevel > 1.0e-5)
+        s += unitB_.processSample() * params_.oscBLevel;
+
+    if (params_.noiseLevel > 1.0e-5)
+    {
+        rng_ = rng_ * 1664525u + 1013904223u;   // cheap white-noise LCG in [-1, 1)
+        s += (static_cast<double> (static_cast<std::int32_t> (rng_)) / 2147483648.0)
+             * params_.noiseLevel;
+    }
 
     const float in = static_cast<float> (s);
     switch (params_.filterRouting)

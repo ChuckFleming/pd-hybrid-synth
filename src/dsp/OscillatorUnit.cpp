@@ -46,10 +46,13 @@ void OscillatorUnit::setBaseFrequency (double frequencyHz) noexcept
 
 float OscillatorUnit::processSample() noexcept
 {
-    // Both engines run so switching is click-safe; only the selected one is read.
-    const float pd     = pd_.processSample();
-    const float analog = analog_.processSample();
-    return (type_ == OscType::PhaseDistortion) ? pd : analog;
+    // Only the selected engine runs. The PD engine is 4x oversampled and by far
+    // the most expensive part of a voice, so running both (the old click-safe
+    // approach) wasted roughly half the oscillator cost. The trade-off is a
+    // possible small discontinuity if the type is switched live mid-note, which
+    // is a rare, user-initiated action.
+    return (type_ == OscType::PhaseDistortion) ? pd_.processSample()
+                                               : analog_.processSample();
 }
 
 } // namespace pdhybrid

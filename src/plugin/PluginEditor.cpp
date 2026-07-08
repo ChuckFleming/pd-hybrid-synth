@@ -69,6 +69,14 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 {
     setLookAndFeel (&lnf);
 
+    // "Init" resets every parameter to its default value.
+    addAndMakeVisible (initButton);
+    initButton.onClick = [this]
+    {
+        for (auto* p : proc.getParameters())
+            p->setValueNotifyingHost (p->getDefaultValue());
+    };
+
     // --- Oscillator A (tuning + per-osc EQ) ---
     oscATypeBox = &addCombo ("oscAType", kOscTypeNames);
     oscAWaveBox = &addCombo ("oscAWave", kPdWaveNames);
@@ -343,6 +351,8 @@ void PDHybridEditor::resized()
     }
 
     setSize (rightEdge + kPad, matrixBounds.getBottom() + kPad);
+
+    initButton.setBounds (rightEdge - 68, (kTitleH - 22) / 2, 64, 22);
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)

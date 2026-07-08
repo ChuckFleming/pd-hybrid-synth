@@ -49,6 +49,8 @@ private:
     PDHybridAudioProcessor& proc;
     SynthLookAndFeel lnf;
 
+    juce::TextButton initButton { "Init" };
+
     std::vector<std::unique_ptr<LabeledKnob>> knobs;
     std::vector<std::unique_ptr<juce::ComboBox>> combos;
     std::vector<std::unique_ptr<ComboBoxAttachment>> comboAttachments;

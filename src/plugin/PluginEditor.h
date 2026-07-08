@@ -41,7 +41,8 @@ private:
         juce::Rectangle<int> bounds;
     };
 
-    LabeledKnob& addKnob (const juce::String& paramId, const juce::String& text);
+    LabeledKnob& addKnob (const juce::String& paramId, const juce::String& text,
+                          int decimals = 2);
     juce::ComboBox& addCombo (const juce::String& paramId, const juce::StringArray& items);
 
     PDHybridAudioProcessor& proc;

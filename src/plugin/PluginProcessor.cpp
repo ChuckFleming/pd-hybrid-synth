@@ -185,11 +185,17 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::NormalisableRange<float> (0.01f, 20.0f, 0.0f, 0.3f), 5.0f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "lfoWave", 1 }, "LFO Wave", lfoWaveNames, 0));
+    const juce::StringArray syncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
+                                        "1/4.", "1/8.", "1/4T", "1/8T" };
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "lfoSync", 1 }, "LFO Sync", syncNames, 0));
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "lfo2Rate", 1 }, "LFO 2 Rate",
         juce::NormalisableRange<float> (0.01f, 20.0f, 0.0f, 0.3f), 0.5f));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "lfo2Wave", 1 }, "LFO 2 Wave", lfoWaveNames, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "lfo2Sync", 1 }, "LFO 2 Sync", syncNames, 0));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "modEnvA", 1 }, "Mod Env Attack",
@@ -309,9 +315,20 @@ void PDHybridAudioProcessor::pushParams()
     delay.setMix      (apvts.getRawParameterValue ("delayMix")->load());
     delay.setDuck     (apvts.getRawParameterValue ("delayDuck")->load());
 
-    p.lfoRate = apvts.getRawParameterValue ("lfoRate")->load();
-    p.lfoWave = static_cast<int> (apvts.getRawParameterValue ("lfoWave")->load());
-    p.lfo2Rate = apvts.getRawParameterValue ("lfo2Rate")->load();
+    // Host tempo for LFO sync (falls back to 120 BPM when the host has none).
+    double bpm = 120.0;
+    if (auto* ph = getPlayHead())
+        if (auto pos = ph->getPosition())
+            if (auto b = pos->getBpm())
+                bpm = *b;
+
+    const int lfoSync  = static_cast<int> (apvts.getRawParameterValue ("lfoSync")->load());
+    const int lfo2Sync = static_cast<int> (apvts.getRawParameterValue ("lfo2Sync")->load());
+    p.lfoRate  = (lfoSync == 0) ? apvts.getRawParameterValue ("lfoRate")->load()
+                                : pdhybrid::syncedLfoHz (bpm, lfoSync - 1);
+    p.lfo2Rate = (lfo2Sync == 0) ? apvts.getRawParameterValue ("lfo2Rate")->load()
+                                 : pdhybrid::syncedLfoHz (bpm, lfo2Sync - 1);
+    p.lfoWave  = static_cast<int> (apvts.getRawParameterValue ("lfoWave")->load());
     p.lfo2Wave = static_cast<int> (apvts.getRawParameterValue ("lfo2Wave")->load());
     p.modEnvA = apvts.getRawParameterValue ("modEnvA")->load();
     p.modEnvD = apvts.getRawParameterValue ("modEnvD")->load();

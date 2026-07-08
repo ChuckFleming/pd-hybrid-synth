@@ -3,6 +3,7 @@
 
 #include "dsp/Lfo.h"
 #include "dsp/ModMatrix.h"
+#include "dsp/SynthParams.h"
 #include "harness/Spectrum.h"
 #include "harness/SignalStats.h"
 
@@ -77,6 +78,17 @@ TEST_CASE ("Sample & hold LFO holds a constant within each cycle", "[mod][lfo]")
     for (int i = 4900; i < 14400; ++i)
         if (std::abs (v[i] - v[0]) > 1e-6) { changed = true; break; }
     REQUIRE (changed);
+}
+
+TEST_CASE ("Tempo-synced LFO rate matches the note division", "[mod][lfo][sync]")
+{
+    // At 120 BPM one beat is 0.5 s.
+    REQUIRE (syncedLfoHz (120.0, 2) == Approx (2.0));    // 1/4 = one cycle per beat
+    REQUIRE (syncedLfoHz (120.0, 3) == Approx (4.0));    // 1/8 = twice per beat
+    REQUIRE (syncedLfoHz (120.0, 0) == Approx (0.5));    // 1/1 = once per 4 beats
+    REQUIRE (syncedLfoHz (120.0, 7) == Approx (3.0));    // 1/4 triplet
+    // Rate scales linearly with tempo.
+    REQUIRE (syncedLfoHz (140.0, 2) == Approx (140.0 / 60.0));
 }
 
 TEST_CASE ("LFO advance matches sample-by-sample stepping", "[mod][lfo]")

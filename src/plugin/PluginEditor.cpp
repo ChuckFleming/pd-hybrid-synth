@@ -7,7 +7,7 @@ constexpr int kPad      = 12;
 constexpr int kHeaderH  = 22;
 constexpr int kTitleH   = 40;
 constexpr int kMatrixRowH = 30;
-constexpr int kComboW   = 130;
+constexpr int kComboW   = 114;
 
 const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" };
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
@@ -17,6 +17,8 @@ const juce::StringArray kSrcNames { "None", "Mod Env", "LFO", "Velocity", "Press
                                     "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2" };
 const juce::StringArray kLfoWaveNames { "Sine", "Triangle", "Square", "Saw", "Ramp Down",
                                         "Sample & Hold", "Smooth Random", "Exponential" };
+const juce::StringArray kSyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
+                                     "1/4.", "1/8.", "1/4T", "1/8T" };
 const juce::StringArray kDstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
                                     "Resonance", "Morph", "Drive", "Amplitude" };
 }
@@ -114,18 +116,20 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                        &addKnob ("sustain", "Sustain"),
                        &addKnob ("release", "Release") };
 
-    // --- LFO (with waveform selector) ---
+    // --- LFO (waveform + tempo-sync selectors) ---
     lfoWaveBox = &addCombo ("lfoWave", kLfoWaveNames);
+    auto& lfoSyncBox = addCombo ("lfoSync", kSyncNames);
     Section lfo;
     lfo.title  = "LFO";
-    lfo.combos = { lfoWaveBox };
+    lfo.combos = { lfoWaveBox, &lfoSyncBox };
     lfo.knobs  = { &addKnob ("lfoRate", "Rate") };
 
     // --- LFO 2 ---
     auto& lfo2WaveBox = addCombo ("lfo2Wave", kLfoWaveNames);
+    auto& lfo2SyncBox = addCombo ("lfo2Sync", kSyncNames);
     Section lfo2;
     lfo2.title  = "LFO 2";
-    lfo2.combos = { &lfo2WaveBox };
+    lfo2.combos = { &lfo2WaveBox, &lfo2SyncBox };
     lfo2.knobs  = { &addKnob ("lfo2Rate", "Rate") };
 
     // --- Mod Envelope ---
@@ -282,7 +286,7 @@ void PDHybridEditor::resized()
     placeRow (sections[1], 5, sections[3], 5);   // Osc B     | Filter (+ key track / env amt)
     placeRow (sections[4], 3, sections[5], 4);   // Overdrive | Amp Envelope
     placeRow (sections[8], 4, sections[7], 4);   // Filter Env| Mod Envelope
-    placeRow (sections[6], 2, sections[9], 3);   // LFO       | Stereo / Drift
+    placeRow (sections[6], 3, sections[9], 3);   // LFO       | Stereo / Drift
 
     placeRow (sections[10], 5, sections[11], 5);   // Compressor | Delay
     placeRow (sections[12], 3, sections[13], 3);   // Glide      | LFO 2

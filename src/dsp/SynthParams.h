@@ -29,6 +29,18 @@ enum class GlideMode
     Legato     // glide only when a note is already held
 };
 
+// LFO frequency (Hz) for a tempo-sync division at the given BPM. `divIndex`
+// selects 1/1, 1/2, 1/4, 1/8, 1/16, dotted-1/4, dotted-1/8, 1/4-triplet,
+// 1/8-triplet (0..8). Factors are cycles-per-beat.
+inline double syncedLfoHz (double bpm, int divIndex) noexcept
+{
+    static const double mult[] = { 0.25, 0.5, 1.0, 2.0, 4.0,
+                                   2.0 / 3.0, 4.0 / 3.0, 1.5, 3.0 };
+    if (divIndex < 0) divIndex = 0;
+    if (divIndex > 8) divIndex = 8;
+    return (bpm / 60.0) * mult[divIndex];
+}
+
 // Per-block synth settings pushed from the host/UI down to every voice.
 struct SynthParams
 {

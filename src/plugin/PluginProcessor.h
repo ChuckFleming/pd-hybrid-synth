@@ -70,6 +70,7 @@ private:
     double                macro1_ = 0.0, macro2_ = 0.0, modWheel_ = 0.0;
     double                delayMixBase_ = 0.0, delayFbBase_ = 0.30;
     double                eqHighFreqBase_ = 8000.0, eqHighGainBase_ = 0.0;
+    bool                  compOn_ = true, delayOn_ = true, globalEqOn_ = true;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDHybridAudioProcessor)
 };

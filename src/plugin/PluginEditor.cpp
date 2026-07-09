@@ -354,8 +354,9 @@ void PDHybridEditor::buildSections()
                      &addKnob ("downsample", "Downsmpl") };
 
     // --- Compressor ---
-    comp.title = "Compressor";
-    comp.cols  = 5;
+    comp.title  = "Compressor";
+    comp.cols   = 5;
+    comp.combos = { &addCombo ("compOn", { "Off", "On" }) };
     comp.knobs = { &addKnob ("compThreshold", "Thr"), &addKnob ("compRatio", "Ratio"),
                    &addKnob ("compAttack", "Atk"), &addKnob ("compRelease", "Rel"),
                    &addKnob ("compMakeup", "Gain") };
@@ -363,15 +364,17 @@ void PDHybridEditor::buildSections()
     // --- Delay ---
     delaySec.title  = "Delay";
     delaySec.cols   = 5;
-    delaySec.combos = { &addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" }),
+    delaySec.combos = { &addCombo ("delayOn", { "Off", "On" }),
+                        &addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" }),
                         &addCombo ("delaySyncL", kSyncNames), &addCombo ("delaySyncR", kSyncNames) };
     delaySec.knobs  = { &addKnob ("delayTimeL", "Time L"), &addKnob ("delayTimeR", "Time R"),
                         &addKnob ("delayFeedback", "Fbk"), &addKnob ("delayMix", "Mix"),
                         &addKnob ("delayDuck", "Duck") };
 
     // --- Global master EQ (freq + gain per band) ---
-    globalEqSec.title = "Global EQ";
-    globalEqSec.cols  = 4;
+    globalEqSec.title  = "Global EQ";
+    globalEqSec.cols   = 4;
+    globalEqSec.combos = { &addCombo ("globalEqOn", { "Off", "On" }) };
     globalEqSec.knobs = { &addKnob ("geLowFreq", "Lo Hz", 0),  &addKnob ("geLowGain", "Lo dB", 1),
                           &addKnob ("geMid1Freq", "M1 Hz", 0), &addKnob ("geMid1Gain", "M1 dB", 1),
                           &addKnob ("geMid2Freq", "M2 Hz", 0), &addKnob ("geMid2Gain", "M2 dB", 1),

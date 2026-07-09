@@ -177,6 +177,8 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("compRelease", "Comp Release",
         juce::NormalisableRange<float> (0.01f, 1.0f, 0.0f, 0.3f), 0.10f, sec);
     pf ("compMakeup", "Comp Makeup", juce::NormalisableRange<float> (0.0f, 24.0f), 0.0f, db);
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "compOn", 1 }, "Compressor On", true));
 
     // --- Delay (mix 0 = bypass) ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
@@ -195,6 +197,8 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("delayFeedback", "Delay Feedback", juce::NormalisableRange<float> (0.0f, 0.95f), 0.30f, pct);
     pf ("delayMix", "Delay Mix", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
     pf ("delayDuck", "Delay Ducking", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "delayOn", 1 }, "Delay On", true));
 
     // --- Global master EQ (final stage; 0 dB per band = transparent) ---
     const juce::NormalisableRange<float> geGainRange (-18.0f, 18.0f);
@@ -210,6 +214,8 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("geHighFreq", "EQ High Freq",
         juce::NormalisableRange<float> (1500.0f, 18000.0f, 0.0f, 0.3f), 8000.0f, hz);
     pf ("geHighGain", "EQ High Gain", geGainRange, 0.0f, db);
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "globalEqOn", 1 }, "Global EQ On", true));
 
     // --- Monophonic sub-bass layer ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (
@@ -466,6 +472,10 @@ void PDHybridAudioProcessor::pushParams()
     globalEq.setBand (pdhybrid::GlobalEq::HighShelf, eqHighFreqBase_, eqHighGainBase_);
 
     // Mono sub-bass configuration (note events are routed in handleMidiMessage).
+    compOn_     = apvts.getRawParameterValue ("compOn")->load() > 0.5f;
+    delayOn_    = apvts.getRawParameterValue ("delayOn")->load() > 0.5f;
+    globalEqOn_ = apvts.getRawParameterValue ("globalEqOn")->load() > 0.5f;
+
     monoBass.setEnabled  (apvts.getRawParameterValue ("bassOn")->load() > 0.5f);
     monoBass.setWaveform (static_cast<pdhybrid::AnalogWave> (
         static_cast<int> (apvts.getRawParameterValue ("bassWave")->load())));
@@ -655,12 +665,15 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // Global output effects across the whole block: compressor then delay.
     if (buffer.getNumChannels() >= 2)
     {
-        compressor.processStereo (buffer.getWritePointer (0),
-                                  buffer.getWritePointer (1), numSamples);
-        delay.processStereo (buffer.getWritePointer (0),
-                             buffer.getWritePointer (1), numSamples);
-        globalEq.processStereo (buffer.getWritePointer (0),
-                                buffer.getWritePointer (1), numSamples);
+        if (compOn_)
+            compressor.processStereo (buffer.getWritePointer (0),
+                                      buffer.getWritePointer (1), numSamples);
+        if (delayOn_)
+            delay.processStereo (buffer.getWritePointer (0),
+                                 buffer.getWritePointer (1), numSamples);
+        if (globalEqOn_)
+            globalEq.processStereo (buffer.getWritePointer (0),
+                                    buffer.getWritePointer (1), numSamples);
     }
 }
 

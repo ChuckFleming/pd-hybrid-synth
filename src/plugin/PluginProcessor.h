@@ -4,6 +4,7 @@
 #include "dsp/SynthEngine.h"
 #include "dsp/Compressor.h"
 #include "dsp/Delay.h"
+#include "dsp/GlobalEq.h"
 #include <vector>
 
 /**
@@ -56,6 +57,7 @@ private:
     pdhybrid::SynthEngine engine;
     pdhybrid::Compressor  compressor;           // global output compressor
     pdhybrid::Delay       delay;                // global ducking delay
+    pdhybrid::GlobalEq    globalEq;             // final master EQ
     std::vector<float>    scratchL, scratchR;   // stereo render buffers
     double                pitchBendRangeSemis = 2.0;
 
@@ -64,6 +66,7 @@ private:
     pdhybrid::ModMatrix   globalMatrix;
     double                macro1_ = 0.0, macro2_ = 0.0, modWheel_ = 0.0;
     double                delayMixBase_ = 0.0, delayFbBase_ = 0.30;
+    double                eqHighFreqBase_ = 8000.0, eqHighGainBase_ = 0.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDHybridAudioProcessor)
 };

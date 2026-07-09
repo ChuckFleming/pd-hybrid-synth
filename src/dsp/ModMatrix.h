@@ -44,6 +44,7 @@ enum class ModDest : int
     DelayMix,     // global dests below (applied in the processor)
     DelayFeedback,
     MasterPan,
+    GlobalEqGain, // master EQ high-shelf gain (dB)
     Count
 };
 

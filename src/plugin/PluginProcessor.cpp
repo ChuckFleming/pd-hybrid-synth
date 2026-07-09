@@ -196,6 +196,21 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("delayMix", "Delay Mix", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
     pf ("delayDuck", "Delay Ducking", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
+    // --- Global master EQ (final stage; 0 dB per band = transparent) ---
+    const juce::NormalisableRange<float> geGainRange (-18.0f, 18.0f);
+    pf ("geLowFreq",  "EQ Low Freq",
+        juce::NormalisableRange<float> (20.0f, 1000.0f, 0.0f, 0.3f), 120.0f, hz);
+    pf ("geLowGain",  "EQ Low Gain",  geGainRange, 0.0f, db);
+    pf ("geMid1Freq", "EQ Mid 1 Freq",
+        juce::NormalisableRange<float> (100.0f, 4000.0f, 0.0f, 0.3f), 500.0f, hz);
+    pf ("geMid1Gain", "EQ Mid 1 Gain", geGainRange, 0.0f, db);
+    pf ("geMid2Freq", "EQ Mid 2 Freq",
+        juce::NormalisableRange<float> (500.0f, 12000.0f, 0.0f, 0.3f), 2000.0f, hz);
+    pf ("geMid2Gain", "EQ Mid 2 Gain", geGainRange, 0.0f, db);
+    pf ("geHighFreq", "EQ High Freq",
+        juce::NormalisableRange<float> (1500.0f, 18000.0f, 0.0f, 0.3f), 8000.0f, hz);
+    pf ("geHighGain", "EQ High Gain", geGainRange, 0.0f, db);
+
     // --- Glide / portamento ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "glideMode", 1 }, "Glide Mode",
@@ -271,7 +286,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     const juce::StringArray dstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
                                        "Resonance", "Morph", "Drive", "Amplitude", "Pan",
                                        "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
-                                       "Delay Mix", "Delay Fbk", "Master Pan" };
+                                       "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ" };
     for (int i = 1; i <= pdhybrid::ModMatrix::kNumSlots; ++i)
     {
         const auto s = juce::String (i);
@@ -300,6 +315,8 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     compressor.reset();
     delay.setSampleRate (sampleRate);
     delay.reset();
+    globalEq.setSampleRate (sampleRate);
+    globalEq.reset();
     globalLfo.setSampleRate (sampleRate);
     globalLfo.reset();
     const auto n = static_cast<std::size_t> (juce::jmax (1, samplesPerBlock));
@@ -407,6 +424,20 @@ void PDHybridAudioProcessor::pushParams()
     delay.setMix      (apvts.getRawParameterValue ("delayMix")->load());
     delay.setDuck     (apvts.getRawParameterValue ("delayDuck")->load());
 
+    // Master EQ bands (high-shelf gain is further modulated per block below).
+    globalEq.setBand (pdhybrid::GlobalEq::LowShelf,
+                      apvts.getRawParameterValue ("geLowFreq")->load(),
+                      apvts.getRawParameterValue ("geLowGain")->load());
+    globalEq.setBand (pdhybrid::GlobalEq::Mid1,
+                      apvts.getRawParameterValue ("geMid1Freq")->load(),
+                      apvts.getRawParameterValue ("geMid1Gain")->load());
+    globalEq.setBand (pdhybrid::GlobalEq::Mid2,
+                      apvts.getRawParameterValue ("geMid2Freq")->load(),
+                      apvts.getRawParameterValue ("geMid2Gain")->load());
+    eqHighFreqBase_ = apvts.getRawParameterValue ("geHighFreq")->load();
+    eqHighGainBase_ = apvts.getRawParameterValue ("geHighGain")->load();
+    globalEq.setBand (pdhybrid::GlobalEq::HighShelf, eqHighFreqBase_, eqHighGainBase_);
+
     const int lfoSync  = static_cast<int> (apvts.getRawParameterValue ("lfoSync")->load());
     const int lfo2Sync = static_cast<int> (apvts.getRawParameterValue ("lfo2Sync")->load());
     p.lfoRate  = (lfoSync == 0) ? apvts.getRawParameterValue ("lfoRate")->load()
@@ -472,6 +503,11 @@ void PDHybridAudioProcessor::applyGlobalModulation (juce::AudioBuffer<float>& bu
 
     delay.setMix      (juce::jlimit (0.0, 1.0,  delayMixBase_ + md (pdhybrid::ModDest::DelayMix)));
     delay.setFeedback (juce::jlimit (0.0, 0.95, delayFbBase_  + md (pdhybrid::ModDest::DelayFeedback)));
+
+    // Modulate the master EQ high-shelf gain (matrix output scaled to dB).
+    const double eqGain = juce::jlimit (-24.0, 24.0,
+        eqHighGainBase_ + 12.0 * md (pdhybrid::ModDest::GlobalEqGain));
+    globalEq.setBand (pdhybrid::GlobalEq::HighShelf, eqHighFreqBase_, eqGain);
 
     const double mp = juce::jlimit (-1.0, 1.0, md (pdhybrid::ModDest::MasterPan));
     if (std::abs (mp) > 1.0e-4 && buffer.getNumChannels() >= 2)
@@ -560,6 +596,8 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                   buffer.getWritePointer (1), numSamples);
         delay.processStereo (buffer.getWritePointer (0),
                              buffer.getWritePointer (1), numSamples);
+        globalEq.processStereo (buffer.getWritePointer (0),
+                                buffer.getWritePointer (1), numSamples);
     }
 }
 

@@ -35,7 +35,7 @@ const juce::StringArray kSyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
 const juce::StringArray kDstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
                                     "Resonance", "Morph", "Drive", "Amplitude", "Pan",
                                     "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
-                                    "Delay Mix", "Delay Fbk", "Master Pan" };
+                                    "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ" };
 }
 
 //==============================================================================
@@ -353,6 +353,14 @@ void PDHybridEditor::buildSections()
     delaySec.knobs  = { &addKnob ("delayTimeL", "Time L"), &addKnob ("delayTimeR", "Time R"),
                         &addKnob ("delayFeedback", "Fbk"), &addKnob ("delayMix", "Mix"),
                         &addKnob ("delayDuck", "Duck") };
+
+    // --- Global master EQ (freq + gain per band) ---
+    globalEqSec.title = "Global EQ";
+    globalEqSec.cols  = 4;
+    globalEqSec.knobs = { &addKnob ("geLowFreq", "Lo Hz", 0),  &addKnob ("geLowGain", "Lo dB", 1),
+                          &addKnob ("geMid1Freq", "M1 Hz", 0), &addKnob ("geMid1Gain", "M1 dB", 1),
+                          &addKnob ("geMid2Freq", "M2 Hz", 0), &addKnob ("geMid2Gain", "M2 dB", 1),
+                          &addKnob ("geHighFreq", "Hi Hz", 0), &addKnob ("geHighGain", "Hi dB", 1) };
 }
 
 PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
@@ -405,7 +413,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec },                   nullptr, {}, 0 },
         { "Modulation",  { &lfo, &lfo2 }, &matrixHolder,
           "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
-        { "FX",          { &drive, &comp, &delaySec },                          nullptr, {}, 0 },
+        { "FX",          { &drive, &comp, &delaySec, &globalEqSec },             nullptr, {}, 0 },
     };
 
     for (auto& pg : layout)

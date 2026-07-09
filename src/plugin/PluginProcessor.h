@@ -5,6 +5,7 @@
 #include "dsp/Compressor.h"
 #include "dsp/Delay.h"
 #include "dsp/GlobalEq.h"
+#include "dsp/MonoBass.h"
 #include <vector>
 
 /**
@@ -58,7 +59,9 @@ private:
     pdhybrid::Compressor  compressor;           // global output compressor
     pdhybrid::Delay       delay;                // global ducking delay
     pdhybrid::GlobalEq    globalEq;             // final master EQ
+    pdhybrid::MonoBass    monoBass;             // monophonic sub-bass layer
     std::vector<float>    scratchL, scratchR;   // stereo render buffers
+    std::vector<float>    scratchBass;          // mono bass render buffer
     double                pitchBendRangeSemis = 2.0;
 
     // Global modulation pass (processor-level sources -> global FX destinations).

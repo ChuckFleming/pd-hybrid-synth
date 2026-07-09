@@ -211,6 +211,30 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::NormalisableRange<float> (1500.0f, 18000.0f, 0.0f, 0.3f), 8000.0f, hz);
     pf ("geHighGain", "EQ High Gain", geGainRange, 0.0f, db);
 
+    // --- Monophonic sub-bass layer ---
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "bassOn", 1 }, "Bass On", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "bassWave", 1 }, "Bass Wave",
+        juce::StringArray { "Saw", "Square", "Triangle", "Pulse" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "bassOctave", 1 }, "Bass Octave", -3, 3, -1));
+    pf ("bassTune", "Bass Tune", juce::NormalisableRange<float> (-100.0f, 100.0f), 0.0f, cnt);
+    pf ("bassHarmonics", "Bass Harmonics", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    pf ("bassLevel", "Bass Level", juce::NormalisableRange<float> (0.0f, 1.0f), 0.80f, pct);
+    pf ("bassGlide", "Bass Glide",
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.0f, 0.3f), 0.05f, sec);
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "bassPriority", 1 }, "Bass Priority",
+        juce::StringArray { "Last", "Top", "Bottom" }, 0));
+    pf ("bassAttack", "Bass Attack",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.005f, sec);
+    pf ("bassDecay", "Bass Decay",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f, sec);
+    pf ("bassSustain", "Bass Sustain", juce::NormalisableRange<float> (0.0f, 1.0f), 0.80f, pct);
+    pf ("bassRelease", "Bass Release",
+        juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f, sec);
+
     // --- Glide / portamento ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "glideMode", 1 }, "Glide Mode",
@@ -317,11 +341,14 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     delay.reset();
     globalEq.setSampleRate (sampleRate);
     globalEq.reset();
+    monoBass.setSampleRate (sampleRate);
+    monoBass.reset();
     globalLfo.setSampleRate (sampleRate);
     globalLfo.reset();
     const auto n = static_cast<std::size_t> (juce::jmax (1, samplesPerBlock));
     scratchL.assign (n, 0.0f);
     scratchR.assign (n, 0.0f);
+    scratchBass.assign (n, 0.0f);
 }
 
 void PDHybridAudioProcessor::pushParams()
@@ -438,6 +465,22 @@ void PDHybridAudioProcessor::pushParams()
     eqHighGainBase_ = apvts.getRawParameterValue ("geHighGain")->load();
     globalEq.setBand (pdhybrid::GlobalEq::HighShelf, eqHighFreqBase_, eqHighGainBase_);
 
+    // Mono sub-bass configuration (note events are routed in handleMidiMessage).
+    monoBass.setEnabled  (apvts.getRawParameterValue ("bassOn")->load() > 0.5f);
+    monoBass.setWaveform (static_cast<pdhybrid::AnalogWave> (
+        static_cast<int> (apvts.getRawParameterValue ("bassWave")->load())));
+    monoBass.setOctave   (static_cast<int> (apvts.getRawParameterValue ("bassOctave")->load()));
+    monoBass.setTuneCents(apvts.getRawParameterValue ("bassTune")->load());
+    monoBass.setHarmonics(apvts.getRawParameterValue ("bassHarmonics")->load());
+    monoBass.setLevel    (apvts.getRawParameterValue ("bassLevel")->load());
+    monoBass.setGlideTime(apvts.getRawParameterValue ("bassGlide")->load());
+    monoBass.setPriority (static_cast<pdhybrid::BassPriority> (
+        static_cast<int> (apvts.getRawParameterValue ("bassPriority")->load())));
+    monoBass.setADSR (apvts.getRawParameterValue ("bassAttack")->load(),
+                      apvts.getRawParameterValue ("bassDecay")->load(),
+                      apvts.getRawParameterValue ("bassSustain")->load(),
+                      apvts.getRawParameterValue ("bassRelease")->load());
+
     const int lfoSync  = static_cast<int> (apvts.getRawParameterValue ("lfoSync")->load());
     const int lfo2Sync = static_cast<int> (apvts.getRawParameterValue ("lfo2Sync")->load());
     p.lfoRate  = (lfoSync == 0) ? apvts.getRawParameterValue ("lfoRate")->load()
@@ -524,9 +567,15 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
     const int channel = msg.getChannel();   // used as the per-note expression id
 
     if (msg.isNoteOn())
+    {
         engine.noteOn (msg.getNoteNumber(), msg.getFloatVelocity(), channel);
+        monoBass.noteOn (msg.getNoteNumber(), msg.getFloatVelocity());
+    }
     else if (msg.isNoteOff())
+    {
         engine.noteOff (msg.getNoteNumber(), channel);
+        monoBass.noteOff (msg.getNoteNumber());
+    }
     else if (msg.isPitchWheel())
         engine.setNotePitchBend (channel,
             (msg.getPitchWheelValue() - 8192) / 8192.0 * pitchBendRangeSemis);
@@ -540,7 +589,10 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
         engine.setModWheel (modWheel_);
     }
     else if (msg.isAllNotesOff() || msg.isAllSoundOff())
+    {
         engine.allNotesOff();
+        monoBass.allNotesOff();
+    }
 }
 
 void PDHybridAudioProcessor::renderSegment (juce::AudioBuffer<float>& buffer,
@@ -553,9 +605,20 @@ void PDHybridAudioProcessor::renderSegment (juce::AudioBuffer<float>& buffer,
     {
         scratchL.resize (static_cast<std::size_t> (numSamples));
         scratchR.resize (static_cast<std::size_t> (numSamples));
+        scratchBass.resize (static_cast<std::size_t> (numSamples));
     }
 
     engine.renderBlock (scratchL.data(), scratchR.data(), numSamples);
+
+    // Mono sub-bass, summed at centre into both oscillator channels (pre-FX).
+    for (int i = 0; i < numSamples; ++i)
+        scratchBass[i] = 0.0f;
+    monoBass.renderBlock (scratchBass.data(), numSamples);
+    for (int i = 0; i < numSamples; ++i)
+    {
+        scratchL[i] += scratchBass[i];
+        scratchR[i] += scratchBass[i];
+    }
 
     const int numCh = buffer.getNumChannels();
     if (numCh > 0) buffer.copyFrom (0, startSample, scratchL.data(), numSamples);

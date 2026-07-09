@@ -264,6 +264,18 @@ void PDHybridEditor::buildSections()
     glideSec.combos = { &addCombo ("glideMode", { "Off", "Always", "Legato" }) };
     glideSec.knobs  = { &addKnob ("glideTime", "Time"), &addKnob ("glideCurve", "Curve") };
 
+    // --- Mono sub-bass ---
+    bassSec.title  = "Mono Bass";
+    bassSec.cols   = 5;
+    bassSec.combos = { &addCombo ("bassOn", { "Off", "On" }),
+                       &addCombo ("bassWave", { "Saw", "Square", "Triangle", "Pulse" }),
+                       &addCombo ("bassPriority", { "Last", "Top", "Bottom" }) };
+    bassSec.knobs  = { &addKnob ("bassOctave", "Oct", 0), &addKnob ("bassTune", "Tune"),
+                       &addKnob ("bassHarmonics", "Harm"), &addKnob ("bassLevel", "Level"),
+                       &addKnob ("bassGlide", "Glide"),
+                       &addKnob ("bassAttack", "Atk"), &addKnob ("bassDecay", "Dec"),
+                       &addKnob ("bassSustain", "Sus"), &addKnob ("bassRelease", "Rel") };
+
     // --- Stereo / Drift ---
     stereo.title = "Stereo / Drift";
     stereo.cols  = 3;
@@ -411,7 +423,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     const int matrixH = kHeaderH + (kNumModRows / 2) * kMatrixRowH + kCardPad * 2;
 
     std::vector<Page> layout {
-        { "Oscillators", { &oscA, &oscB, &mixer, &unison, &glideSec, &stereo }, nullptr, {}, 0 },
+        { "Oscillators", { &oscA, &oscB, &mixer, &unison, &glideSec, &stereo, &bassSec }, nullptr, {}, 0 },
         { "Filters",     { &filter, &filter2, &filterEnv, &filter2Env },        nullptr, {}, 0 },
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec },                   nullptr, {}, 0 },
         { "Modulation",  { &lfo, &lfo2 }, &matrixHolder,

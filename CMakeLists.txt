@@ -45,6 +45,7 @@ add_library(pdhybrid_dsp STATIC
     src/dsp/FilterUnit.cpp
     src/dsp/Compressor.cpp
     src/dsp/Delay.cpp
+    src/dsp/MonoBass.cpp
 )
 target_include_directories(pdhybrid_dsp PUBLIC src)
 target_compile_features(pdhybrid_dsp PUBLIC cxx_std_17)

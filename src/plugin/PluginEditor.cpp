@@ -25,9 +25,12 @@ const juce::Colour kTitleCol (0xffe7edf6);
 const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" };
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                         "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
+// Must match the "modXSource" choice parameter exactly: ComboBoxParameterAttachment
+// maps by item index / (item count - 1), so a shorter list mis-routes every source.
 const juce::StringArray kSrcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
                                     "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2",
-                                    "Multi Env" };
+                                    "Multi Env", "Amp Env", "Filt Env A", "Filt Env B",
+                                    "Random", "Global LFO", "Macro 1", "Macro 2" };
 const juce::StringArray kLfoWaveNames { "Sine", "Triangle", "Square", "Saw", "Ramp Down",
                                         "Sample & Hold", "Smooth Random", "Exponential" };
 const juce::StringArray kSyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",

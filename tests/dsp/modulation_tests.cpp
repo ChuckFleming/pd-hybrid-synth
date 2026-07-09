@@ -4,6 +4,7 @@
 #include "dsp/Lfo.h"
 #include "dsp/ModMatrix.h"
 #include "dsp/SynthParams.h"
+#include "dsp/Voice.h"
 #include "harness/Spectrum.h"
 #include "harness/SignalStats.h"
 
@@ -153,4 +154,57 @@ TEST_CASE ("Route depth respects sign", "[mod][matrix]")
     double out[ModMatrix::kNumDests];
     m.evaluate (src, out);
     REQUIRE (out[static_cast<int> (ModDest::Drive)] == Approx (-0.75));
+}
+
+// ---------------------------------------------------------------------------
+// Matrix -> Voice integration (guards the full source -> dest -> DSP path)
+// ---------------------------------------------------------------------------
+
+namespace {
+std::vector<float> renderVoice (const SynthParams& params, double sr, int note, int numBlocks)
+{
+    Voice v;
+    v.prepare (sr);
+    v.setParams (params);
+    v.start (note, 1.0f);
+
+    const int block = 64;
+    std::vector<float> out;
+    std::vector<float> l (block), r (block);
+    for (int b = 0; b < numBlocks; ++b)
+    {
+        std::fill (l.begin(), l.end(), 0.0f);
+        std::fill (r.begin(), r.end(), 0.0f);
+        v.setParams (params);
+        v.renderBlock (l.data(), r.data(), block);
+        out.insert (out.end(), l.begin(), l.end());
+    }
+    return out;
+}
+}
+
+TEST_CASE ("LFO routed to pitch changes the voice output", "[mod][matrix][voice]")
+{
+    const double sr = 48000.0;
+
+    SynthParams base;
+    base.oscAType = OscType::Saw;    // clearly pitched, cheap
+    base.sustain  = 1.0;
+    base.lfoRate  = 8.0;
+    base.lfoWave  = 0;               // sine
+
+    SynthParams routed = base;
+    routed.modMatrix.setRoute (0, ModSource::Lfo, ModDest::Pitch, 0.2);   // ~4.8 semis swing
+
+    const auto flat = renderVoice (base,   sr, 60, 200);
+    const auto mod  = renderVoice (routed, sr, 60, 200);
+
+    REQUIRE (flat.size() == mod.size());
+
+    double diff = 0.0;
+    for (std::size_t i = 0; i < flat.size(); ++i)
+        diff += std::abs (flat[i] - mod[i]);
+
+    REQUIRE_FALSE (hasBadValues (mod));
+    REQUIRE (diff > 1.0);            // the route audibly alters the signal
 }

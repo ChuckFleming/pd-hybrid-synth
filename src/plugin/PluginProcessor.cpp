@@ -143,6 +143,8 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("filter2EnvR", "Filter 2 Env Release",
         juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.30f, sec);
 
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "driveOn", 1 }, "Overdrive On", true));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "driveType", 1 }, "Drive Type",
         juce::StringArray { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz",
@@ -410,6 +412,7 @@ void PDHybridAudioProcessor::pushParams()
     p.filter2EnvD = apvts.getRawParameterValue ("filter2EnvD")->load();
     p.filter2EnvS = apvts.getRawParameterValue ("filter2EnvS")->load();
     p.filter2EnvR = apvts.getRawParameterValue ("filter2EnvR")->load();
+    p.driveOn     = apvts.getRawParameterValue ("driveOn")->load() > 0.5f;
     p.drive       = apvts.getRawParameterValue ("drive")->load();
     p.driveType   = static_cast<int> (apvts.getRawParameterValue ("driveType")->load());
     p.crushBits   = apvts.getRawParameterValue ("crushBits")->load();

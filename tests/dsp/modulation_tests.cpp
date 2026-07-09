@@ -208,3 +208,28 @@ TEST_CASE ("LFO routed to pitch changes the voice output", "[mod][matrix][voice]
     REQUIRE_FALSE (hasBadValues (mod));
     REQUIRE (diff > 1.0);            // the route audibly alters the signal
 }
+
+TEST_CASE ("Overdrive on/off bypasses the saturator", "[mod][voice][drive]")
+{
+    const double sr = 48000.0;
+
+    SynthParams on;
+    on.oscAType = OscType::Saw;
+    on.sustain  = 1.0;
+    on.drive    = 20.0;             // heavy saturation when engaged
+    on.driveType = 2;              // hard clip -> obvious change
+
+    SynthParams off = on;
+    off.driveOn = false;
+
+    const auto driven = renderVoice (on,  sr, 57, 64);
+    const auto clean  = renderVoice (off, sr, 57, 64);
+
+    double diff = 0.0;
+    for (std::size_t i = 0; i < driven.size(); ++i)
+        diff += std::abs (driven[i] - clean[i]);
+
+    REQUIRE_FALSE (hasBadValues (clean));
+    REQUIRE (diff > 1.0);          // bypass clearly changes the tone
+    REQUIRE (peakAbs (clean) < peakAbs (driven) + 1.0e-3f);   // no added drive gain
+}

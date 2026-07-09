@@ -259,7 +259,8 @@ float Voice::renderOneSample() noexcept
             break;
     }
 
-    s = amp_.processSample (static_cast<float> (s));
+    if (params_.driveOn)
+        s = amp_.processSample (static_cast<float> (s));
     const double e = env_.processSample();
     return static_cast<float> (s * e * velGain_ * pressure_ * ampMod_ * params_.gain);
 }

@@ -346,7 +346,8 @@ void PDHybridEditor::buildSections()
     // --- Overdrive ---
     drive.title  = "Overdrive";
     drive.cols   = 5;
-    drive.combos = { &addCombo ("driveType",
+    drive.combos = { &addCombo ("driveOn", { "Off", "On" }),
+                     &addCombo ("driveType",
                        { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz", "Rectify",
                          "Wavefold", "Foldback" }) };
     drive.knobs  = { &addKnob ("drive", "Drive"), &addKnob ("bias", "Bias"),

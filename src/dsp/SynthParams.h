@@ -105,6 +105,7 @@ struct SynthParams
     double        filter2EnvAmount = 0.0;   // Filter B env depth (octaves, bipolar)
     double        filter2EnvA = 0.01, filter2EnvD = 0.20, filter2EnvS = 0.0, filter2EnvR = 0.30;
 
+    bool   driveOn   = true;   // overdrive stage bypass when false
     double drive     = 1.0;
     double bias      = 0.0;
     int    driveType = 0;      // ShaperCurve index

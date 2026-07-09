@@ -6,11 +6,21 @@ constexpr int kKnobH    = 64;   // rotary + text box below
 constexpr int kLabelH   = 14;
 constexpr int kCellW    = 72;   // one knob cell (knob + gutter)
 constexpr int kCellH    = kLabelH + kKnobH;
-constexpr int kHeaderH  = 20;
-constexpr int kComboRowH = 22;
-constexpr int kPad      = 8;
-constexpr int kTitleH   = 34;
+constexpr int kHeaderH  = 22;   // card title strip
+constexpr int kComboRowH = 24;
+constexpr int kCardPad  = 7;    // inner padding of a card
+constexpr int kGap      = 10;   // gap between cards
+constexpr int kMargin   = 12;   // panel outer margin
 constexpr int kMatrixRowH = 26;
+constexpr int kTopBar   = 46;   // title bar above the tabs
+
+// Palette
+const juce::Colour kBg       (0xff1b1f26);
+const juce::Colour kCardBg   (0xff262b34);
+const juce::Colour kCardEdge (0xff333b47);
+const juce::Colour kHeaderBg (0xff2f3846);
+const juce::Colour kAccent   (0xff8fb7ff);
+const juce::Colour kTitleCol (0xffe7edf6);
 
 const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" };
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
@@ -28,6 +38,160 @@ const juce::StringArray kDstNames { "None", "Pitch", "PD Amount", "Pulse Width",
                                     "Delay Mix", "Delay Fbk", "Master Pan" };
 }
 
+//==============================================================================
+//  SectionPanel — flows Section cards, paints their frames, hosts a trailing
+//  full-width component (the modulation matrix).
+//==============================================================================
+void PDHybridEditor::SectionPanel::addSection (const Section& s)
+{
+    for (auto* k : s.knobs)
+    {
+        addAndMakeVisible (k->slider);
+        addAndMakeVisible (k->label);
+    }
+    for (auto* c : s.combos)
+        addAndMakeVisible (*c);
+
+    sections.push_back (s);
+}
+
+void PDHybridEditor::SectionPanel::setTrailing (juce::Component* c, int fullHeight,
+                                                juce::String title)
+{
+    trailing = c;
+    trailingHeight = fullHeight;
+    trailingTitle = std::move (title);
+    if (trailing != nullptr)
+        addAndMakeVisible (*trailing);
+}
+
+int PDHybridEditor::SectionPanel::layout (bool apply, int width)
+{
+    auto cardWidth = [] (const Section& s)
+    {
+        return s.cols * kCellW + 2 * kCardPad;
+    };
+    auto cardHeight = [] (const Section& s)
+    {
+        const int rows = (static_cast<int> (s.knobs.size()) + s.cols - 1) / juce::jmax (1, s.cols);
+        int h = kHeaderH + 2 * kCardPad + rows * kCellH;
+        if (! s.combos.empty()) h += kComboRowH;
+        return h;
+    };
+
+    int x = kMargin, y = kMargin, rowH = 0;
+
+    for (auto& s : sections)
+    {
+        const int cw = cardWidth (s);
+        const int ch = cardHeight (s);
+
+        if (x > kMargin && x + cw > width - kMargin)   // wrap to next row
+        {
+            x = kMargin;
+            y += rowH + kGap;
+            rowH = 0;
+        }
+
+        if (apply)
+        {
+            s.bounds = { x, y, cw, ch };
+
+            auto inner = s.bounds;
+            inner.removeFromTop (kHeaderH);
+            inner = inner.reduced (kCardPad);
+
+            if (! s.combos.empty())
+            {
+                auto comboRow = inner.removeFromTop (kComboRowH).reduced (0, 2);
+                const int cwidth = comboRow.getWidth() / static_cast<int> (s.combos.size());
+                for (auto* c : s.combos)
+                    c->setBounds (comboRow.removeFromLeft (cwidth).reduced (2, 0));
+            }
+
+            std::size_t i = 0;
+            while (i < s.knobs.size())
+            {
+                auto row = inner.removeFromTop (kCellH);
+                for (int c = 0; c < s.cols && i < s.knobs.size(); ++c, ++i)
+                {
+                    auto cell = row.removeFromLeft (kCellW);
+                    s.knobs[i]->label.setBounds  (cell.removeFromTop (kLabelH));
+                    s.knobs[i]->slider.setBounds (cell);
+                }
+            }
+        }
+
+        x += cw + kGap;
+        rowH = juce::jmax (rowH, ch);
+    }
+
+    y += rowH;
+
+    if (trailing != nullptr)
+    {
+        y += kGap;
+        if (apply)
+            trailing->setBounds (kMargin, y, width - 2 * kMargin, trailingHeight);
+        y += trailingHeight;
+    }
+
+    return y + kMargin;
+}
+
+int PDHybridEditor::SectionPanel::preferredHeight (int width)
+{
+    return layout (false, juce::jmax (width, 2 * kMargin + kCellW));
+}
+
+void PDHybridEditor::SectionPanel::resized()
+{
+    layout (true, getWidth());
+}
+
+void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
+{
+    auto drawFrame = [&g] (juce::Rectangle<int> b, const juce::String& title)
+    {
+        g.setColour (kCardBg);
+        g.fillRoundedRectangle (b.toFloat(), 6.0f);
+
+        auto header = b.withHeight (kHeaderH);
+        g.setColour (kHeaderBg);
+        g.fillRoundedRectangle (header.toFloat(), 6.0f);
+        g.fillRect (header.withTrimmedTop (kHeaderH / 2));   // square off the bottom corners
+
+        g.setColour (kAccent);
+        g.setFont (juce::Font (12.5f, juce::Font::bold));
+        g.drawText (" " + title, header, juce::Justification::centredLeft);
+
+        g.setColour (kCardEdge);
+        g.drawRoundedRectangle (b.toFloat().reduced (0.5f), 6.0f, 1.0f);
+    };
+
+    for (const auto& s : sections)
+        drawFrame (s.bounds, s.title);
+
+    if (trailing != nullptr)
+        drawFrame (trailing->getBounds(), trailingTitle);
+}
+
+//==============================================================================
+//  ScrollPanel
+//==============================================================================
+void PDHybridEditor::ScrollPanel::resized()
+{
+    juce::Viewport::resized();
+    if (panel != nullptr)
+    {
+        const int w = getMaximumVisibleWidth();
+        panel->setSize (w, juce::jmax (getMaximumVisibleHeight(), panel->preferredHeight (w)));
+    }
+}
+
+//==============================================================================
+//  Editor
+//==============================================================================
 PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramId,
                                                       const juce::String& text, int decimals)
 {
@@ -35,13 +199,11 @@ PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramI
 
     knob->slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     knob->slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, kKnobW, 14);
-    knob->slider.setNumDecimalPlacesToDisplay (decimals);   // short display, still smooth
-    addAndMakeVisible (knob->slider);
+    knob->slider.setNumDecimalPlacesToDisplay (decimals);
 
     knob->label.setText (text, juce::dontSendNotification);
     knob->label.setJustificationType (juce::Justification::centred);
     knob->label.setFont (juce::Font (11.0f, juce::Font::bold));
-    addAndMakeVisible (knob->label);
 
     knob->attachment = std::make_unique<SliderAttachment> (proc.apvts, paramId, knob->slider);
 
@@ -55,199 +217,99 @@ juce::ComboBox& PDHybridEditor::addCombo (const juce::String& paramId,
     auto box = std::make_unique<juce::ComboBox>();
     box->addItemList (items, 1);
     box->setJustificationType (juce::Justification::centredLeft);
-    addAndMakeVisible (*box);
     comboAttachments.push_back (
         std::make_unique<ComboBoxAttachment> (proc.apvts, paramId, *box));
     combos.push_back (std::move (box));
     return *combos.back();
 }
 
-PDHybridEditor::~PDHybridEditor()
+void PDHybridEditor::buildSections()
 {
-    setLookAndFeel (nullptr);
-}
-
-PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
-    : juce::AudioProcessorEditor (&p), proc (p)
-{
-    setLookAndFeel (&lnf);
-
-    // "Init" resets every parameter to its default value.
-    addAndMakeVisible (initButton);
-    initButton.onClick = [this]
-    {
-        for (auto* p : proc.getParameters())
-            p->setValueNotifyingHost (p->getDefaultValue());
-    };
-
-    // --- Oscillator A (tuning + per-osc EQ) ---
-    oscATypeBox = &addCombo ("oscAType", kOscTypeNames);
-    oscAWaveBox = &addCombo ("oscAWave", kPdWaveNames);
-    Section oscA;
+    // --- Oscillator A ---
     oscA.title  = "Osc A";
-    oscA.combos = { oscATypeBox, oscAWaveBox };
-    oscA.knobs  = { &addKnob ("oscAAmount", "PD Amt"),
-                    &addKnob ("oscAPulseWidth", "Width"),
-                    &addKnob ("oscAOctave", "Oct", 0),
-                    &addKnob ("oscASemi", "Semi", 0),
-                    &addKnob ("oscAFine", "Fine"),
-                    &addKnob ("oscAEqLow", "EQ Lo"),
-                    &addKnob ("oscAEqMid", "EQ Mid"),
-                    &addKnob ("oscAEqHigh", "EQ Hi") };
+    oscA.cols   = 4;
+    oscA.combos = { &addCombo ("oscAType", kOscTypeNames), &addCombo ("oscAWave", kPdWaveNames) };
+    oscA.knobs  = { &addKnob ("oscAAmount", "PD Amt"), &addKnob ("oscAPulseWidth", "Width"),
+                    &addKnob ("oscAOctave", "Oct", 0), &addKnob ("oscASemi", "Semi", 0),
+                    &addKnob ("oscAFine", "Fine"), &addKnob ("oscAEqLow", "EQ Lo"),
+                    &addKnob ("oscAEqMid", "EQ Mid"), &addKnob ("oscAEqHigh", "EQ Hi") };
 
     // --- Oscillator B ---
-    oscBTypeBox = &addCombo ("oscBType", kOscTypeNames);
-    oscBWaveBox = &addCombo ("oscBWave", kPdWaveNames);
-    Section oscB;
     oscB.title  = "Osc B";
-    oscB.combos = { oscBTypeBox, oscBWaveBox };
-    oscB.knobs  = { &addKnob ("oscBAmount", "PD Amt"),
-                    &addKnob ("oscBPulseWidth", "Width"),
-                    &addKnob ("oscBOctave", "Oct", 0),
-                    &addKnob ("oscBSemi", "Semi", 0),
-                    &addKnob ("oscBFine", "Fine"),
-                    &addKnob ("oscBEqLow", "EQ Lo"),
-                    &addKnob ("oscBEqMid", "EQ Mid"),
-                    &addKnob ("oscBEqHigh", "EQ Hi") };
+    oscB.cols   = 4;
+    oscB.combos = { &addCombo ("oscBType", kOscTypeNames), &addCombo ("oscBWave", kPdWaveNames) };
+    oscB.knobs  = { &addKnob ("oscBAmount", "PD Amt"), &addKnob ("oscBPulseWidth", "Width"),
+                    &addKnob ("oscBOctave", "Oct", 0), &addKnob ("oscBSemi", "Semi", 0),
+                    &addKnob ("oscBFine", "Fine"), &addKnob ("oscBEqLow", "EQ Lo"),
+                    &addKnob ("oscBEqMid", "EQ Mid"), &addKnob ("oscBEqHigh", "EQ Hi") };
 
-    // --- Mixer (vertical strip) ---
-    Section mixer;
+    // --- Mixer ---
     mixer.title = "Mixer";
-    mixer.knobs = { &addKnob ("oscALevel", "Osc A"),
-                    &addKnob ("oscBLevel", "Osc B"),
+    mixer.cols  = 3;
+    mixer.knobs = { &addKnob ("oscALevel", "Osc A"), &addKnob ("oscBLevel", "Osc B"),
                     &addKnob ("noiseLevel", "Noise") };
 
-    // --- Filter ---
-    filterTypeBox = &addCombo ("filterType",
-        { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" });
-    Section filter;
-    filter.title  = "Filter";
-    filter.combos = { filterTypeBox };
-    filter.knobs  = { &addKnob ("cutoff", "Cutoff"),
-                      &addKnob ("resonance", "Reso"),
-                      &addKnob ("filterMorph", "Morph"),
-                      &addKnob ("keyTrack", "Key Trk"),
-                      &addKnob ("filterEnvAmount", "Env Amt") };
-
-    // --- Filter 2 (routing) ---
-    auto& filterRoutingBox = addCombo ("filterRouting", { "Single", "Series", "Parallel" });
-    auto& filter2TypeBox   = addCombo ("filter2Type",
-        { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" });
-    Section filter2;
-    filter2.title  = "Filter 2";
-    filter2.combos = { &filterRoutingBox, &filter2TypeBox };
-    filter2.knobs  = { &addKnob ("filter2Cutoff", "Cutoff"),
-                       &addKnob ("filter2Res", "Reso"),
-                       &addKnob ("filter2Morph", "Morph"),
-                       &addKnob ("filter2EnvAmount", "Env Amt") };
-
-    // --- Amp Envelope ---
-    Section envelope;
-    envelope.title = "Amp Env";
-    envelope.knobs = { &addKnob ("attack", "Atk"),
-                       &addKnob ("decay", "Dec"),
-                       &addKnob ("sustain", "Sus"),
-                       &addKnob ("release", "Rel") };
-
-    // --- Filter Envelope ---
-    Section filterEnv;
-    filterEnv.title = "Filter Env";
-    filterEnv.knobs = { &addKnob ("filterEnvA", "Atk"),
-                        &addKnob ("filterEnvD", "Dec"),
-                        &addKnob ("filterEnvS", "Sus"),
-                        &addKnob ("filterEnvR", "Rel") };
-
-    // --- Filter 2 Envelope ---
-    Section filter2Env;
-    filter2Env.title = "Filter 2 Env";
-    filter2Env.knobs = { &addKnob ("filter2EnvA", "Atk"),
-                         &addKnob ("filter2EnvD", "Dec"),
-                         &addKnob ("filter2EnvS", "Sus"),
-                         &addKnob ("filter2EnvR", "Rel") };
-
-    // --- Mod Envelope ---
-    Section modEnv;
-    modEnv.title = "Mod Env";
-    modEnv.knobs = { &addKnob ("modEnvA", "Atk"),
-                     &addKnob ("modEnvD", "Dec"),
-                     &addKnob ("modEnvS", "Sus"),
-                     &addKnob ("modEnvR", "Rel") };
-
-    // --- LFO ---
-    lfoWaveBox = &addCombo ("lfoWave", kLfoWaveNames);
-    auto& lfoSyncBox = addCombo ("lfoSync", kSyncNames);
-    Section lfo;
-    lfo.title  = "LFO";
-    lfo.combos = { lfoWaveBox, &lfoSyncBox };
-    lfo.knobs  = { &addKnob ("lfoRate", "Rate") };
-
-    // --- LFO 2 ---
-    auto& lfo2WaveBox = addCombo ("lfo2Wave", kLfoWaveNames);
-    auto& lfo2SyncBox = addCombo ("lfo2Sync", kSyncNames);
-    Section lfo2;
-    lfo2.title  = "LFO 2";
-    lfo2.combos = { &lfo2WaveBox, &lfo2SyncBox };
-    lfo2.knobs  = { &addKnob ("lfo2Rate", "Rate") };
-
-    // --- Overdrive ---
-    auto& driveTypeBox = addCombo ("driveType",
-        { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz", "Rectify", "Wavefold", "Foldback" });
-    Section drive;
-    drive.title  = "Overdrive";
-    drive.combos = { &driveTypeBox };
-    drive.knobs  = { &addKnob ("drive", "Drive"),
-                     &addKnob ("bias", "Bias"),
-                     &addKnob ("gain", "Gain"),
-                     &addKnob ("crushBits", "Crush"),
-                     &addKnob ("downsample", "Downsmpl") };
-
-    // --- Compressor ---
-    Section comp;
-    comp.title = "Compressor";
-    comp.knobs = { &addKnob ("compThreshold", "Thr"),
-                   &addKnob ("compRatio", "Ratio"),
-                   &addKnob ("compAttack", "Atk"),
-                   &addKnob ("compRelease", "Rel"),
-                   &addKnob ("compMakeup", "Gain") };
-
-    // --- Delay ---
-    auto& delayModeBox = addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" });
-    auto& delaySyncLBox = addCombo ("delaySyncL", kSyncNames);
-    auto& delaySyncRBox = addCombo ("delaySyncR", kSyncNames);
-    Section delaySec;
-    delaySec.title  = "Delay";
-    delaySec.combos = { &delayModeBox, &delaySyncLBox, &delaySyncRBox };
-    delaySec.knobs  = { &addKnob ("delayTimeL", "Time L"),
-                        &addKnob ("delayTimeR", "Time R"),
-                        &addKnob ("delayFeedback", "Fbk"),
-                        &addKnob ("delayMix", "Mix"),
-                        &addKnob ("delayDuck", "Duck") };
-
-    // --- Glide ---
-    auto& glideModeBox = addCombo ("glideMode", { "Off", "Always", "Legato" });
-    Section glideSec;
-    glideSec.title  = "Glide";
-    glideSec.combos = { &glideModeBox };
-    glideSec.knobs  = { &addKnob ("glideTime", "Time"),
-                        &addKnob ("glideCurve", "Curve") };
-
-    // --- Stereo / Drift ---
-    Section stereo;
-    stereo.title = "Stereo / Drift";
-    stereo.knobs = { &addKnob ("pan", "Pan"),
-                     &addKnob ("panSpread", "Spread"),
-                     &addKnob ("drift", "Drift") };
-
     // --- Unison ---
-    Section unison;
     unison.title = "Unison";
-    unison.knobs = { &addKnob ("unisonVoices", "Voices", 0),
-                     &addKnob ("unisonDetune", "Detune"),
+    unison.cols  = 3;
+    unison.knobs = { &addKnob ("unisonVoices", "Voices", 0), &addKnob ("unisonDetune", "Detune"),
                      &addKnob ("unisonWidth", "Width") };
 
-    // --- CZ multi-stage envelope (8 rate + 8 level, laid out in aligned rows) ---
-    Section multiEnvSec;
+    // --- Glide ---
+    glideSec.title  = "Glide";
+    glideSec.cols   = 2;
+    glideSec.combos = { &addCombo ("glideMode", { "Off", "Always", "Legato" }) };
+    glideSec.knobs  = { &addKnob ("glideTime", "Time"), &addKnob ("glideCurve", "Curve") };
+
+    // --- Stereo / Drift ---
+    stereo.title = "Stereo / Drift";
+    stereo.cols  = 3;
+    stereo.knobs = { &addKnob ("pan", "Pan"), &addKnob ("panSpread", "Spread"),
+                     &addKnob ("drift", "Drift") };
+
+    // --- Filter ---
+    filter.title  = "Filter";
+    filter.cols   = 5;
+    filter.combos = { &addCombo ("filterType",
+                        { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }) };
+    filter.knobs  = { &addKnob ("cutoff", "Cutoff"), &addKnob ("resonance", "Reso"),
+                      &addKnob ("filterMorph", "Morph"), &addKnob ("keyTrack", "Key Trk"),
+                      &addKnob ("filterEnvAmount", "Env Amt") };
+
+    // --- Filter 2 ---
+    filter2.title  = "Filter 2";
+    filter2.cols   = 4;
+    filter2.combos = { &addCombo ("filterRouting", { "Single", "Series", "Parallel" }),
+                       &addCombo ("filter2Type",
+                        { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }) };
+    filter2.knobs  = { &addKnob ("filter2Cutoff", "Cutoff"), &addKnob ("filter2Res", "Reso"),
+                       &addKnob ("filter2Morph", "Morph"), &addKnob ("filter2EnvAmount", "Env Amt") };
+
+    // --- Filter Envelopes ---
+    filterEnv.title = "Filter Env";
+    filterEnv.cols  = 4;
+    filterEnv.knobs = { &addKnob ("filterEnvA", "Atk"), &addKnob ("filterEnvD", "Dec"),
+                        &addKnob ("filterEnvS", "Sus"), &addKnob ("filterEnvR", "Rel") };
+
+    filter2Env.title = "Filter 2 Env";
+    filter2Env.cols  = 4;
+    filter2Env.knobs = { &addKnob ("filter2EnvA", "Atk"), &addKnob ("filter2EnvD", "Dec"),
+                         &addKnob ("filter2EnvS", "Sus"), &addKnob ("filter2EnvR", "Rel") };
+
+    // --- Amp / Mod Envelopes ---
+    envelope.title = "Amp Env";
+    envelope.cols  = 4;
+    envelope.knobs = { &addKnob ("attack", "Atk"), &addKnob ("decay", "Dec"),
+                       &addKnob ("sustain", "Sus"), &addKnob ("release", "Rel") };
+
+    modEnv.title = "Mod Env";
+    modEnv.cols  = 4;
+    modEnv.knobs = { &addKnob ("modEnvA", "Atk"), &addKnob ("modEnvD", "Dec"),
+                     &addKnob ("modEnvS", "Sus"), &addKnob ("modEnvR", "Rel") };
+
+    // --- CZ multi-stage envelope (8 rate + 8 level, aligned in rows) ---
     multiEnvSec.title = "Multi-Stage Env (CZ)  ->  filter";
+    multiEnvSec.cols  = 8;
     for (int i = 1; i <= 8; ++i)
         multiEnvSec.knobs.push_back (&addKnob ("czRate" + juce::String (i), "R" + juce::String (i)));
     for (int i = 1; i <= 8; ++i)
@@ -255,20 +317,67 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     multiEnvSec.knobs.push_back (&addKnob ("czAmount", "Amt"));
     multiEnvSec.knobs.push_back (&addKnob ("czSustain", "Sus", 0));
 
-    // Index order below is referenced by resized().
-    sections = { oscA, oscB, mixer, filter, envelope, lfo, modEnv, filterEnv,   // 0..7
-                 stereo, comp, delaySec, glideSec, lfo2, unison, filter2, drive, // 8..15
-                 filter2Env, multiEnvSec };                                      // 16, 17
+    // --- LFOs ---
+    lfo.title  = "LFO";
+    lfo.cols   = 2;
+    lfo.combos = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames) };
+    lfo.knobs  = { &addKnob ("lfoRate", "Rate") };
 
-    // --- Modulation matrix (6 slots) ---
+    lfo2.title  = "LFO 2";
+    lfo2.cols   = 2;
+    lfo2.combos = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames) };
+    lfo2.knobs  = { &addKnob ("lfo2Rate", "Rate") };
+
+    // --- Overdrive ---
+    drive.title  = "Overdrive";
+    drive.cols   = 5;
+    drive.combos = { &addCombo ("driveType",
+                       { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz", "Rectify",
+                         "Wavefold", "Foldback" }) };
+    drive.knobs  = { &addKnob ("drive", "Drive"), &addKnob ("bias", "Bias"),
+                     &addKnob ("gain", "Gain"), &addKnob ("crushBits", "Crush"),
+                     &addKnob ("downsample", "Downsmpl") };
+
+    // --- Compressor ---
+    comp.title = "Compressor";
+    comp.cols  = 5;
+    comp.knobs = { &addKnob ("compThreshold", "Thr"), &addKnob ("compRatio", "Ratio"),
+                   &addKnob ("compAttack", "Atk"), &addKnob ("compRelease", "Rel"),
+                   &addKnob ("compMakeup", "Gain") };
+
+    // --- Delay ---
+    delaySec.title  = "Delay";
+    delaySec.cols   = 5;
+    delaySec.combos = { &addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" }),
+                        &addCombo ("delaySyncL", kSyncNames), &addCombo ("delaySyncR", kSyncNames) };
+    delaySec.knobs  = { &addKnob ("delayTimeL", "Time L"), &addKnob ("delayTimeR", "Time R"),
+                        &addKnob ("delayFeedback", "Fbk"), &addKnob ("delayMix", "Mix"),
+                        &addKnob ("delayDuck", "Duck") };
+}
+
+PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
+    : juce::AudioProcessorEditor (&p), proc (p)
+{
+    setLookAndFeel (&lnf);
+
+    addAndMakeVisible (initButton);
+    initButton.onClick = [this]
+    {
+        for (auto* param : proc.getParameters())
+            param->setValueNotifyingHost (param->getDefaultValue());
+    };
+
+    buildSections();
+
+    // --- Modulation matrix widgets (hosted on the Modulation tab) ---
     for (int i = 0; i < kNumModRows; ++i)
     {
         const auto s = juce::String (i + 1);
 
         modSrcBox[i].addItemList (kSrcNames, 1);
         modDestBox[i].addItemList (kDstNames, 1);
-        addAndMakeVisible (modSrcBox[i]);
-        addAndMakeVisible (modDestBox[i]);
+        matrixHolder.addAndMakeVisible (modSrcBox[i]);
+        matrixHolder.addAndMakeVisible (modDestBox[i]);
 
         modSrcAtt[i]  = std::make_unique<ComboBoxAttachment> (proc.apvts, "mod" + s + "Source", modSrcBox[i]);
         modDestAtt[i] = std::make_unique<ComboBoxAttachment> (proc.apvts, "mod" + s + "Dest",   modDestBox[i]);
@@ -276,99 +385,66 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         modDepthSlider[i].setSliderStyle (juce::Slider::LinearHorizontal);
         modDepthSlider[i].setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 16);
         modDepthSlider[i].setNumDecimalPlacesToDisplay (2);
-        addAndMakeVisible (modDepthSlider[i]);
+        matrixHolder.addAndMakeVisible (modDepthSlider[i]);
         modDepthAtt[i] = std::make_unique<SliderAttachment> (proc.apvts, "mod" + s + "Depth", modDepthSlider[i]);
     }
+    matrixHolder.onResized = [this] { layoutMatrix(); };
 
-    resized();   // computes bounds + window size
+    // --- Assemble tabs ---
+    tabs.setTabBarDepth (30);
+    tabs.setColour (juce::TabbedComponent::backgroundColourId, kBg);
+    tabs.setColour (juce::TabbedComponent::outlineColourId, kCardEdge);
+    addAndMakeVisible (tabs);
+
+    struct Page { juce::String name; std::vector<Section*> secs; juce::Component* trailing; juce::String trailingTitle; int trailingH; };
+    const int matrixH = kHeaderH + (kNumModRows / 2) * kMatrixRowH + kCardPad * 2;
+
+    std::vector<Page> layout {
+        { "Oscillators", { &oscA, &oscB, &mixer, &unison, &glideSec, &stereo }, nullptr, {}, 0 },
+        { "Filters",     { &filter, &filter2, &filterEnv, &filter2Env },        nullptr, {}, 0 },
+        { "Envelopes",   { &envelope, &modEnv, &multiEnvSec },                   nullptr, {}, 0 },
+        { "Modulation",  { &lfo, &lfo2 }, &matrixHolder,
+          "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
+        { "FX",          { &drive, &comp, &delaySec },                          nullptr, {}, 0 },
+    };
+
+    for (auto& pg : layout)
+    {
+        auto panel = std::make_unique<SectionPanel>();
+        for (auto* sec : pg.secs)
+            panel->addSection (*sec);
+        if (pg.trailing != nullptr)
+            panel->setTrailing (pg.trailing, pg.trailingH, pg.trailingTitle);
+
+        auto scroller = std::make_unique<ScrollPanel>();
+        scroller->panel = panel.get();
+        scroller->setViewedComponent (panel.get(), false);
+        scroller->setScrollBarsShown (true, false);
+
+        tabs.addTab (pg.name, kBg, scroller.get(), false);
+
+        pages.push_back (std::move (panel));
+        scrollers.push_back (std::move (scroller));
+    }
+
+    setResizable (true, true);
+    setResizeLimits (720, 460, 2200, 1500);
+    setSize (1000, 640);
 }
 
-void PDHybridEditor::resized()
+PDHybridEditor::~PDHybridEditor()
 {
-    // Height a section needs when laid out at the given pixel width.
-    auto sectionHeight = [] (const Section& s, int widthPx)
-    {
-        const int cols = juce::jmax (1, widthPx / kCellW);
-        const int rows = (static_cast<int> (s.knobs.size()) + cols - 1) / cols;
-        int h = kHeaderH;
-        if (! s.combos.empty()) h += kComboRowH;
-        h += rows * kCellH + kPad;
-        return h;
-    };
+    tabs.clearTabs();     // release content components before members are destroyed
+    setLookAndFeel (nullptr);
+}
 
-    auto layoutSection = [] (Section& s, juce::Rectangle<int> bounds)
-    {
-        s.bounds = bounds;
-        auto r = bounds;
-        r.removeFromTop (kHeaderH);   // title painted separately
-
-        if (! s.combos.empty())
-        {
-            auto comboRow = r.removeFromTop (kComboRowH).reduced (3, 2);
-            const int cw = comboRow.getWidth() / static_cast<int> (s.combos.size());
-            for (auto* c : s.combos)
-                c->setBounds (comboRow.removeFromLeft (cw).reduced (2, 0));
-        }
-
-        auto content = r.reduced (kPad / 2, 0);
-        const int cols = juce::jmax (1, bounds.getWidth() / kCellW);
-        std::size_t i = 0;
-        while (i < s.knobs.size())
-        {
-            auto row = content.removeFromTop (kCellH);
-            for (int c = 0; c < cols && i < s.knobs.size(); ++c, ++i)
-            {
-                auto cell = row.removeFromLeft (kCellW);
-                s.knobs[i]->label.setBounds  (cell.removeFromTop (kLabelH));
-                s.knobs[i]->slider.setBounds (cell);
-            }
-        }
-    };
-
-    auto stackColumn = [&] (int x, int yTop, int widthPx, std::vector<int> idx) -> int
-    {
-        int y = yTop;
-        for (int i : idx)
-        {
-            const int h = sectionHeight (sections[i], widthPx);
-            layoutSection (sections[i], { x, y, widthPx, h });
-            y += h + kPad;
-        }
-        return y;
-    };
-
-    const int w1 = 3 * kCellW, w2 = 4 * kCellW, w3 = 1 * kCellW, w4 = 4 * kCellW;
-    int rightEdge = 0;
-
-    // Band 1: Voice/Motion | Oscillators | Mix | Filters
-    int x = kPad;
-    const int y1 = kTitleH + kPad;
-    int b1 = y1;
-    b1 = juce::jmax (b1, stackColumn (x, y1, w1, { 11, 13, 8 }));  x += w1 + kPad;  // Glide, Unison, Stereo/Drift
-    b1 = juce::jmax (b1, stackColumn (x, y1, w2, { 0, 1 }));       x += w2 + kPad;  // Osc A, Osc B
-    b1 = juce::jmax (b1, stackColumn (x, y1, w3, { 2 }));          x += w3 + kPad;  // Mixer
-    b1 = juce::jmax (b1, stackColumn (x, y1, w4, { 3, 14 }));      x += w4 + kPad;  // Filter, Filter 2
-    rightEdge = juce::jmax (rightEdge, x);
-
-    // Band 2: Envelopes | LFOs | Output/FX
-    x = kPad;
-    const int y2 = b1 + kPad;
-    int b2 = y2;
-    b2 = juce::jmax (b2, stackColumn (x, y2, w2, { 4, 7, 16, 6 })); x += w2 + kPad;  // Amp / Filter A / Filter B / Mod env
-    b2 = juce::jmax (b2, stackColumn (x, y2, 2 * kCellW, { 5, 12 })); x += 2 * kCellW + kPad; // LFO, LFO 2
-    b2 = juce::jmax (b2, stackColumn (x, y2, w4, { 15, 9, 10 }));  x += w4 + kPad;  // Overdrive, Compressor, Delay
-    rightEdge = juce::jmax (rightEdge, x);
-
-    // Band 3: CZ multi-stage envelope, 8 columns so rates/levels align in rows.
-    const int b3 = stackColumn (kPad, b2 + kPad, 8 * kCellW, { 17 });
-    rightEdge = juce::jmax (rightEdge, kPad + 8 * kCellW + kPad);
-
-    // Band 4: Modulation matrix (2 columns x 5 rows, 10 slots).
+void PDHybridEditor::layoutMatrix()
+{
     const int matRows = kNumModRows / 2;
-    const int matW = rightEdge - kPad - kPad;
-    matrixBounds = { kPad, b3 + kPad, matW, kHeaderH + matRows * kMatrixRowH + kPad };
-    auto marea = matrixBounds;
+    auto marea = matrixHolder.getLocalBounds();
     marea.removeFromTop (kHeaderH);
+    marea = marea.reduced (kCardPad, kCardPad);
+
     for (int rowI = 0; rowI < matRows; ++rowI)
     {
         auto row = marea.removeFromTop (kMatrixRowH).reduced (2, 2);
@@ -377,46 +453,29 @@ void PDHybridEditor::resized()
         {
             const int idx = rowI * 2 + colI;
             auto cell = row.removeFromLeft (half).reduced (3, 0);
-            modSrcBox[idx].setBounds  (cell.removeFromLeft (92));
+            modSrcBox[idx].setBounds  (cell.removeFromLeft (100));
             cell.removeFromLeft (4);
-            modDestBox[idx].setBounds (cell.removeFromLeft (92));
-            cell.removeFromLeft (4);
-            modDepthSlider[idx].setBounds (cell.removeFromLeft (juce::jmin (cell.getWidth(), 140)));
+            modDestBox[idx].setBounds (cell.removeFromLeft (100));
+            cell.removeFromLeft (6);
+            modDepthSlider[idx].setBounds (cell);
         }
     }
+}
 
-    setSize (rightEdge + kPad, matrixBounds.getBottom() + kPad);
-
-    initButton.setBounds (rightEdge - 68, (kTitleH - 22) / 2, 64, 22);
+void PDHybridEditor::resized()
+{
+    auto r = getLocalBounds();
+    auto top = r.removeFromTop (kTopBar);
+    initButton.setBounds (top.getRight() - 76, (kTopBar - 26) / 2, 64, 26);
+    tabs.setBounds (r);
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff20242b));
+    g.fillAll (kBg);
 
-    g.setColour (juce::Colours::white);
-    g.setFont (juce::Font (20.0f, juce::Font::bold));
-    g.drawText ("PD Hybrid Synth", getLocalBounds().removeFromTop (kTitleH).reduced (kPad, 0),
-                juce::Justification::centredLeft);
-
-    g.setFont (juce::Font (12.0f, juce::Font::bold));
-    for (const auto& s : sections)
-    {
-        auto header = s.bounds.withHeight (kHeaderH);
-        g.setColour (juce::Colour (0xff2c3440));
-        g.fillRect (header);
-        g.setColour (juce::Colour (0xff8fb7ff));
-        g.drawText (" " + s.title, header, juce::Justification::centredLeft);
-        g.setColour (juce::Colour (0xff2c3440));
-        g.drawRect (s.bounds, 1);
-    }
-
-    auto mh = matrixBounds.withHeight (kHeaderH);
-    g.setColour (juce::Colour (0xff2c3440));
-    g.fillRect (mh);
-    g.setColour (juce::Colour (0xff8fb7ff));
-    g.drawText (" Modulation Matrix   (Source -> Destination x Depth)", mh,
-                juce::Justification::centredLeft);
-    g.setColour (juce::Colour (0xff2c3440));
-    g.drawRect (matrixBounds, 1);
+    auto top = getLocalBounds().removeFromTop (kTopBar);
+    g.setColour (kTitleCol);
+    g.setFont (juce::Font (21.0f, juce::Font::bold));
+    g.drawText ("  PD Hybrid Synth", top, juce::Justification::centredLeft);
 }

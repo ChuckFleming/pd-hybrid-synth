@@ -305,13 +305,19 @@ void Voice::renderBlock (float* left, float* right, int numSamples)
             const float s = renderOneSample();
             left[done + i]  += static_cast<float> (s * panL_);
             right[done + i] += static_cast<float> (s * panR_);
-            lfo_.processSample();    // advance modulation sources in sync
-            lfo2_.processSample();
+            // Envelopes advance per sample (cheap when sustaining, and their
+            // shapes are short-lived); they are only read at the next chunk.
             env2_.processSample();
             filterEnv_.processSample();
             filter2Env_.processSample();
             multiEnv_.processSample();
         }
+
+        // LFO values are read only once per control chunk, so advance them by
+        // the whole chunk instead of computing a waveform every sample. advance()
+        // is exactly equivalent to per-sample stepping (see modulation tests).
+        lfo_.advance (chunk);
+        lfo2_.advance (chunk);
 
         done += chunk;
     }

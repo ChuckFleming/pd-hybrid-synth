@@ -109,9 +109,9 @@ void Voice::applyModulation() noexcept
     // Analog drift: apply the current random-walk values (advanced per block by
     // advanceDrift) to pitch, PD amount and filter cutoff for an "unstable
     // analog" feel driven entirely by the single drift knob.
-    const double driftSemis  = params_.drift * driftPitch_ * 0.45;   // +/- 0.45 semitone
-    const double driftPdAmt  = params_.drift * driftPd_    * 0.18;   // +/- 0.18 DCW
-    const double driftCutOct = params_.drift * driftCut_   * 0.15;   // +/- 0.15 octave
+    const double driftSemis  = params_.drift * driftPitch_ * 2.0;    // +/- 2 semitones
+    const double driftPdAmt  = params_.drift * driftPd_    * 0.6;    // +/- 0.6 DCW
+    const double driftCutOct = params_.drift * driftCut_   * 1.0;    // +/- 1 octave
 
     // Pitch (matrix in semitones, +/-24 at full depth). Each unit applies its
     // own octave/semi/fine tuning on top of this note pitch.

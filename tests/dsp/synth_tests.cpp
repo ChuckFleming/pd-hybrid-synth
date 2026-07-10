@@ -527,9 +527,10 @@ TEST_CASE ("Analog drift wanders the voice audibly without breaking pitch", "[sy
         sumSq += (wet[i] - dry[i]) * (wet[i] - dry[i]);
     REQUIRE (std::sqrt (sumSq / wet.size()) > 5e-3);
 
-    // ...but stays musical: the pitch is still within a semitone of A4.
+    // ...but stays recognisable: the dominant pitch still sits near A4 even
+    // though the drift is now deep (+/- 2 semitones at full).
     auto spec = computeSpectrum (wet, sr);
-    REQUIRE (spec.peakFrequency() == Approx (440.0).epsilon (0.06));
+    REQUIRE (spec.peakFrequency() == Approx (440.0).epsilon (0.15));
 
     // The wander speed is buffer-size independent: the RMS of a large-block
     // render is close to a small-block render (both drift at the same rate).

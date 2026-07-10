@@ -247,6 +247,9 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("masterLevel", "Master Level", juce::NormalisableRange<float> (-24.0f, 12.0f), 0.0f, db);
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "masterLimiter", 1 }, "Master Limiter", true));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "osQuality", 1 }, "Oversampling",
+        juce::StringArray { "1x", "2x", "4x" }, 2));   // default 4x
 
     // --- Glide / portamento ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
@@ -430,6 +433,9 @@ void PDHybridAudioProcessor::pushParams()
     p.sustain   = apvts.getRawParameterValue ("sustain")->load();
     p.release   = apvts.getRawParameterValue ("release")->load();
     p.gain      = apvts.getRawParameterValue ("gain")->load();
+    const int osIdx = static_cast<int> (apvts.getRawParameterValue ("osQuality")->load());
+    const int osFactor[] = { 1, 2, 4 };
+    p.oscOversampling = osFactor[juce::jlimit (0, 2, osIdx)];
     p.pan       = apvts.getRawParameterValue ("pan")->load();
     p.panSpread = apvts.getRawParameterValue ("panSpread")->load();
     p.drift     = apvts.getRawParameterValue ("drift")->load();

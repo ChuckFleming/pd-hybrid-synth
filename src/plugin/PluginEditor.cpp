@@ -387,8 +387,9 @@ void PDHybridEditor::buildSections()
 
     // --- Master output ---
     masterSec.title  = "Master";
-    masterSec.cols   = 2;
-    masterSec.combos = { &addCombo ("masterLimiter", { "Limiter Off", "Limiter On" }) };
+    masterSec.cols   = 3;
+    masterSec.combos = { &addCombo ("masterLimiter", { "Limiter Off", "Limiter On" }),
+                         &addCombo ("osQuality", { "OS 1x", "OS 2x", "OS 4x" }) };
     masterSec.knobs  = { &addKnob ("masterLevel", "Level", 1) };
 }
 

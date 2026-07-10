@@ -78,6 +78,16 @@ void Voice::setParams (const SynthParams& params)
 
     filterA_.setType (params.filterType);
     filterB_.setType (params.filter2Type);
+
+    // Oversampling changes rebuild the internal FIR state, so only apply on a
+    // real change (setParams runs every block).
+    if (params.oscOversampling != oversampling_)
+    {
+        oversampling_ = params.oscOversampling;
+        unitA_.setOversampling (oversampling_);
+        unitB_.setOversampling (oversampling_);
+        amp_.setOversampling (oversampling_);
+    }
 }
 
 void Voice::applyModulation() noexcept

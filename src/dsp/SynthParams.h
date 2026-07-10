@@ -119,6 +119,8 @@ struct SynthParams
 
     double gain    = 0.80;
 
+    int    oscOversampling = 4;   // PD oscillator + overdrive oversampling (1/2/4)
+
     // Stereo placement: master pan plus a per-voice spread by keyboard position
     // (low notes left, high notes right) for a wider sound.
     double pan       = 0.0;    // -1 = hard left .. +1 = hard right

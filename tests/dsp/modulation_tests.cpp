@@ -233,3 +233,27 @@ TEST_CASE ("Overdrive on/off bypasses the saturator", "[mod][voice][drive]")
     REQUIRE (diff > 1.0);          // bypass clearly changes the tone
     REQUIRE (peakAbs (clean) < peakAbs (driven) + 1.0e-3f);   // no added drive gain
 }
+
+TEST_CASE ("Oscillator oversampling factor changes the anti-aliasing", "[voice][oversampling]")
+{
+    const double sr = 48000.0;
+
+    SynthParams hi;                 // PD osc, rich harmonics, high note -> aliasing differs
+    hi.oscAType = OscType::PhaseDistortion;
+    hi.oscAAmount = 0.8;
+    hi.sustain = 1.0;
+    hi.oscOversampling = 4;
+
+    SynthParams lo = hi;
+    lo.oscOversampling = 1;
+
+    const auto os4 = renderVoice (hi, sr, 96, 32);
+    const auto os1 = renderVoice (lo, sr, 96, 32);
+
+    double diff = 0.0;
+    for (std::size_t i = 0; i < os4.size(); ++i)
+        diff += std::abs (os4[i] - os1[i]);
+
+    REQUIRE_FALSE (hasBadValues (os1));
+    REQUIRE (diff > 1.0e-3);        // the factor really reaches the DSP
+}

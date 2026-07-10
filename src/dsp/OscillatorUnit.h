@@ -21,6 +21,7 @@ public:
     void reset         () noexcept;
 
     void setType       (OscType type) noexcept;
+    void setOversampling (int factor) noexcept  { pd_.setOversampling (factor); }
     void setPdWave     (PdWave wave) noexcept   { pd_.setWave (wave); }
     void setEq         (double lowDb, double midDb, double highDb) noexcept
     { eq_.setGains (lowDb, midDb, highDb); }

@@ -71,6 +71,7 @@ private:
 
     int    note_      = -1;
     double baseFreq_  = 440.0;
+    int    oversampling_ = 4;   // current osc/amp oversampling factor
 
     // Glide state (log-domain ramp from start to target frequency).
     double glideStartHz_  = 440.0;

@@ -6,6 +6,7 @@
 #include "dsp/Delay.h"
 #include "dsp/GlobalEq.h"
 #include "dsp/MonoBass.h"
+#include "PresetManager.h"
 #include <vector>
 
 /**
@@ -46,7 +47,11 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
+    PresetManager& getPresetManager() noexcept { return presets; }
+
 private:
+    PresetManager presets { apvts };   // constructed after apvts (declaration order)
+
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
     void pushParams();

@@ -97,7 +97,14 @@ private:
     SynthLookAndFeel lnf;
 
     juce::TextButton initButton { "Init" };
+    juce::TextButton saveButton { "Save" };
+    juce::TextButton prevButton { "<" };
+    juce::TextButton nextButton { ">" };
+    juce::ComboBox   presetBox;
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
+
+    void refreshPresetList();
+    void showSavePresetDialog();
 
     std::vector<std::unique_ptr<LabeledKnob>> knobs;
     std::vector<std::unique_ptr<juce::ComboBox>> combos;

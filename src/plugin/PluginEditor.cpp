@@ -394,6 +394,23 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
             param->setValueNotifyingHost (param->getDefaultValue());
     };
 
+    // Preset browser: combo to pick, </> to step, Save to store the current state.
+    addAndMakeVisible (presetBox);
+    presetBox.setTextWhenNothingSelected ("Presets");
+    presetBox.onChange = [this]
+    {
+        const auto name = presetBox.getText();
+        if (name.isNotEmpty() && name != proc.getPresetManager().getCurrentPresetName())
+            proc.getPresetManager().loadPreset (name);
+    };
+    addAndMakeVisible (prevButton);
+    prevButton.onClick = [this] { proc.getPresetManager().loadByOffset (-1); refreshPresetList(); };
+    addAndMakeVisible (nextButton);
+    nextButton.onClick = [this] { proc.getPresetManager().loadByOffset (1); refreshPresetList(); };
+    addAndMakeVisible (saveButton);
+    saveButton.onClick = [this] { showSavePresetDialog(); };
+    refreshPresetList();
+
     buildSections();
 
     // --- Modulation matrix widgets (hosted on the Modulation tab) ---
@@ -489,11 +506,52 @@ void PDHybridEditor::layoutMatrix()
     }
 }
 
+void PDHybridEditor::refreshPresetList()
+{
+    presetBox.clear (juce::dontSendNotification);
+    const auto names = proc.getPresetManager().getPresetNames();
+    presetBox.addItemList (names, 1);
+    const auto current = proc.getPresetManager().getCurrentPresetName();
+    const int idx = names.indexOf (current);
+    if (idx >= 0)
+        presetBox.setSelectedItemIndex (idx, juce::dontSendNotification);
+}
+
+void PDHybridEditor::showSavePresetDialog()
+{
+    auto* aw = new juce::AlertWindow ("Save Preset", "Preset name:",
+                                      juce::MessageBoxIconType::NoIcon);
+    aw->addTextEditor ("name", proc.getPresetManager().getCurrentPresetName());
+    aw->addButton ("Save",   1, juce::KeyPress (juce::KeyPress::returnKey));
+    aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    aw->enterModalState (true, juce::ModalCallbackFunction::create ([this, aw] (int result)
+    {
+        if (result == 1)
+        {
+            const auto name = aw->getTextEditorContents ("name").trim();
+            if (name.isNotEmpty())
+            {
+                proc.getPresetManager().savePreset (name);
+                refreshPresetList();
+            }
+        }
+    }), true);
+}
+
 void PDHybridEditor::resized()
 {
     auto r = getLocalBounds();
     auto top = r.removeFromTop (kTopBar);
-    initButton.setBounds (top.getRight() - 76, (kTopBar - 26) / 2, 64, 26);
+    const int y = (kTopBar - 26) / 2;
+
+    int x = top.getRight() - 76;
+    initButton.setBounds (x, y, 64, 26);
+    x -= 70;  saveButton.setBounds (x, y, 64, 26);
+    x -= 32;  nextButton.setBounds (x, y, 28, 26);
+    x -= 32;  prevButton.setBounds (x, y, 28, 26);
+    x -= 190; presetBox.setBounds  (x, y, 184, 26);
+
     tabs.setBounds (r);
 }
 

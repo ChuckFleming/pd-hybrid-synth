@@ -68,6 +68,7 @@ juce_add_plugin(PDHybridSynth
 target_sources(PDHybridSynth PRIVATE
     src/plugin/PluginProcessor.cpp
     src/plugin/PluginEditor.cpp
+    src/plugin/PresetManager.cpp
 )
 target_include_directories(PDHybridSynth PRIVATE src)
 target_compile_definitions(PDHybridSynth PRIVATE

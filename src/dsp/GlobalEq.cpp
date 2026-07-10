@@ -48,6 +48,8 @@ void GlobalEq::setBand (int band, double freqHz, double gainDb) noexcept
 {
     if (band < 0 || band >= kNumBands)
         return;
+    if (freqHz == freq_[band] && gainDb == gain_[band])
+        return;   // unchanged: skip the design() transcendentals
 
     freq_[band] = freqHz;
     gain_[band] = gainDb;

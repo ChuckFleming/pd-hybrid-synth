@@ -42,6 +42,11 @@ private:
     OscType type_    = OscType::PhaseDistortion;
     double  tuneMul_ = 1.0;
     double  baseHz_  = 440.0;
+
+    // Cached tuning inputs so setTuning can skip the pow() when unchanged.
+    int    tuneOct_  = -1000;
+    int    tuneSemi_ = -1000;
+    double tuneFine_ = -1.0e9;
 };
 
 } // namespace pdhybrid

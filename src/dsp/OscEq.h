@@ -22,8 +22,11 @@ public:
     float processSample (float x) noexcept;
 
 private:
+    void redesign() noexcept;   // recompute coefficients + bypass flag
+
     double sampleRate_ = 44100.0;
     double lowDb_ = 0.0, midDb_ = 0.0, highDb_ = 0.0;
+    bool   bypass_ = true;      // true when all bands are ~0 dB (the default)
 
     Biquad low_, mid_, high_;
 };

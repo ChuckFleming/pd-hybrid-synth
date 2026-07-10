@@ -17,11 +17,18 @@ void MultiStageEnvelope::setSampleRate (double sampleRateHz) noexcept
 {
     if (sampleRateHz > 0.0)
         sampleRate_ = sampleRateHz;
+
+    stages_.reserve (8);   // avoid audio-thread reallocation in setStages
 }
 
 void MultiStageEnvelope::setStages (const std::vector<EnvStage>& stages, int sustainIndex)
 {
-    stages_       = stages;
+    setStages (stages.data(), static_cast<int> (stages.size()), sustainIndex);
+}
+
+void MultiStageEnvelope::setStages (const EnvStage* stages, int count, int sustainIndex) noexcept
+{
+    stages_.assign (stages, stages + count);   // reuses capacity once reserved
     sustainIndex_ = sustainIndex;
     loopEnabled_  = false;
 }

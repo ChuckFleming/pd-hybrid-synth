@@ -2,6 +2,7 @@
 
 #include "Oversampler.h"
 #include "Waveshaper.h"
+#include <cmath>
 
 namespace pdhybrid {
 
@@ -19,7 +20,11 @@ public:
     void setBias        (double bias) noexcept         { shaper_.setBias (bias); }
     void setCurve       (ShaperCurve c) noexcept       { shaper_.setCurve (c); }
     void setDcBlock     (bool on) noexcept             { dcBlock_ = on; }
-    void setCrushBits   (double bits) noexcept         { crushBits_ = bits; }   // >= 16 = off
+    void setCrushBits   (double bits) noexcept                                   // >= 16 = off
+    {
+        crushBits_   = bits;
+        crushLevels_ = std::pow (2.0, bits - 1.0);   // cached; avoids per-sample pow
+    }
     void setDownsample  (int factor) noexcept          { downsample_ = factor < 1 ? 1 : factor; }
 
     void reset() noexcept
@@ -45,7 +50,8 @@ private:
     static constexpr double kDcR = 0.9995;
 
     // Lo-fi "dirt" stages (run at base rate so their aliasing is intentional).
-    double crushBits_  = 16.0;   // >= 16 = no bit reduction
+    double crushBits_   = 16.0;   // >= 16 = no bit reduction
+    double crushLevels_ = 32768.0; // 2^(crushBits_-1), cached
     int    downsample_ = 1;      // 1 = no sample-rate reduction
     int    dsCounter_  = 0;
     float  dsHeld_     = 0.0f;

@@ -640,13 +640,18 @@ void PDHybridAudioProcessor::renderSegment (juce::AudioBuffer<float>& buffer,
     engine.renderBlock (scratchL.data(), scratchR.data(), numSamples);
 
     // Mono sub-bass, summed at centre into both oscillator channels (pre-FX).
-    for (int i = 0; i < numSamples; ++i)
-        scratchBass[i] = 0.0f;
-    monoBass.renderBlock (scratchBass.data(), numSamples);
-    for (int i = 0; i < numSamples; ++i)
+    // Skipped entirely when the layer is off (its default) to avoid the scratch
+    // zero-fill + mix loops.
+    if (monoBass.enabled())
     {
-        scratchL[i] += scratchBass[i];
-        scratchR[i] += scratchBass[i];
+        for (int i = 0; i < numSamples; ++i)
+            scratchBass[i] = 0.0f;
+        monoBass.renderBlock (scratchBass.data(), numSamples);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            scratchL[i] += scratchBass[i];
+            scratchR[i] += scratchBass[i];
+        }
     }
 
     const int numCh = buffer.getNumChannels();

@@ -31,6 +31,9 @@ public:
     // General configuration. sustainIndex = stage to hold on after completing
     // (-1 = no sustain / one-shot).
     void setStages (const std::vector<EnvStage>& stages, int sustainIndex);
+    // Allocation-free overload for the audio thread (copies into the preallocated
+    // stage buffer; reuses capacity when count <= the reserved size).
+    void setStages (const EnvStage* stages, int count, int sustainIndex) noexcept;
     void setLoop   (bool enabled, int startIndex, int endIndex) noexcept;
 
     // ADSR preset: attack->1, decay->sustain, hold, release->0.

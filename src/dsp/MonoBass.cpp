@@ -15,6 +15,7 @@ void MonoBass::setSampleRate (double sampleRateHz) noexcept
     main_.setSampleRate (sampleRateHz);
     sub_.setSampleRate (sampleRateHz);
     env_.setSampleRate (sampleRateHz);
+    held_.reserve (128);   // avoid audio-thread reallocation on note-on
     setHarmonics (harmonics_);
 }
 
@@ -117,26 +118,37 @@ void MonoBass::allNotesOff() noexcept
 
 void MonoBass::renderBlock (float* mono, int numSamples) noexcept
 {
-    if (! enabled_)
+    if (! enabled_ || ! env_.isActive())
         return;
 
-    const double coef   = glideCoef();
-    const double tgtLog = std::log (targetHz_);
+    const double coef      = glideCoef();
+    const double tgtLog     = std::log (targetHz_);
+    const double chunkDecay = 1.0 - coef;         // per-sample one-pole retention
+    constexpr int kCtrl = 32;
 
-    for (int i = 0; i < numSamples; ++i)
+    for (int done = 0; done < numSamples; )
     {
-        curLogHz_ += coef * (tgtLog - curLogHz_);
+        const int chunk = std::min (kCtrl, numSamples - done);
+
+        // Advance the glide across the whole chunk in closed form, then set the
+        // oscillator frequencies once (per-sample setFrequency was the cost).
+        curLogHz_ = tgtLog + (curLogHz_ - tgtLog) * std::pow (chunkDecay, chunk);
         const double hz = std::exp (curLogHz_) * tuneMul_;
         main_.setFrequency (hz);
         sub_.setFrequency (hz * 0.5);
 
-        double s = main_.processSample() + 0.5 * sub_.processSample();
-        s *= 0.6;                                   // headroom before shaping
-        s = fold_.process (static_cast<float> (s));
-        s = sat_.process (static_cast<float> (s));
+        for (int i = 0; i < chunk; ++i)
+        {
+            double s = main_.processSample() + 0.5 * sub_.processSample();
+            s *= 0.6;                                   // headroom before shaping
+            s = fold_.process (static_cast<float> (s));
+            s = sat_.process (static_cast<float> (s));
 
-        const double e = env_.processSample();
-        mono[i] += static_cast<float> (s * e * velGain_ * level_);
+            const double e = env_.processSample();
+            mono[done + i] += static_cast<float> (s * e * velGain_ * level_);
+        }
+
+        done += chunk;
     }
 }
 

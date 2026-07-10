@@ -33,6 +33,10 @@ void OscillatorUnit::setType (OscType type) noexcept
 
 void OscillatorUnit::setTuning (int octave, int semitone, double fineCents) noexcept
 {
+    if (octave == tuneOct_ && semitone == tuneSemi_ && fineCents == tuneFine_)
+        return;   // unchanged: skip the pow() (base frequency is re-applied elsewhere)
+
+    tuneOct_ = octave; tuneSemi_ = semitone; tuneFine_ = fineCents;
     const double semis = octave * 12.0 + semitone + fineCents / 100.0;
     tuneMul_ = std::pow (2.0, semis / 12.0);
     setBaseFrequency (baseHz_);

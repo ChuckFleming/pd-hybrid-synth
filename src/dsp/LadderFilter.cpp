@@ -16,6 +16,8 @@ void LadderFilter::setSampleRate (double sampleRateHz) noexcept
 
 void LadderFilter::setCutoff (double cutoffHz) noexcept
 {
+    if (cutoffHz == cutoff_)
+        return;   // unchanged: skip the tan() in updateCoefficients
     cutoff_ = cutoffHz;
     updateCoefficients();
 }

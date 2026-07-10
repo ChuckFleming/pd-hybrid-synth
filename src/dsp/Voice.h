@@ -7,6 +7,7 @@
 #include "Lfo.h"
 #include "SynthParams.h"
 
+#include <array>
 #include <cstdint>
 
 namespace pdhybrid {
@@ -67,6 +68,7 @@ private:
     Lfo                       lfo2_;
 
     SynthParams params_;
+    std::array<EnvStage, 8> czStages_ { };   // scratch for the CZ envelope (no per-block alloc)
     double sampleRate_ = 44100.0;
 
     int    note_      = -1;

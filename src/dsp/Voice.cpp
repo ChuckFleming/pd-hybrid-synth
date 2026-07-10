@@ -54,12 +54,11 @@ void Voice::setParams (const SynthParams& params)
     filterEnv_.setADSR (params.filterEnvA, params.filterEnvD, params.filterEnvS, params.filterEnvR);
     filter2Env_.setADSR (params.filter2EnvA, params.filter2EnvD, params.filter2EnvS, params.filter2EnvR);
 
-    // CZ multi-stage envelope: 8 {level,time} stages, one sustain stage.
-    std::vector<EnvStage> czStages;
-    czStages.reserve (8);
+    // CZ multi-stage envelope: 8 {level,time} stages, one sustain stage. Built
+    // into a preallocated member array so no heap allocation happens per block.
     for (int i = 0; i < 8; ++i)
-        czStages.push_back ({ params.czLevel[i], params.czRate[i], 0.0 });
-    multiEnv_.setStages (czStages, std::clamp (params.czSustain - 1, 0, 7));
+        czStages_[i] = { params.czLevel[i], params.czRate[i], 0.0 };
+    multiEnv_.setStages (czStages_.data(), 8, std::clamp (params.czSustain - 1, 0, 7));
 
     lfo_.setFrequency (params.lfoRate);
     lfo_.setWaveform (static_cast<LfoWave> (params.lfoWave));

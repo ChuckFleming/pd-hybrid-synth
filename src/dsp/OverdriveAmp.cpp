@@ -33,12 +33,9 @@ float OverdriveAmp::processSample (float x) noexcept
     if (dcBlock_)
         y = applyDcBlock (y);
 
-    // Bit-depth reduction (quantise to 2^(bits-1) levels).
+    // Bit-depth reduction (quantise to 2^(bits-1) levels; levels cached).
     if (crushBits_ < 16.0)
-    {
-        const double levels = std::pow (2.0, crushBits_ - 1.0);
-        y = static_cast<float> (std::round (y * levels) / levels);
-    }
+        y = static_cast<float> (std::round (y * crushLevels_) / crushLevels_);
 
     // Sample-rate reduction (hold each sample for `downsample_` frames).
     if (downsample_ > 1)

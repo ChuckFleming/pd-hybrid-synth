@@ -60,19 +60,24 @@ void Oversampler::reset() noexcept
 {
     for (double& v : upState_)   v = 0.0;
     for (double& v : downState_) v = 0.0;
+    upPos_ = downPos_ = 0;
 }
 
-double Oversampler::firStep (std::vector<double>& state,
+double Oversampler::firStep (std::vector<double>& state, int& pos,
                              const std::vector<double>& taps, double in) noexcept
 {
     const int L = static_cast<int> (taps.size());
-    for (int i = L - 1; i > 0; --i)
-        state[static_cast<std::size_t> (i)] = state[static_cast<std::size_t> (i - 1)];
-    state[0] = in;
+    state[static_cast<std::size_t> (pos)] = in;   // newest sample at pos
 
     double acc = 0.0;
-    for (int i = 0; i < L; ++i)
-        acc += taps[static_cast<std::size_t> (i)] * state[static_cast<std::size_t> (i)];
+    int idx = pos;
+    for (int i = 0; i < L; ++i)                    // taps[0] * newest, taps[1] * prev, ...
+    {
+        acc += taps[static_cast<std::size_t> (i)] * state[static_cast<std::size_t> (idx)];
+        idx = (idx == 0) ? (L - 1) : (idx - 1);
+    }
+
+    pos = (pos == L - 1) ? 0 : (pos + 1);
     return acc;
 }
 
@@ -88,7 +93,7 @@ void Oversampler::upsample (float x, float* highOut) noexcept
     for (int j = 0; j < factor_; ++j)
     {
         const double in = (j == 0) ? static_cast<double> (x) * factor_ : 0.0;
-        highOut[j] = static_cast<float> (firStep (upState_, proto_, in));
+        highOut[j] = static_cast<float> (firStep (upState_, upPos_, proto_, in));
     }
 }
 
@@ -99,7 +104,7 @@ float Oversampler::downsample (const float* highIn) noexcept
 
     double y = 0.0;
     for (int j = 0; j < factor_; ++j)
-        y = firStep (downState_, proto_, static_cast<double> (highIn[j]));
+        y = firStep (downState_, downPos_, proto_, static_cast<double> (highIn[j]));
     return static_cast<float> (y);   // aligned (last-phase) sample
 }
 

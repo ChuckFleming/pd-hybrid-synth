@@ -25,13 +25,17 @@ public:
 
 private:
     void buildPrototype (int tapsPerPhase);
-    static double firStep (std::vector<double>& state,
+    // Circular-buffer FIR: writes `in` at `pos`, accumulates, advances `pos`.
+    // Same arithmetic as a shift register but without the O(L) copy.
+    static double firStep (std::vector<double>& state, int& pos,
                            const std::vector<double>& taps, double in) noexcept;
 
     int                 factor_ = 1;
     std::vector<double> proto_;
     std::vector<double> upState_;
     std::vector<double> downState_;
+    int                 upPos_   = 0;
+    int                 downPos_ = 0;
 };
 
 } // namespace pdhybrid

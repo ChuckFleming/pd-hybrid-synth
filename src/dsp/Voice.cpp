@@ -267,31 +267,44 @@ float Voice::renderOneSample() noexcept
 
 void Voice::renderBlock (float* left, float* right, int numSamples)
 {
-    // Advance glide (log-domain, control rate) before evaluating modulation.
-    if (glidePos_ < 1.0 && glideSamples_ > 0.0)
-    {
-        glidePos_ = std::min (1.0, glidePos_ + numSamples / glideSamples_);
-        const double exp  = params_.glideCurve > 0.0 ? params_.glideCurve : 1.0;
-        const double t    = std::pow (glidePos_, exp);
-        const double logHz = std::log (glideStartHz_)
-                           + t * (std::log (glideTargetHz_) - std::log (glideStartHz_));
-        baseFreq_ = std::exp (logHz);
-    }
-
     advanceDrift (numSamples);
-    applyModulation();   // control-rate: evaluate the matrix once per block
 
-    for (int i = 0; i < numSamples; ++i)
+    // Re-evaluate glide + modulation every kCtrl samples rather than once per
+    // buffer. This keeps cutoff / pitch / amp / pan modulation smooth (no
+    // block-rate zipper) and follows fast envelopes/LFOs closely, independent of
+    // the host's buffer size.
+    constexpr int kCtrl = 32;
+
+    for (int done = 0; done < numSamples; )
     {
-        const float s = renderOneSample();
-        left[i]  += static_cast<float> (s * panL_);
-        right[i] += static_cast<float> (s * panR_);
-        lfo_.processSample();    // advance modulation sources in sync
-        lfo2_.processSample();
-        env2_.processSample();
-        filterEnv_.processSample();
-        filter2Env_.processSample();
-        multiEnv_.processSample();
+        const int chunk = std::min (kCtrl, numSamples - done);
+
+        if (glidePos_ < 1.0 && glideSamples_ > 0.0)
+        {
+            glidePos_ = std::min (1.0, glidePos_ + chunk / glideSamples_);
+            const double exp  = params_.glideCurve > 0.0 ? params_.glideCurve : 1.0;
+            const double t    = std::pow (glidePos_, exp);
+            const double logHz = std::log (glideStartHz_)
+                               + t * (std::log (glideTargetHz_) - std::log (glideStartHz_));
+            baseFreq_ = std::exp (logHz);
+        }
+
+        applyModulation();
+
+        for (int i = 0; i < chunk; ++i)
+        {
+            const float s = renderOneSample();
+            left[done + i]  += static_cast<float> (s * panL_);
+            right[done + i] += static_cast<float> (s * panR_);
+            lfo_.processSample();    // advance modulation sources in sync
+            lfo2_.processSample();
+            env2_.processSample();
+            filterEnv_.processSample();
+            filter2Env_.processSample();
+            multiEnv_.processSample();
+        }
+
+        done += chunk;
     }
 }
 

@@ -6,6 +6,7 @@
 #include "dsp/Delay.h"
 #include "dsp/GlobalEq.h"
 #include "dsp/MonoBass.h"
+#include "dsp/MasterStage.h"
 #include "PresetManager.h"
 #include <vector>
 
@@ -65,6 +66,7 @@ private:
     pdhybrid::Delay       delay;                // global ducking delay
     pdhybrid::GlobalEq    globalEq;             // final master EQ
     pdhybrid::MonoBass    monoBass;             // monophonic sub-bass layer
+    pdhybrid::MasterStage master;               // output level + soft limiter
     std::vector<float>    scratchL, scratchR;   // stereo render buffers
     std::vector<float>    scratchBass;          // mono bass render buffer
     double                pitchBendRangeSemis = 2.0;

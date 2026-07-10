@@ -243,6 +243,11 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("bassRelease", "Bass Release",
         juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), 0.20f, sec);
 
+    // --- Master output ---
+    pf ("masterLevel", "Master Level", juce::NormalisableRange<float> (-24.0f, 12.0f), 0.0f, db);
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "masterLimiter", 1 }, "Master Limiter", true));
+
     // --- Glide / portamento ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "glideMode", 1 }, "Glide Mode",
@@ -351,6 +356,8 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     globalEq.reset();
     monoBass.setSampleRate (sampleRate);
     monoBass.reset();
+    master.setSampleRate (sampleRate);
+    master.reset();
     globalLfo.setSampleRate (sampleRate);
     globalLfo.reset();
     const auto n = static_cast<std::size_t> (juce::jmax (1, samplesPerBlock));
@@ -493,6 +500,9 @@ void PDHybridAudioProcessor::pushParams()
                       apvts.getRawParameterValue ("bassDecay")->load(),
                       apvts.getRawParameterValue ("bassSustain")->load(),
                       apvts.getRawParameterValue ("bassRelease")->load());
+
+    master.setGainDb (apvts.getRawParameterValue ("masterLevel")->load());
+    master.setLimiterEnabled (apvts.getRawParameterValue ("masterLimiter")->load() > 0.5f);
 
     const int lfoSync  = static_cast<int> (apvts.getRawParameterValue ("lfoSync")->load());
     const int lfo2Sync = static_cast<int> (apvts.getRawParameterValue ("lfo2Sync")->load());
@@ -677,6 +687,8 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         if (globalEqOn_)
             globalEq.processStereo (buffer.getWritePointer (0),
                                     buffer.getWritePointer (1), numSamples);
+        master.processStereo (buffer.getWritePointer (0),
+                              buffer.getWritePointer (1), numSamples);
     }
 }
 

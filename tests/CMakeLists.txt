@@ -22,6 +22,7 @@ add_executable(pdhybrid_tests
     dsp/osc_eq_tests.cpp
     dsp/global_eq_tests.cpp
     dsp/mono_bass_tests.cpp
+    dsp/master_stage_tests.cpp
     harness/Fft.cpp
     harness/Spectrum.cpp
 )

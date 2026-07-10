@@ -380,6 +380,12 @@ void PDHybridEditor::buildSections()
                           &addKnob ("geMid1Freq", "M1 Hz", 0), &addKnob ("geMid1Gain", "M1 dB", 1),
                           &addKnob ("geMid2Freq", "M2 Hz", 0), &addKnob ("geMid2Gain", "M2 dB", 1),
                           &addKnob ("geHighFreq", "Hi Hz", 0), &addKnob ("geHighGain", "Hi dB", 1) };
+
+    // --- Master output ---
+    masterSec.title  = "Master";
+    masterSec.cols   = 2;
+    masterSec.combos = { &addCombo ("masterLimiter", { "Limiter Off", "Limiter On" }) };
+    masterSec.knobs  = { &addKnob ("masterLevel", "Level", 1) };
 }
 
 PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
@@ -449,7 +455,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec },                   nullptr, {}, 0 },
         { "Modulation",  { &lfo, &lfo2 }, &matrixHolder,
           "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
-        { "FX",          { &drive, &comp, &delaySec, &globalEqSec },             nullptr, {}, 0 },
+        { "FX",          { &drive, &comp, &delaySec, &globalEqSec, &masterSec }, nullptr, {}, 0 },
     };
 
     for (auto& pg : layout)

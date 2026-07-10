@@ -203,6 +203,8 @@ PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramI
     knob->slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     knob->slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, kKnobW, 14);
     knob->slider.setNumDecimalPlacesToDisplay (decimals);
+    if (auto* p = proc.apvts.getParameter (paramId))
+        knob->slider.setTooltip (p->getName (64));
 
     knob->label.setText (text, juce::dontSendNotification);
     knob->label.setJustificationType (juce::Justification::centred);
@@ -220,6 +222,8 @@ juce::ComboBox& PDHybridEditor::addCombo (const juce::String& paramId,
     auto box = std::make_unique<juce::ComboBox>();
     box->addItemList (items, 1);
     box->setJustificationType (juce::Justification::centredLeft);
+    if (auto* p = proc.apvts.getParameter (paramId))
+        box->setTooltip (p->getName (64));
     comboAttachments.push_back (
         std::make_unique<ComboBoxAttachment> (proc.apvts, paramId, *box));
     combos.push_back (std::move (box));

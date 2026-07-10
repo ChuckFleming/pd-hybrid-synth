@@ -95,6 +95,7 @@ private:
 
     PDHybridAudioProcessor& proc;
     SynthLookAndFeel lnf;
+    juce::TooltipWindow tooltips { this, 600 };
 
     juce::TextButton initButton { "Init" };
     juce::TextButton saveButton { "Save" };

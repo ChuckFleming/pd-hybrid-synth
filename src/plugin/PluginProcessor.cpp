@@ -276,6 +276,15 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::ParameterID { "monoRetrigger", 1 }, "Retrigger", true));
     pf ("pitchBendRange", "Pitch Bend Range",
         juce::NormalisableRange<float> (1.0f, 24.0f), 2.0f, cnt);
+    pf ("masterTune", "Master Tune",
+        juce::NormalisableRange<float> (415.0f, 465.0f), 440.0f,
+        sv ([] (float v) { return juce::String (v, 1) + " Hz"; },
+            [] (const juce::String& t) { return t.getFloatValue(); }));
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "transpose", 1 }, "Transpose", -24, 24, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "velCurve", 1 }, "Velocity Curve",
+        juce::StringArray { "Linear", "Soft", "Hard", "Fixed" }, 0));
 
     // --- Glide / portamento ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
@@ -565,6 +574,9 @@ void PDHybridAudioProcessor::pushParams()
     p.monoRetrigger  = apvts.getRawParameterValue ("monoRetrigger")->load() > 0.5f;
     p.pitchBendRange = apvts.getRawParameterValue ("pitchBendRange")->load();
     pitchBendRangeSemis = p.pitchBendRange;   // used when converting MIDI bend
+    p.masterTuneHz = apvts.getRawParameterValue ("masterTune")->load();
+    p.transpose    = static_cast<int> (apvts.getRawParameterValue ("transpose")->load());
+    velCurve_      = static_cast<int> (apvts.getRawParameterValue ("velCurve")->load());
 
     const int lfoSync  = static_cast<int> (apvts.getRawParameterValue ("lfoSync")->load());
     const int lfo2Sync = static_cast<int> (apvts.getRawParameterValue ("lfo2Sync")->load());
@@ -662,8 +674,16 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
 
     if (msg.isNoteOn())
     {
-        engine.noteOn (msg.getNoteNumber(), msg.getFloatVelocity(), channel);
-        monoBass.noteOn (msg.getNoteNumber(), msg.getFloatVelocity());
+        float vel = msg.getFloatVelocity();
+        switch (velCurve_)
+        {
+            case 1: vel = std::sqrt (vel);       break;   // Soft
+            case 2: vel = vel * vel;             break;   // Hard
+            case 3: vel = 1.0f;                  break;   // Fixed
+            default:                             break;   // Linear
+        }
+        engine.noteOn (msg.getNoteNumber(), vel, channel);
+        monoBass.noteOn (msg.getNoteNumber(), vel);
     }
     else if (msg.isNoteOff())
     {

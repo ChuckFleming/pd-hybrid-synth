@@ -11,6 +11,11 @@ double midiNoteToHz (int note) noexcept
     return 440.0 * std::pow (2.0, (note - 69) / 12.0);
 }
 
+double Voice::noteHz (int note) const noexcept
+{
+    return params_.masterTuneHz * std::pow (2.0, (note + params_.transpose - 69) / 12.0);
+}
+
 void Voice::prepare (double sampleRate)
 {
     sampleRate_ = sampleRate;
@@ -222,7 +227,7 @@ void Voice::advanceDrift (int numSamples) noexcept
 void Voice::start (int note, float velocity, double glideFromHz, double glideSamples)
 {
     note_          = note;
-    glideTargetHz_ = midiNoteToHz (note);
+    glideTargetHz_ = noteHz (note);
     if (glideFromHz > 0.0 && glideSamples > 0.5)
     {
         glideStartHz_ = glideFromHz;
@@ -258,7 +263,7 @@ void Voice::changeNote (int note, double glideFromHz, double glideSamples)
 {
     // Legato: retune (optionally gliding) but leave every envelope/LFO running.
     note_          = note;
-    glideTargetHz_ = midiNoteToHz (note);
+    glideTargetHz_ = noteHz (note);
     if (glideFromHz > 0.0 && glideSamples > 0.5)
     {
         glideStartHz_ = glideFromHz;

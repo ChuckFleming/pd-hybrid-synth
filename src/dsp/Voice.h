@@ -55,6 +55,7 @@ public:
     void renderBlock (float* left, float* right, int numSamples);
 
 private:
+    double noteHz (int note) const noexcept;   // note -> Hz with master tune + transpose
     void  applyModulation() noexcept;   // evaluate the matrix and configure the DSP
     void  advanceDrift    (int numSamples) noexcept;   // step the drift random walks
     float renderOneSample() noexcept;

@@ -185,6 +185,28 @@ TEST_CASE ("Ring modulation adds sum/difference sidebands", "[voice][ringmod]")
     REQUIRE (sWet.magnitudeNearHz (fDiff) > sDry.magnitudeNearHz (fDiff) * 4.0);
 }
 
+TEST_CASE ("Master tune and transpose shift the pitch", "[voice][tuning]")
+{
+    const double sr = 48000.0;
+
+    auto peakHz = [&] (double tuneHz, int transpose)
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = cleanParams();
+        p.oscAType     = pdhybrid::OscType::Triangle;
+        p.masterTuneHz = tuneHz;
+        p.transpose    = transpose;
+        e.setParams (p);
+        e.noteOn (69, 1.0f, 1);   // A4
+        return soundingHz (e, sr);
+    };
+
+    REQUIRE (peakHz (440.0, 0)  == Approx (440.0).epsilon (0.03));   // reference
+    REQUIRE (peakHz (440.0, 12) == Approx (880.0).epsilon (0.03));   // +1 octave transpose
+    REQUIRE (peakHz (460.0, 0)  == Approx (460.0).epsilon (0.03));   // retuned A4
+}
+
 TEST_CASE ("Drive position (pre vs post filter) changes the tone", "[voice][drivepos]")
 {
     const double sr = 48000.0;

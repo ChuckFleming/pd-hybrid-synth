@@ -1,7 +1,13 @@
 #include "SynthEngine.h"
+#include <cmath>
 #include <limits>
 
 namespace pdhybrid {
+
+double SynthEngine::noteHz (int note) const noexcept
+{
+    return params_.masterTuneHz * std::pow (2.0, (note + params_.transpose - 69) / 12.0);
+}
 
 void SynthEngine::setSampleRate (double sampleRate)
 {
@@ -115,7 +121,7 @@ void SynthEngine::polyNoteOn (int note, float velocity, int noteId)
         startVoice (v, note, velocity, noteId, spread, fromHz, glideSamples);
     }
 
-    lastNoteHz_ = midiNoteToHz (note);
+    lastNoteHz_ = noteHz (note);
 }
 
 void SynthEngine::polyNoteOff (int note, int noteId)
@@ -237,7 +243,7 @@ void SynthEngine::updateMono()
             startVoice (v, sel->note, sel->velocity, sel->noteId, spread, fromHz, glideSamples);
         }
         monoNote_   = sel->note;
-        lastNoteHz_ = midiNoteToHz (sel->note);
+        lastNoteHz_ = noteHz (sel->note);
         return;
     }
 
@@ -247,7 +253,7 @@ void SynthEngine::updateMono()
         // Mono honours the retrigger toggle; Legato / Unison-Legato are always legato.
         const bool   retrig       = (params_.voiceMode == 1) ? params_.monoRetrigger : false;
         const bool   wantGlide    = (params_.glideMode != GlideMode::Off);
-        const double fromHz       = midiNoteToHz (monoNote_);
+        const double fromHz       = noteHz (monoNote_);
         const double glideSamples = wantGlide ? params_.glideTime * sampleRate_ : 0.0;
 
         for (int k = 0; k < monoVoiceN_; ++k)
@@ -263,7 +269,7 @@ void SynthEngine::updateMono()
                 voices_[v].changeNote (sel->note, wantGlide ? fromHz : 0.0, glideSamples);
         }
         monoNote_   = sel->note;
-        lastNoteHz_ = midiNoteToHz (sel->note);
+        lastNoteHz_ = noteHz (sel->note);
     }
 }
 

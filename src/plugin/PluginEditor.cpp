@@ -287,8 +287,10 @@ void PDHybridEditor::buildSections()
     voiceSec.combos = { &addCombo ("voiceMode", { "Poly", "Mono", "Legato", "Unison Legato" }),
                         &addCombo ("notePriority", { "Last", "Top", "Bottom" }),
                         &addCombo ("stealPolicy", { "Oldest", "Quietest" }),
-                        &addCombo ("monoRetrigger", { "Legato", "Retrigger" }) };
-    voiceSec.knobs = { &addKnob ("polyphony", "Poly", 0), &addKnob ("pitchBendRange", "Bend", 0) };
+                        &addCombo ("monoRetrigger", { "Legato", "Retrigger" }),
+                        &addCombo ("velCurve", { "Linear", "Soft", "Hard", "Fixed" }) };
+    voiceSec.knobs = { &addKnob ("polyphony", "Poly", 0), &addKnob ("pitchBendRange", "Bend", 0),
+                       &addKnob ("masterTune", "Tune", 1), &addKnob ("transpose", "Transp", 0) };
 
     // --- Stereo / Drift ---
     stereo.title = "Stereo / Drift";

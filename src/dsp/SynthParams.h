@@ -135,6 +135,8 @@ struct SynthParams
     int    stealPolicy = 0;       // 0=Oldest, 1=Quietest
     bool   monoRetrigger = true;  // true=retrig on note change, false=true legato
     double pitchBendRange = 2.0;  // semitones for MIDI bend (1-24)
+    double masterTuneHz = 440.0;  // A4 reference (415-465)
+    int    transpose    = 0;      // semitone transpose (-24..24)
 
     // Stereo placement: master pan plus a per-voice spread by keyboard position
     // (low notes left, high notes right) for a wider sound.

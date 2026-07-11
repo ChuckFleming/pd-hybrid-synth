@@ -54,6 +54,7 @@ public:
 private:
     struct HeldNote { int note; float velocity; int noteId; };
 
+    double noteHz (int note) const noexcept;   // note -> Hz with master tune + transpose
     int  allocateVoice (int limit) noexcept;
     void polyNoteOn  (int note, float velocity, int noteId);
     void polyNoteOff (int note, int noteId);

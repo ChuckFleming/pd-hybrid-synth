@@ -89,6 +89,7 @@ private:
     double glideSamples_  = 0.0;
     double pitchBend_ = 0.0;   // semitones
     double velGain_   = 1.0;
+    double velAmp_    = 1.0;    // velGain_ scaled by ampVelSens
     double pressure_  = 1.0;
     double timbre_    = 0.0;
     double modWheel_  = 0.0;

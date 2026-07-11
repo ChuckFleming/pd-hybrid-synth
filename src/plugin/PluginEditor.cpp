@@ -252,9 +252,10 @@ void PDHybridEditor::buildSections()
 
     // --- Mixer ---
     mixer.title = "Mixer";
-    mixer.cols  = 2;
+    mixer.cols  = 3;
     mixer.knobs = { &addKnob ("oscALevel", "Osc A"), &addKnob ("oscBLevel", "Osc B"),
-                    &addKnob ("noiseLevel", "Noise"), &addKnob ("ringMod", "Ring") };
+                    &addKnob ("noiseLevel", "Noise"), &addKnob ("ringMod", "Ring"),
+                    &addKnob ("noiseMod", "N.Mod") };
 
     // --- Unison ---
     unison.title = "Unison";
@@ -315,9 +316,10 @@ void PDHybridEditor::buildSections()
 
     // --- Filter Envelopes ---
     filterEnv.title = "Filter Env";
-    filterEnv.cols  = 4;
+    filterEnv.cols  = 5;
     filterEnv.knobs = { &addKnob ("filterEnvA", "Atk"), &addKnob ("filterEnvD", "Dec"),
-                        &addKnob ("filterEnvS", "Sus"), &addKnob ("filterEnvR", "Rel") };
+                        &addKnob ("filterEnvS", "Sus"), &addKnob ("filterEnvR", "Rel"),
+                        &addKnob ("filterVelSens", "Vel") };
 
     filter2Env.title = "Filter 2 Env";
     filter2Env.cols  = 4;
@@ -326,9 +328,10 @@ void PDHybridEditor::buildSections()
 
     // --- Amp / Mod Envelopes ---
     envelope.title = "Amp Env";
-    envelope.cols  = 4;
+    envelope.cols  = 5;
     envelope.knobs = { &addKnob ("attack", "Atk"), &addKnob ("decay", "Dec"),
-                       &addKnob ("sustain", "Sus"), &addKnob ("release", "Rel") };
+                       &addKnob ("sustain", "Sus"), &addKnob ("release", "Rel"),
+                       &addKnob ("ampVelSens", "Vel") };
 
     modEnv.title = "Mod Env";
     modEnv.cols  = 4;
@@ -372,7 +375,8 @@ void PDHybridEditor::buildSections()
     drive.combos = { &addCombo ("driveOn", { "Off", "On" }),
                      &addCombo ("driveType",
                        { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz", "Rectify",
-                         "Wavefold", "Foldback" }) };
+                         "Wavefold", "Foldback" }),
+                     &addCombo ("drivePos", { "Post Filter", "Pre Filter" }) };
     drive.knobs  = { &addKnob ("drive", "Drive"), &addKnob ("bias", "Bias"),
                      &addKnob ("gain", "Gain"), &addKnob ("crushBits", "Crush"),
                      &addKnob ("downsample", "Downsmpl") };

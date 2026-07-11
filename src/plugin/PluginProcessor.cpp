@@ -159,8 +159,16 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("downsample", "Downsample", juce::NormalisableRange<float> (1.0f, 50.0f, 1.0f), 1.0f,
         sv ([] (float v) { return v <= 1.0f ? juce::String ("off") : juce::String ("/") + juce::String ((int) v); },
             [] (const juce::String& t) { return t.startsWithIgnoreCase ("off") ? 1.0f : t.getFloatValue(); }));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "drivePos", 1 }, "Drive Position",
+        juce::StringArray { "Post Filter", "Pre Filter" }, 0));
 
     pf ("gain", "Gain", juce::NormalisableRange<float> (0.0f, 1.0f), 0.80f, pct);
+
+    // Velocity sensitivity + CZ noise pitch modulation.
+    pf ("ampVelSens", "Amp Vel Sens", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f, pct);
+    pf ("filterVelSens", "Filter Vel Sens", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    pf ("noiseMod", "Noise Mod", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
     pf ("pan", "Pan", juce::NormalisableRange<float> (-1.0f, 1.0f), 0.0f, pan);
     pf ("panSpread", "Pan Spread", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
@@ -462,6 +470,10 @@ void PDHybridAudioProcessor::pushParams()
     p.driveType   = static_cast<int> (apvts.getRawParameterValue ("driveType")->load());
     p.crushBits   = apvts.getRawParameterValue ("crushBits")->load();
     p.downsample  = apvts.getRawParameterValue ("downsample")->load();
+    p.drivePos    = static_cast<int> (apvts.getRawParameterValue ("drivePos")->load());
+    p.ampVelSens    = apvts.getRawParameterValue ("ampVelSens")->load();
+    p.filterVelSens = apvts.getRawParameterValue ("filterVelSens")->load();
+    p.noiseModDepth = apvts.getRawParameterValue ("noiseMod")->load();
     p.bias      = apvts.getRawParameterValue ("bias")->load();
     p.attack    = apvts.getRawParameterValue ("attack")->load();
     p.decay     = apvts.getRawParameterValue ("decay")->load();

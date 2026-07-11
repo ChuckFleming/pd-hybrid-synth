@@ -132,10 +132,19 @@ void Voice::applyModulation() noexcept
     // CZ pitch (DCO) envelope: bipolar around 0.5, scaled to semitones.
     const double pitchEnvSemis = params_.pitchEnvAmount * (pitchEnv_.level() - 0.5) * 2.0;
 
+    // CZ noise pitch modulation: chaotic per-chunk pitch grit.
+    double noiseSemis = 0.0;
+    if (params_.noiseModDepth > 1.0e-6)
+    {
+        rng_ = rng_ * 1664525u + 1013904223u;
+        const double nz = static_cast<double> (static_cast<std::int32_t> (rng_)) / 2147483648.0;
+        noiseSemis = params_.noiseModDepth * nz * 12.0;   // +/- 12 semitones at full
+    }
+
     // Pitch (matrix in semitones, +/-24 at full depth). Each unit applies its
     // own octave/semi/fine tuning on top of this note pitch.
     const double semis = pitchBend_ + md (ModDest::Pitch) * 24.0 + driftSemis
-                       + pitchEnvSemis
+                       + pitchEnvSemis + noiseSemis
                        + unisonDetuneCents_ / 100.0
                        + md (ModDest::Detune) * 0.5;   // +/- 50 cents at full depth
     const double freq  = baseFreq_ * std::pow (2.0, semis / 12.0);
@@ -156,10 +165,12 @@ void Voice::applyModulation() noexcept
     const double keyOct   = params_.keyTrack * (note_ - 60) / 12.0;
     const double czOct    = params_.czAmount * multiEnv_.level();   // CZ multi-stage -> cutoff
     const double sharedOct = timbre_ * 3.0 + keyOct + driftCutOct + czOct;
+    // Velocity scaling of the filter-envelope depth.
+    const double velFilt  = (1.0 - params_.filterVelSens) + params_.filterVelSens * velGain_;
     const double octA     = sharedOct + md (ModDest::Cutoff) * 4.0
-                          + params_.filterEnvAmount  * filterEnv_.level();
+                          + params_.filterEnvAmount  * filterEnv_.level() * velFilt;
     const double octB     = sharedOct + md (ModDest::Filter2Cutoff) * 4.0
-                          + params_.filter2EnvAmount * filter2Env_.level();
+                          + params_.filter2EnvAmount * filter2Env_.level() * velFilt;
     const double resMod   = md (ModDest::Resonance);
     const double morphMod = md (ModDest::Morph);
 
@@ -173,6 +184,9 @@ void Voice::applyModulation() noexcept
     amp_.setDrive (params_.drive * std::pow (2.0, md (ModDest::Drive) * 2.0));
 
     ampMod_ = std::clamp (1.0 + md (ModDest::Amplitude), 0.0, 4.0);
+
+    // Velocity scaling of the amp level (0 sens = velocity ignored).
+    velAmp_ = (1.0 - params_.ampVelSens) + params_.ampVelSens * velGain_;
 
     // Mixer levels after matrix modulation.
     oscALevelMod_ = std::clamp (params_.oscALevel + md (ModDest::OscALevel), 0.0, 1.0);
@@ -296,6 +310,10 @@ float Voice::renderOneSample() noexcept
              * params_.noiseLevel;
     }
 
+    // Overdrive can sit before the filter (pre) or after it (post, default).
+    if (params_.driveOn && params_.drivePos == 1)
+        s = amp_.processSample (static_cast<float> (s));
+
     const float in = static_cast<float> (s);
     switch (params_.filterRouting)
     {
@@ -311,10 +329,10 @@ float Voice::renderOneSample() noexcept
             break;
     }
 
-    if (params_.driveOn)
+    if (params_.driveOn && params_.drivePos == 0)
         s = amp_.processSample (static_cast<float> (s));
     const double e = env_.processSample();
-    return static_cast<float> (s * e * velGain_ * pressure_ * ampMod_ * params_.gain);
+    return static_cast<float> (s * e * velAmp_ * pressure_ * ampMod_ * params_.gain);
 }
 
 void Voice::renderBlock (float* left, float* right, int numSamples)

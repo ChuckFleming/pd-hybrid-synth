@@ -185,6 +185,37 @@ TEST_CASE ("Ring modulation adds sum/difference sidebands", "[voice][ringmod]")
     REQUIRE (sWet.magnitudeNearHz (fDiff) > sDry.magnitudeNearHz (fDiff) * 4.0);
 }
 
+TEST_CASE ("Drive position (pre vs post filter) changes the tone", "[voice][drivepos]")
+{
+    const double sr = 48000.0;
+
+    auto render = [&] (int pos)
+    {
+        Voice v;
+        v.prepare (sr);
+        SynthParams p = cleanParams();
+        p.driveOn   = true;
+        p.drive     = 8.0;
+        p.driveType = 2;          // hard clip -> position clearly matters
+        p.cutoffHz  = 1500.0;     // a low cutoff so pre/post filtering diverge
+        p.resonance = 0.3;
+        p.drivePos  = pos;
+        v.setParams (p);
+        v.start (60, 1.0f);
+        std::vector<float> l (4096), r (4096);
+        v.renderBlock (l.data(), r.data(), static_cast<int> (l.size()));
+        return l;
+    };
+
+    const auto post = render (0);
+    const auto pre  = render (1);
+
+    double diff = 0.0;
+    for (std::size_t i = 0; i < post.size(); ++i)
+        diff += std::abs (post[i] - pre[i]);
+    REQUIRE (diff > 1.0);   // the two orderings are audibly different
+}
+
 TEST_CASE ("Pitch envelope shifts the note pitch", "[voice][pitchenv]")
 {
     const double sr = 48000.0;

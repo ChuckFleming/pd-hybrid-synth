@@ -112,6 +112,12 @@ struct SynthParams
     int    driveType = 0;      // ShaperCurve index
     double crushBits = 16.0;   // bit-depth reduction (>= 16 = off)
     double downsample = 1.0;   // sample-rate reduction factor (1 = off)
+    int    drivePos  = 0;      // 0 = post-filter (default), 1 = pre-filter
+
+    // Velocity sensitivity: 0 = ignore velocity, 1 = full velocity scaling.
+    double ampVelSens    = 1.0;   // amp level scaled by velocity (1 = classic behaviour)
+    double filterVelSens = 0.0;   // filter-envelope depth scaled by velocity
+    double noiseModDepth = 0.0;   // CZ noise pitch modulation (0..1)
 
     double attack  = 0.01;
     double decay   = 0.10;

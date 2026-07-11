@@ -74,8 +74,12 @@ void Voice::setParams (const SynthParams& params)
 
     lfo_.setFrequency (params.lfoRate);
     lfo_.setWaveform (static_cast<LfoWave> (params.lfoWave));
+    lfo_.setFadeIn (params.lfoFade);
+    lfo_.setPhaseOffset (params.lfoPhase);
     lfo2_.setFrequency (params.lfo2Rate);
     lfo2_.setWaveform (static_cast<LfoWave> (params.lfo2Wave));
+    lfo2_.setFadeIn (params.lfo2Fade);
+    lfo2_.setPhaseOffset (params.lfo2Phase);
 
     unitA_.setType   (params.oscAType);
     unitA_.setPdWave (static_cast<PdWave> (params.oscAWave));
@@ -248,8 +252,10 @@ void Voice::start (int note, float velocity, double glideFromHz, double glideSam
     pitchBend_ = 0.0;
     rng_ = rng_ * 1664525u + 1013904223u;   // fresh per-note sample & hold value
     randomMod_ = static_cast<double> (static_cast<std::int32_t> (rng_)) / 2147483648.0;
-    lfo_.reset();
-    lfo2_.reset();
+    if (params_.lfoRetrig)  lfo_.reset();
+    if (params_.lfo2Retrig) lfo2_.reset();
+    lfo_.trigger();
+    lfo2_.trigger();
     env2_.noteOn();
     filterEnv_.noteOn();
     filter2Env_.noteOn();

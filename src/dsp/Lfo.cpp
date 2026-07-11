@@ -20,12 +20,22 @@ void Lfo::setFrequency (double frequencyHz) noexcept
     inc_ = frequency_ / sampleRate_;
 }
 
+void Lfo::setFadeIn (double seconds) noexcept
+{
+    fadeInc_ = (seconds > 0.0) ? (1.0 / (seconds * sampleRate_)) : 1.0;
+}
+
 void Lfo::reset() noexcept
 {
     phase_    = 0.0;
     rng_      = 0x1234567u;
     randCurr_ = nextRandom();
     randNext_ = nextRandom();
+}
+
+void Lfo::trigger() noexcept
+{
+    fade_ = (fadeInc_ >= 1.0) ? 1.0 : 0.0;   // restart fade-in (if enabled)
 }
 
 double Lfo::nextRandom() noexcept
@@ -58,14 +68,17 @@ double Lfo::compute (double phase) const noexcept
 
 double Lfo::value() const noexcept
 {
-    return compute (phase_);
+    double p = phase_ + phaseOffset_;
+    if (p >= 1.0) p -= 1.0;
+    return compute (p) * fade_;
 }
 
 double Lfo::processSample() noexcept
 {
-    const double v = compute (phase_);
+    const double v = value();
     phase_ += inc_;
     if (phase_ >= 1.0) { phase_ -= 1.0; onCycleWrap(); }
+    if (fade_ < 1.0) { fade_ += fadeInc_; if (fade_ > 1.0) fade_ = 1.0; }
     return v;
 }
 
@@ -76,6 +89,11 @@ void Lfo::advance (int numSamples) noexcept
     {
         phase_ -= std::floor (phase_);
         onCycleWrap();
+    }
+    if (fade_ < 1.0)
+    {
+        fade_ += fadeInc_ * numSamples;
+        if (fade_ > 1.0) fade_ = 1.0;
     }
 }
 

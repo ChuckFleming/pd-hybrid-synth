@@ -362,14 +362,18 @@ void PDHybridEditor::buildSections()
 
     // --- LFOs ---
     lfo.title  = "LFO";
-    lfo.cols   = 2;
-    lfo.combos = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames) };
-    lfo.knobs  = { &addKnob ("lfoRate", "Rate") };
+    lfo.cols   = 3;
+    lfo.combos = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames),
+                   &addCombo ("lfoRetrig", { "Free", "Retrig" }) };
+    lfo.knobs  = { &addKnob ("lfoRate", "Rate"), &addKnob ("lfoFade", "Fade"),
+                   &addKnob ("lfoPhase", "Phase") };
 
     lfo2.title  = "LFO 2";
-    lfo2.cols   = 2;
-    lfo2.combos = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames) };
-    lfo2.knobs  = { &addKnob ("lfo2Rate", "Rate") };
+    lfo2.cols   = 3;
+    lfo2.combos = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames),
+                    &addCombo ("lfo2Retrig", { "Free", "Retrig" }) };
+    lfo2.knobs  = { &addKnob ("lfo2Rate", "Rate"), &addKnob ("lfo2Fade", "Fade"),
+                    &addKnob ("lfo2Phase", "Phase") };
 
     // --- Arpeggiator ---
     arpSec.title  = "Arpeggiator";

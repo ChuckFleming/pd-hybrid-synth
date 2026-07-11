@@ -158,8 +158,14 @@ struct SynthParams
     double    modEnvA = 0.01, modEnvD = 0.20, modEnvS = 0.0, modEnvR = 0.30;
     double    lfoRate = 5.0;
     int       lfoWave = 0;
+    double    lfoFade = 0.0;      // fade-in seconds (0 = instant)
+    double    lfoPhase = 0.0;     // 0..1 start phase offset
+    bool      lfoRetrig = true;   // reset phase on note-on
     double    lfo2Rate = 0.5;
     int       lfo2Wave = 0;
+    double    lfo2Fade = 0.0;
+    double    lfo2Phase = 0.0;
+    bool      lfo2Retrig = true;
 
     // CZ-style 8-stage multi-envelope (rate/level per stage + one sustain stage).
     // Routed to the filter cutoff via czAmount (octaves, bipolar) so it acts as a

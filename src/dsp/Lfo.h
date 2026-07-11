@@ -28,7 +28,10 @@ public:
     void setSampleRate (double sampleRateHz) noexcept;
     void setFrequency  (double frequencyHz) noexcept;
     void setWaveform   (LfoWave wave) noexcept { wave_ = wave; }
+    void setPhaseOffset (double phase01) noexcept { phaseOffset_ = phase01; }
+    void setFadeIn      (double seconds) noexcept;   // 0 = no fade
     void reset         () noexcept;
+    void trigger       () noexcept;          // restart the fade-in envelope
 
     double value        () const noexcept;   // current output, no advance
     double processSample () noexcept;         // return current, then advance one sample
@@ -43,6 +46,9 @@ private:
     double  frequency_  = 5.0;
     double  inc_        = 5.0 / 44100.0;
     double  phase_      = 0.0;
+    double  phaseOffset_ = 0.0;   // 0..1 added to the read phase
+    double  fade_       = 1.0;    // current fade-in gain (0..1)
+    double  fadeInc_    = 1.0;    // per-sample fade increment (>=1 => no fade)
     LfoWave wave_       = LfoWave::Sine;
 
     // Random generators for the Sample & Hold / Smooth Random waves.

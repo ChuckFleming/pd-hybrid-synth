@@ -350,11 +350,21 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
                                         "1/4.", "1/8.", "1/4T", "1/8T" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "lfoSync", 1 }, "LFO Sync", syncNames, 0));
+    pf ("lfoFade", "LFO Fade In", juce::NormalisableRange<float> (0.0f, 5.0f, 0.0f, 0.4f), 0.0f, sec);
+    pf ("lfoPhase", "LFO Phase", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "lfoRetrig", 1 }, "LFO Retrigger",
+        juce::StringArray { "Free", "Retrig" }, 1));
     pf ("lfo2Rate", "LFO 2 Rate", juce::NormalisableRange<float> (0.01f, 20.0f, 0.0f, 0.3f), 0.5f, rate);
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "lfo2Wave", 1 }, "LFO 2 Wave", lfoWaveNames, 0));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "lfo2Sync", 1 }, "LFO 2 Sync", syncNames, 0));
+    pf ("lfo2Fade", "LFO 2 Fade In", juce::NormalisableRange<float> (0.0f, 5.0f, 0.0f, 0.4f), 0.0f, sec);
+    pf ("lfo2Phase", "LFO 2 Phase", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "lfo2Retrig", 1 }, "LFO 2 Retrigger",
+        juce::StringArray { "Free", "Retrig" }, 1));
 
     // Global LFO + macros (sources for the global modulation pass).
     pf ("globalLfoRate", "Global LFO Rate",
@@ -646,6 +656,12 @@ void PDHybridAudioProcessor::pushParams()
                                  : pdhybrid::syncedLfoHz (bpm, lfo2Sync - 1);
     p.lfoWave  = static_cast<int> (apvts.getRawParameterValue ("lfoWave")->load());
     p.lfo2Wave = static_cast<int> (apvts.getRawParameterValue ("lfo2Wave")->load());
+    p.lfoFade   = apvts.getRawParameterValue ("lfoFade")->load();
+    p.lfoPhase  = apvts.getRawParameterValue ("lfoPhase")->load();
+    p.lfoRetrig = apvts.getRawParameterValue ("lfoRetrig")->load() > 0.5f;
+    p.lfo2Fade   = apvts.getRawParameterValue ("lfo2Fade")->load();
+    p.lfo2Phase  = apvts.getRawParameterValue ("lfo2Phase")->load();
+    p.lfo2Retrig = apvts.getRawParameterValue ("lfo2Retrig")->load() > 0.5f;
     p.modEnvA = apvts.getRawParameterValue ("modEnvA")->load();
     p.modEnvD = apvts.getRawParameterValue ("modEnvD")->load();
     p.modEnvS = apvts.getRawParameterValue ("modEnvS")->load();

@@ -263,10 +263,18 @@ float Voice::renderOneSample() noexcept
 {
     // Sum the active sources only; skipping silent ones keeps the hot path cheap
     // (Osc A always runs, Osc B and the noise generator are skipped at level 0).
-    double s = unitA_.processSample() * oscALevelMod_;
+    const double sA = unitA_.processSample();
+    double s = sA * oscALevelMod_;
 
-    if (oscBLevelMod_ > 1.0e-5)
-        s += unitB_.processSample() * oscBLevelMod_;
+    // Osc B runs when it is mixed in OR when ring modulation needs it.
+    const double ring = params_.ringModLevel;
+    if (oscBLevelMod_ > 1.0e-5 || ring > 1.0e-5)
+    {
+        const double sB = unitB_.processSample();
+        s += sB * oscBLevelMod_;
+        if (ring > 1.0e-5)
+            s += sA * sB * ring;   // CZ line ring modulation
+    }
 
     if (params_.noiseLevel > 1.0e-5)
     {

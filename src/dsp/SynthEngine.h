@@ -25,7 +25,14 @@ public:
     static constexpr int kMaxVoices = 16;
 
     void setSampleRate (double sampleRate);
-    void setParams     (const SynthParams& params) noexcept { params_ = params; }
+    void setParams     (const SynthParams& params) noexcept
+    {
+        // Switching voice mode live would otherwise strand held voices (e.g. a
+        // Poly chord when dropping into Mono). Clear the keyboard first.
+        if (params.voiceMode != params_.voiceMode)
+            allNotesOff();
+        params_ = params;
+    }
 
     void noteOn  (int note, float velocity, int noteId = 0);
     void noteOff (int note, int noteId = 0);

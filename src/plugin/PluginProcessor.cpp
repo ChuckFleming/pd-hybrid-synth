@@ -94,6 +94,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     addOscGroup ("oscB", "Osc B", 1, 0.0f);   // Saw, silent by default
 
     pf ("noiseLevel", "Noise Level", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    pf ("ringMod", "Ring Mod", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
     pf ("cutoff", "Filter Cutoff",
         juce::NormalisableRange<float> (20.0f, 18000.0f, 0.0f, 0.3f), 8000.0f, hz);
@@ -415,6 +416,7 @@ void PDHybridAudioProcessor::pushParams()
                   p.oscBOctave, p.oscBSemi, p.oscBFine, p.oscBLevel,
                   p.oscBEqLow, p.oscBEqMid, p.oscBEqHigh);
     p.noiseLevel  = apvts.getRawParameterValue ("noiseLevel")->load();
+    p.ringModLevel = apvts.getRawParameterValue ("ringMod")->load();
 
     p.cutoffHz    = apvts.getRawParameterValue ("cutoff")->load();
     p.resonance   = apvts.getRawParameterValue ("resonance")->load();

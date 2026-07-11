@@ -6,6 +6,7 @@
 #include "harness/Spectrum.h"
 
 #include <vector>
+#include <cmath>
 
 using pdhybrid::SynthEngine;
 using pdhybrid::SynthParams;
@@ -144,6 +145,44 @@ TEST_CASE ("Sustain pedal holds a released note until pedal-up", "[voice][sustai
     for (int i = 0; i < 200; ++i)          // > release time (0.05 s @ 48k)
         advance (e, 128);
     REQUIRE (e.activeVoiceCount() == 0);
+}
+
+TEST_CASE ("Ring modulation adds sum/difference sidebands", "[voice][ringmod]")
+{
+    const double sr = 48000.0;
+
+    auto render = [&] (double ring)
+    {
+        Voice v;
+        v.prepare (sr);
+        SynthParams p = cleanParams();
+        p.oscAType   = pdhybrid::OscType::Triangle;   // simple, mostly-fundamental tones
+        p.oscBType   = pdhybrid::OscType::Triangle;
+        p.oscBLevel  = 0.0;         // B not mixed directly...
+        p.oscBSemi   = 7;           // ...B a fifth above A
+        p.ringModLevel = ring;
+        p.cutoffHz   = 18000.0;
+        v.setParams (p);
+        v.start (57, 1.0f);         // A3 = 220 Hz
+        std::vector<float> l (16384), r (16384);
+        v.renderBlock (l.data(), r.data(), static_cast<int> (l.size()));
+        return l;
+    };
+
+    const auto dry = render (0.0);
+    const auto wet = render (0.8);
+
+    // Ring mod must change the signal, and add energy at |fB - fA| that the dry
+    // (A-only) signal does not have. fA=220, fB=220*2^(7/12)=~329.6, diff ~110 Hz.
+    double diff = 0.0;
+    for (std::size_t i = 0; i < dry.size(); ++i)
+        diff += std::abs (wet[i] - dry[i]);
+    REQUIRE (diff > 1.0);
+
+    auto sDry = computeSpectrum (dry, sr);
+    auto sWet = computeSpectrum (wet, sr);
+    const double fDiff = 220.0 * (std::pow (2.0, 7.0 / 12.0) - 1.0);   // ~109.6 Hz
+    REQUIRE (sWet.magnitudeNearHz (fDiff) > sDry.magnitudeNearHz (fDiff) * 4.0);
 }
 
 TEST_CASE ("Legato changeNote retunes without retriggering the envelope", "[voice][legato]")

@@ -252,9 +252,9 @@ void PDHybridEditor::buildSections()
 
     // --- Mixer ---
     mixer.title = "Mixer";
-    mixer.cols  = 3;
+    mixer.cols  = 2;
     mixer.knobs = { &addKnob ("oscALevel", "Osc A"), &addKnob ("oscBLevel", "Osc B"),
-                    &addKnob ("noiseLevel", "Noise") };
+                    &addKnob ("noiseLevel", "Noise"), &addKnob ("ringMod", "Ring") };
 
     // --- Unison ---
     unison.title = "Unison";

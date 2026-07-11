@@ -223,6 +223,9 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     // --- Reverb ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "reverbOn", 1 }, "Reverb On", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "fxRouting", 1 }, "Delay/Reverb Routing",
+        juce::StringArray { "Delay -> Reverb", "Reverb -> Delay", "Reverb, Dry Delay" }, 0));
     pf ("reverbSize", "Reverb Size", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
     pf ("reverbDamp", "Reverb Damp", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
     pf ("reverbWidth", "Reverb Width", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f, pct);
@@ -470,6 +473,8 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     scratchL.assign (n, 0.0f);
     scratchR.assign (n, 0.0f);
     scratchBass.assign (n, 0.0f);
+    fxScratchL_.assign (n, 0.0f);
+    fxScratchR_.assign (n, 0.0f);
 }
 
 void PDHybridAudioProcessor::pushParams()
@@ -602,7 +607,8 @@ void PDHybridAudioProcessor::pushParams()
     chorus.setDepth (apvts.getRawParameterValue ("chorusDepth")->load());
     chorus.setMix   (apvts.getRawParameterValue ("chorusMix")->load());
 
-    reverbOn_ = apvts.getRawParameterValue ("reverbOn")->load() > 0.5f;
+    reverbOn_  = apvts.getRawParameterValue ("reverbOn")->load() > 0.5f;
+    fxRouting_ = static_cast<int> (apvts.getRawParameterValue ("fxRouting")->load());
     reverb.setSize  (apvts.getRawParameterValue ("reverbSize")->load());
     reverb.setDamp  (apvts.getRawParameterValue ("reverbDamp")->load());
     reverb.setWidth (apvts.getRawParameterValue ("reverbWidth")->load());
@@ -919,12 +925,32 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         if (chorusOn_)
             chorus.processStereo (buffer.getWritePointer (0),
                                   buffer.getWritePointer (1), numSamples);
-        if (delayOn_)
-            delay.processStereo (buffer.getWritePointer (0),
-                                 buffer.getWritePointer (1), numSamples);
-        if (reverbOn_)
-            reverb.processStereo (buffer.getWritePointer (0),
-                                  buffer.getWritePointer (1), numSamples);
+        float* L = buffer.getWritePointer (0);
+        float* R = buffer.getWritePointer (1);
+        if (fxRouting_ == 2 && delayOn_ && reverbOn_)
+        {
+            // Parallel: reverb the main path; delay is fed the pre-reverb signal
+            // and its (wet-only) echoes are summed back clean.
+            if (static_cast<int> (fxScratchL_.size()) < numSamples)
+            {
+                fxScratchL_.resize (static_cast<std::size_t> (numSamples));
+                fxScratchR_.resize (static_cast<std::size_t> (numSamples));
+            }
+            for (int i = 0; i < numSamples; ++i) { fxScratchL_[i] = L[i]; fxScratchR_[i] = R[i]; }
+            reverb.processStereo (L, R, numSamples);
+            delay.processWet (fxScratchL_.data(), fxScratchR_.data(), numSamples);
+            for (int i = 0; i < numSamples; ++i) { L[i] += fxScratchL_[i]; R[i] += fxScratchR_[i]; }
+        }
+        else if (fxRouting_ == 1)
+        {
+            if (reverbOn_) reverb.processStereo (L, R, numSamples);
+            if (delayOn_)  delay.processStereo (L, R, numSamples);
+        }
+        else   // 0 = Delay -> Reverb (default), and the fallbacks for mode 2
+        {
+            if (delayOn_)  delay.processStereo (L, R, numSamples);
+            if (reverbOn_) reverb.processStereo (L, R, numSamples);
+        }
         if (globalEqOn_)
             globalEq.processStereo (buffer.getWritePointer (0),
                                     buffer.getWritePointer (1), numSamples);

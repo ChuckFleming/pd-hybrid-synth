@@ -154,3 +154,31 @@ TEST_CASE ("Delay stays finite and bounded at high feedback", "[delay]")
     REQUIRE_FALSE (hasBadValues (r));
     REQUIRE (peakAbs (l) < 5.0f);
 }
+
+TEST_CASE ("Delay processWet emits echoes without the dry signal", "[delay][wet]")
+{
+    const double sr = 48000.0;
+    auto make = [&] { Delay d; d.setSampleRate (sr); d.setTimes (0.1, 0.1);
+                      d.setFeedback (0.4); d.setMix (0.5); d.setMode (DelayMode::Stereo);
+                      d.reset(); return d; };
+
+    Delay full = make();
+    Delay wet  = make();
+
+    std::vector<float> lf (24000, 0.0f), rf (24000, 0.0f);
+    std::vector<float> lw (24000, 0.0f), rw (24000, 0.0f);
+    lf[0] = rf[0] = 1.0f;
+    lw[0] = rw[0] = 1.0f;
+
+    full.processStereo (lf.data(), rf.data(), (int) lf.size());
+    wet.processWet     (lw.data(), rw.data(), (int) lw.size());
+
+    REQUIRE_FALSE (hasBadValues (lw));
+    // Wet path has no dry impulse at sample 0 (mix 0.5 -> full keeps 0.5 there).
+    REQUIRE (std::abs (lw[0]) < 1.0e-6f);
+    REQUIRE (lf[0] == Approx (0.5f).margin (1e-4));
+    // The first echo (~4800 samples) is identical between the two paths.
+    const int e = 4800;
+    REQUIRE (lw[e] == Approx (lf[e]).margin (1e-4));
+    REQUIRE (peakAbs (lw) > 0.1f);   // echoes are present
+}

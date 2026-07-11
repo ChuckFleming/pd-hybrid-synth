@@ -74,6 +74,16 @@ float Delay::readFrac (const std::vector<float>& buf, double delaySamples) const
 
 void Delay::processStereo (float* left, float* right, int numSamples) noexcept
 {
+    processImpl (left, right, numSamples, false);
+}
+
+void Delay::processWet (float* left, float* right, int numSamples) noexcept
+{
+    processImpl (left, right, numSamples, true);
+}
+
+void Delay::processImpl (float* left, float* right, int numSamples, bool wetOnly) noexcept
+{
     for (int n = 0; n < numSamples; ++n)
     {
         const double dryL = left[n];
@@ -107,8 +117,11 @@ void Delay::processStereo (float* left, float* right, int numSamples) noexcept
         bufR_[static_cast<std::size_t> (write_)] = static_cast<float> (wR);
         write_ = (write_ + 1) & mask_;
 
-        left[n]  = static_cast<float> (dryL * (1.0 - mix_) + echoL * mix_ * duckGain);
-        right[n] = static_cast<float> (dryR * (1.0 - mix_) + echoR * mix_ * duckGain);
+        // wetOnly: emit just the echo (for parallel routing where the dry signal
+        // is carried by another path); otherwise the usual dry/wet blend.
+        const double dryMix = wetOnly ? 0.0 : (1.0 - mix_);
+        left[n]  = static_cast<float> (dryL * dryMix + echoL * mix_ * duckGain);
+        right[n] = static_cast<float> (dryR * dryMix + echoR * mix_ * duckGain);
     }
 }
 

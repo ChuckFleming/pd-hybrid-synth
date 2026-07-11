@@ -428,7 +428,8 @@ void PDHybridEditor::buildSections()
     // --- Reverb ---
     reverbSec.title  = "Reverb";
     reverbSec.cols   = 4;
-    reverbSec.combos = { &addCombo ("reverbOn", { "Off", "On" }) };
+    reverbSec.combos = { &addCombo ("reverbOn", { "Off", "On" }),
+                         &addCombo ("fxRouting", { "Delay -> Reverb", "Reverb -> Delay", "Reverb, Dry Delay" }) };
     reverbSec.knobs  = { &addKnob ("reverbSize", "Size"), &addKnob ("reverbDamp", "Damp"),
                          &addKnob ("reverbWidth", "Width"), &addKnob ("reverbMix", "Mix") };
 

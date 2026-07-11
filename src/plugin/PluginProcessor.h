@@ -90,6 +90,8 @@ private:
     double                eqHighFreqBase_ = 8000.0, eqHighGainBase_ = 0.0;
     bool                  compOn_ = true, delayOn_ = true, globalEqOn_ = true;
     bool                  chorusOn_ = false, reverbOn_ = false;
+    int                   fxRouting_ = 0;   // 0=Delay->Reverb, 1=Reverb->Delay, 2=Reverb,DryDelay
+    std::vector<float>    fxScratchL_, fxScratchR_;   // parallel-routing scratch
     pdhybrid::Arpeggiator arp_;
     bool                  arpOn_ = false, arpWasOn_ = false;
 

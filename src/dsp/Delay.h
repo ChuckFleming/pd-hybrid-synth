@@ -32,10 +32,13 @@ public:
     void setDuck     (double amount01) noexcept;      // 0 = off
 
     void processStereo (float* left, float* right, int numSamples) noexcept;
+    // Wet-only (echoes without the dry signal) for parallel FX routing.
+    void processWet    (float* left, float* right, int numSamples) noexcept;
 
     static constexpr double kMaxDelaySeconds = 2.0;
 
 private:
+    void  processImpl (float* left, float* right, int numSamples, bool wetOnly) noexcept;
     float readFrac (const std::vector<float>& buf, double delaySamples) const noexcept;
 
     double sampleRate_ = 44100.0;

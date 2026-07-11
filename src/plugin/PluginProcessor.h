@@ -5,6 +5,7 @@
 #include "dsp/Compressor.h"
 #include "dsp/Delay.h"
 #include "dsp/Chorus.h"
+#include "dsp/Reverb.h"
 #include "dsp/GlobalEq.h"
 #include "dsp/MonoBass.h"
 #include "dsp/MasterStage.h"
@@ -36,7 +37,8 @@ public:
     bool acceptsMidi() const override  { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return pdhybrid::Delay::kMaxDelaySeconds; }
+    double getTailLengthSeconds() const override
+    { return reverbOn_ ? 8.0 : pdhybrid::Delay::kMaxDelaySeconds; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -66,6 +68,7 @@ private:
     pdhybrid::Compressor  compressor;           // global output compressor
     pdhybrid::Chorus      chorus;               // global chorus / ensemble
     pdhybrid::Delay       delay;                // global ducking delay
+    pdhybrid::Reverb      reverb;               // global reverb
     pdhybrid::GlobalEq    globalEq;             // final master EQ
     pdhybrid::MonoBass    monoBass;             // monophonic sub-bass layer
     pdhybrid::MasterStage master;               // output level + soft limiter
@@ -81,7 +84,7 @@ private:
     double                delayMixBase_ = 0.0, delayFbBase_ = 0.30;
     double                eqHighFreqBase_ = 8000.0, eqHighGainBase_ = 0.0;
     bool                  compOn_ = true, delayOn_ = true, globalEqOn_ = true;
-    bool                  chorusOn_ = false;
+    bool                  chorusOn_ = false, reverbOn_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDHybridAudioProcessor)
 };

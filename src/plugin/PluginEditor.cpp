@@ -409,6 +409,13 @@ void PDHybridEditor::buildSections()
                         &addKnob ("delayFeedback", "Fbk"), &addKnob ("delayMix", "Mix"),
                         &addKnob ("delayDuck", "Duck") };
 
+    // --- Reverb ---
+    reverbSec.title  = "Reverb";
+    reverbSec.cols   = 4;
+    reverbSec.combos = { &addCombo ("reverbOn", { "Off", "On" }) };
+    reverbSec.knobs  = { &addKnob ("reverbSize", "Size"), &addKnob ("reverbDamp", "Damp"),
+                         &addKnob ("reverbWidth", "Width"), &addKnob ("reverbMix", "Mix") };
+
     // --- Global master EQ (freq + gain per band) ---
     globalEqSec.title  = "Global EQ";
     globalEqSec.cols   = 4;
@@ -493,7 +500,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec, &pitchEnvSec },     nullptr, {}, 0 },
         { "Modulation",  { &lfo, &lfo2 }, &matrixHolder,
           "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
-        { "FX",          { &drive, &chorusSec, &comp, &delaySec, &globalEqSec, &masterSec }, nullptr, {}, 0 },
+        { "FX",          { &drive, &chorusSec, &comp, &delaySec, &reverbSec, &globalEqSec, &masterSec }, nullptr, {}, 0 },
     };
 
     for (auto& pg : layout)

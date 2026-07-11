@@ -201,6 +201,14 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("chorusDepth", "Chorus Depth", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
     pf ("chorusMix", "Chorus Mix", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
 
+    // --- Reverb ---
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "reverbOn", 1 }, "Reverb On", false));
+    pf ("reverbSize", "Reverb Size", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
+    pf ("reverbDamp", "Reverb Damp", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
+    pf ("reverbWidth", "Reverb Width", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f, pct);
+    pf ("reverbMix", "Reverb Mix", juce::NormalisableRange<float> (0.0f, 1.0f), 0.3f, pct);
+
     // --- Delay (mix 0 = bypass) ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "delayMode", 1 }, "Delay Mode",
@@ -417,6 +425,8 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     chorus.setSampleRate (sampleRate);
     chorus.reset();
     delay.setSampleRate (sampleRate);
+    reverb.setSampleRate (sampleRate);
+    reverb.reset();
     delay.reset();
     globalEq.setSampleRate (sampleRate);
     globalEq.reset();
@@ -546,6 +556,12 @@ void PDHybridAudioProcessor::pushParams()
     chorus.setRate  (apvts.getRawParameterValue ("chorusRate")->load());
     chorus.setDepth (apvts.getRawParameterValue ("chorusDepth")->load());
     chorus.setMix   (apvts.getRawParameterValue ("chorusMix")->load());
+
+    reverbOn_ = apvts.getRawParameterValue ("reverbOn")->load() > 0.5f;
+    reverb.setSize  (apvts.getRawParameterValue ("reverbSize")->load());
+    reverb.setDamp  (apvts.getRawParameterValue ("reverbDamp")->load());
+    reverb.setWidth (apvts.getRawParameterValue ("reverbWidth")->load());
+    reverb.setMix   (apvts.getRawParameterValue ("reverbMix")->load());
 
     // Master EQ bands (high-shelf gain is further modulated per block below).
     globalEq.setBand (pdhybrid::GlobalEq::LowShelf,
@@ -806,6 +822,9 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         if (delayOn_)
             delay.processStereo (buffer.getWritePointer (0),
                                  buffer.getWritePointer (1), numSamples);
+        if (reverbOn_)
+            reverb.processStereo (buffer.getWritePointer (0),
+                                  buffer.getWritePointer (1), numSamples);
         if (globalEqOn_)
             globalEq.processStereo (buffer.getWritePointer (0),
                                     buffer.getWritePointer (1), numSamples);

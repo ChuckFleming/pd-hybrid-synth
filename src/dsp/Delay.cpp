@@ -16,7 +16,11 @@ void Delay::setSampleRate (double sampleRateHz)
         return;
 
     sampleRate_ = sampleRateHz;
-    size_ = static_cast<int> (kMaxDelaySeconds * sampleRate_) + 4;
+    const int needed = static_cast<int> (kMaxDelaySeconds * sampleRate_) + 4;
+    size_ = 1;
+    while (size_ < needed)          // round up to a power of two for masked wrap
+        size_ <<= 1;
+    mask_ = size_ - 1;
     bufL_.assign (static_cast<std::size_t> (size_), 0.0f);
     bufR_.assign (static_cast<std::size_t> (size_), 0.0f);
     write_ = 0;
@@ -58,13 +62,14 @@ void Delay::setDuck (double amount01) noexcept
 float Delay::readFrac (const std::vector<float>& buf, double delaySamples) const noexcept
 {
     double readPos = static_cast<double> (write_) - delaySamples;
-    while (readPos < 0.0)
+    if (readPos < 0.0)              // delaySamples < size_, so one add suffices
         readPos += size_;
 
     const int    i0   = static_cast<int> (readPos);
     const double frac = readPos - i0;
-    const int    i1   = (i0 + 1) % size_;
-    return static_cast<float> (buf[i0] * (1.0 - frac) + buf[i1] * frac);
+    const int    i1   = (i0 + 1) & mask_;
+    return static_cast<float> (buf[static_cast<std::size_t> (i0 & mask_)] * (1.0 - frac)
+                             + buf[static_cast<std::size_t> (i1)] * frac);
 }
 
 void Delay::processStereo (float* left, float* right, int numSamples) noexcept
@@ -98,9 +103,9 @@ void Delay::processStereo (float* left, float* right, int numSamples) noexcept
             wR = dryR + feedback_ * echoR;
         }
 
-        bufL_[write_] = static_cast<float> (wL);
-        bufR_[write_] = static_cast<float> (wR);
-        write_ = (write_ + 1) % size_;
+        bufL_[static_cast<std::size_t> (write_)] = static_cast<float> (wL);
+        bufR_[static_cast<std::size_t> (write_)] = static_cast<float> (wR);
+        write_ = (write_ + 1) & mask_;
 
         left[n]  = static_cast<float> (dryL * (1.0 - mix_) + echoL * mix_ * duckGain);
         right[n] = static_cast<float> (dryR * (1.0 - mix_) + echoR * mix_ * duckGain);

@@ -40,7 +40,8 @@ private:
 
     double sampleRate_ = 44100.0;
     std::vector<float> bufL_, bufR_;
-    int    size_    = 1;
+    int    size_    = 1;    // power of two
+    int    mask_    = 0;    // size_ - 1, for cheap wrap
     int    write_   = 0;
     double delayL_  = 0.25 * 44100.0;
     double delayR_  = 0.25 * 44100.0;

@@ -19,9 +19,9 @@ Most of v6 is implemented. Each item below verified: full suite green (147 cases
 - §5c LFO fade-in/phase/free-retrig (516dacb); §5d new mod dests LFO-rate/noise-level (ee79165)
 - §6 panic button + preset delete (c56b4c7)
 - §3d Delay ↔ Reverb routing — fxRouting {Delay→Reverb, Reverb→Delay, Reverb+Dry Delay via Delay::processWet} (44215b2)
+- §5a Osc hard sync + phase mod — oscCrossMod {Off, Hard Sync, Phase Mod} + crossModAmount; both oscillators expose wrapped()/syncReset()/setPhaseMod() (cdf4af0)
 
 **REMAINING (for a future session):**
-- §5a Osc hard sync + phase-mod cross-mod — the one remaining *core* sound-design item. Needs per-osc phase-wrap exposure + reset in `renderOneSample`; PD osc is oversampled so wrap is at the core rate. Medium/high risk — do carefully with a spectral test.
 - §2b full per-osc DCW envelope (a dedicated 5th env; the pitch env pattern in Voice is the template).
 - §5f per-mod-slot response curve (Linear/Exp/S) in `ModMatrix::evaluate`.
 - §6 A/B compare + patch randomize (editor + APVTS state snapshots).

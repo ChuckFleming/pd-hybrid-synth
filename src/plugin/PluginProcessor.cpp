@@ -337,6 +337,22 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::NormalisableRange<float> (0.0f, 1.0f), czLevelDef[i - 1], pct);
     }
 
+    // --- CZ-style 8-stage pitch (DCO) envelope. Levels are bipolar around 0.5
+    //     (0.5 = no pitch offset); pitchEnvAmount scales the deviation in semis.
+    pf ("pitchEnvAmount", "Pitch Env Amount", juce::NormalisableRange<float> (-48.0f, 48.0f), 0.0f, cnt);
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "pitchEnvSustain", 1 }, "Pitch Env Sustain", 1, 8, 8));
+    const float peRateDef[8]  = { 0.02f, 0.20f, 0.30f, 0.40f, 0.50f, 0.50f, 0.50f, 0.50f };
+    const float peLevelDef[8] = { 0.50f, 0.50f, 0.50f, 0.50f, 0.50f, 0.50f, 0.50f, 0.50f };
+    for (int i = 1; i <= 8; ++i)
+    {
+        const auto s = juce::String (i);
+        pf ("pitchEnvRate" + s, "Pitch Env Rate " + s,
+            juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), peRateDef[i - 1], sec);
+        pf ("pitchEnvLevel" + s, "Pitch Env Level " + s,
+            juce::NormalisableRange<float> (0.0f, 1.0f), peLevelDef[i - 1], pct);
+    }
+
     const juce::StringArray srcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
                                        "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2",
                                        "Multi Env", "Amp Env", "Filt Env A", "Filt Env B",
@@ -558,6 +574,15 @@ void PDHybridAudioProcessor::pushParams()
         const auto s = juce::String (i);
         p.czRate[i - 1]  = apvts.getRawParameterValue ("czRate" + s)->load();
         p.czLevel[i - 1] = apvts.getRawParameterValue ("czLevel" + s)->load();
+    }
+
+    p.pitchEnvAmount  = apvts.getRawParameterValue ("pitchEnvAmount")->load();
+    p.pitchEnvSustain = static_cast<int> (apvts.getRawParameterValue ("pitchEnvSustain")->load());
+    for (int i = 1; i <= 8; ++i)
+    {
+        const auto s = juce::String (i);
+        p.pitchEnvRate[i - 1]  = apvts.getRawParameterValue ("pitchEnvRate" + s)->load();
+        p.pitchEnvLevel[i - 1] = apvts.getRawParameterValue ("pitchEnvLevel" + s)->load();
     }
 
     p.macro1 = apvts.getRawParameterValue ("macro1")->load();

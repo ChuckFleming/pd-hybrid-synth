@@ -345,6 +345,16 @@ void PDHybridEditor::buildSections()
     multiEnvSec.knobs.push_back (&addKnob ("czAmount", "Amt"));
     multiEnvSec.knobs.push_back (&addKnob ("czSustain", "Sus", 0));
 
+    // --- CZ pitch (DCO) envelope (8 rate + 8 level, aligned in rows) ---
+    pitchEnvSec.title = "Pitch Env (CZ)  ->  pitch";
+    pitchEnvSec.cols  = 8;
+    for (int i = 1; i <= 8; ++i)
+        pitchEnvSec.knobs.push_back (&addKnob ("pitchEnvRate" + juce::String (i), "R" + juce::String (i)));
+    for (int i = 1; i <= 8; ++i)
+        pitchEnvSec.knobs.push_back (&addKnob ("pitchEnvLevel" + juce::String (i), "L" + juce::String (i)));
+    pitchEnvSec.knobs.push_back (&addKnob ("pitchEnvAmount", "Amt", 0));
+    pitchEnvSec.knobs.push_back (&addKnob ("pitchEnvSustain", "Sus", 0));
+
     // --- LFOs ---
     lfo.title  = "LFO";
     lfo.cols   = 2;
@@ -466,7 +476,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     std::vector<Page> layout {
         { "Oscillators", { &oscA, &oscB, &mixer, &unison, &glideSec, &voiceSec, &stereo, &bassSec }, nullptr, {}, 0 },
         { "Filters",     { &filter, &filter2, &filterEnv, &filter2Env },        nullptr, {}, 0 },
-        { "Envelopes",   { &envelope, &modEnv, &multiEnvSec },                   nullptr, {}, 0 },
+        { "Envelopes",   { &envelope, &modEnv, &multiEnvSec, &pitchEnvSec },     nullptr, {}, 0 },
         { "Modulation",  { &lfo, &lfo2 }, &matrixHolder,
           "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
         { "FX",          { &drive, &comp, &delaySec, &globalEqSec, &masterSec }, nullptr, {}, 0 },

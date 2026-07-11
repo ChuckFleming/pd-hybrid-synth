@@ -185,6 +185,36 @@ TEST_CASE ("Ring modulation adds sum/difference sidebands", "[voice][ringmod]")
     REQUIRE (sWet.magnitudeNearHz (fDiff) > sDry.magnitudeNearHz (fDiff) * 4.0);
 }
 
+TEST_CASE ("Pitch envelope shifts the note pitch", "[voice][pitchenv]")
+{
+    const double sr = 48000.0;
+
+    // Hold the pitch envelope at a constant level so the pitch shift is steady
+    // and the spectrum has a clean peak.
+    auto peakHz = [&] (double amount, double level)
+    {
+        Voice v;
+        v.prepare (sr);
+        SynthParams p = cleanParams();
+        p.oscAType        = pdhybrid::OscType::Triangle;
+        p.cutoffHz        = 18000.0;
+        p.pitchEnvAmount  = amount;
+        p.pitchEnvSustain = 1;        // sustain on stage 1 -> constant offset
+        for (int i = 0; i < 8; ++i) { p.pitchEnvLevel[i] = level; p.pitchEnvRate[i] = 0.001; }
+        v.setParams (p);
+        v.start (57, 1.0f);           // A3 = 220 Hz
+        std::vector<float> l (16384), r (16384);
+        v.renderBlock (l.data(), r.data(), static_cast<int> (l.size()));
+        return computeSpectrum (l, sr).peakFrequency();
+    };
+
+    const double base = midiNoteToHz (57);
+    // Level 0.75 with amount 12 -> +12 * (0.75-0.5)*2 = +6 semitones.
+    REQUIRE (peakHz (0.0,  0.75) == Approx (base).epsilon (0.05));                       // amount 0 -> off
+    REQUIRE (peakHz (12.0, 0.50) == Approx (base).epsilon (0.05));                       // level 0.5 -> no offset
+    REQUIRE (peakHz (12.0, 0.75) == Approx (base * std::pow (2.0, 6.0 / 12.0)).epsilon (0.05));
+}
+
 TEST_CASE ("Legato changeNote retunes without retriggering the envelope", "[voice][legato]")
 {
     Voice v;

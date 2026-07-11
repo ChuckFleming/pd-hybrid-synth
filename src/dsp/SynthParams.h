@@ -161,6 +161,13 @@ struct SynthParams
     double czRate[8]  = { 0.02, 0.15, 0.10, 0.30, 0.50, 0.40, 0.60, 0.50 };  // seconds
     double czLevel[8] = { 1.00, 0.80, 0.60, 0.50, 0.50, 0.30, 0.15, 0.00 };  // 0..1
 
+    // CZ-style 8-stage pitch (DCO) envelope. Levels are bipolar around 0.5
+    // (0.5 = no offset); pitchEnvAmount scales the deviation in semitones.
+    double pitchEnvAmount = 0.0;             // semitones (bipolar, 0 = off)
+    int    pitchEnvSustain = 8;              // 1-based sustain stage
+    double pitchEnvRate[8]  = { 0.02, 0.20, 0.30, 0.40, 0.50, 0.50, 0.50, 0.50 };
+    double pitchEnvLevel[8] = { 0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50 };
+
     // Macro sources (also usable as global mod sources).
     double macro1 = 0.0, macro2 = 0.0;
 

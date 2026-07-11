@@ -23,6 +23,8 @@ public:
     void setType       (OscType type) noexcept;
     void setOversampling (int factor) noexcept  { pd_.setOversampling (factor); }
     void setPdWave     (PdWave wave) noexcept   { pd_.setWave (wave); }
+    void setPdWaveB    (PdWave wave) noexcept   { pd_.setWaveB (wave); }
+    void setPdCombine  (bool on) noexcept       { pd_.setCombine (on); }
     void setEq         (double lowDb, double midDb, double highDb) noexcept
     { eq_.setGains (lowDb, midDb, highDb); }
     void setAmount     (double amount01) noexcept { pd_.setAmount (amount01); }

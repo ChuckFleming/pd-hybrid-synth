@@ -73,6 +73,10 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::ParameterID { id + "Type", 1 }, label + " Type", oscTypeNames, defType));
         params.push_back (std::make_unique<juce::AudioParameterChoice> (
             juce::ParameterID { id + "Wave", 1 }, label + " PD Wave", pdWaveNames, 0));
+        params.push_back (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { id + "Wave2", 1 }, label + " PD Wave 2", pdWaveNames, 0));
+        params.push_back (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { id + "Combine", 1 }, label + " Wave Combine", false));
         pf (id + "Amount", label + " PD Amount",
             juce::NormalisableRange<float> (0.0f, 1.0f), 0.30f, pct);
         pf (id + "PulseWidth", label + " Pulse Width",
@@ -496,6 +500,10 @@ void PDHybridAudioProcessor::pushParams()
     readOscGroup ("oscB", p.oscBType, p.oscBWave, p.oscBAmount, p.oscBPulseWidth,
                   p.oscBOctave, p.oscBSemi, p.oscBFine, p.oscBLevel,
                   p.oscBEqLow, p.oscBEqMid, p.oscBEqHigh);
+    p.oscAWave2   = static_cast<int> (apvts.getRawParameterValue ("oscAWave2")->load());
+    p.oscACombine = apvts.getRawParameterValue ("oscACombine")->load() > 0.5f;
+    p.oscBWave2   = static_cast<int> (apvts.getRawParameterValue ("oscBWave2")->load());
+    p.oscBCombine = apvts.getRawParameterValue ("oscBCombine")->load() > 0.5f;
     p.noiseLevel  = apvts.getRawParameterValue ("noiseLevel")->load();
     p.ringModLevel = apvts.getRawParameterValue ("ringMod")->load();
 

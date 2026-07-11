@@ -236,7 +236,8 @@ void PDHybridEditor::buildSections()
     // --- Oscillator A ---
     oscA.title  = "Osc A";
     oscA.cols   = 4;
-    oscA.combos = { &addCombo ("oscAType", kOscTypeNames), &addCombo ("oscAWave", kPdWaveNames) };
+    oscA.combos = { &addCombo ("oscAType", kOscTypeNames), &addCombo ("oscAWave", kPdWaveNames),
+                    &addCombo ("oscAWave2", kPdWaveNames), &addCombo ("oscACombine", { "Combine Off", "Combine On" }) };
     oscA.knobs  = { &addKnob ("oscAAmount", "PD Amt"), &addKnob ("oscAPulseWidth", "Width"),
                     &addKnob ("oscAOctave", "Oct", 0), &addKnob ("oscASemi", "Semi", 0),
                     &addKnob ("oscAFine", "Fine"), &addKnob ("oscAEqLow", "EQ Lo"),
@@ -245,7 +246,8 @@ void PDHybridEditor::buildSections()
     // --- Oscillator B ---
     oscB.title  = "Osc B";
     oscB.cols   = 4;
-    oscB.combos = { &addCombo ("oscBType", kOscTypeNames), &addCombo ("oscBWave", kPdWaveNames) };
+    oscB.combos = { &addCombo ("oscBType", kOscTypeNames), &addCombo ("oscBWave", kPdWaveNames),
+                    &addCombo ("oscBWave2", kPdWaveNames), &addCombo ("oscBCombine", { "Combine Off", "Combine On" }) };
     oscB.knobs  = { &addKnob ("oscBAmount", "PD Amt"), &addKnob ("oscBPulseWidth", "Width"),
                     &addKnob ("oscBOctave", "Oct", 0), &addKnob ("oscBSemi", "Semi", 0),
                     &addKnob ("oscBFine", "Fine"), &addKnob ("oscBEqLow", "EQ Lo"),

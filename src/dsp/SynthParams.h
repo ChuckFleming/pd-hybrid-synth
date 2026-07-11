@@ -66,6 +66,8 @@ struct SynthParams
     // --- Oscillator A ---
     OscType oscAType       = OscType::PhaseDistortion;
     int     oscAWave       = 0;      // PdWave index (used when type == PhaseDistortion)
+    int     oscAWave2      = 0;      // 2nd PD wave for combine
+    bool    oscACombine    = false;  // alternate oscAWave/oscAWave2 per cycle
     double  oscAAmount     = 0.30;   // PD DCW amount
     double  oscAPulseWidth = 0.5;
     int     oscAOctave     = 0;
@@ -76,6 +78,8 @@ struct SynthParams
     // --- Oscillator B ---
     OscType oscBType       = OscType::Saw;
     int     oscBWave       = 0;
+    int     oscBWave2      = 0;
+    bool    oscBCombine    = false;
     double  oscBAmount     = 0.30;
     double  oscBPulseWidth = 0.5;
     int     oscBOctave     = 0;

@@ -181,6 +181,36 @@ TEST_CASE ("Oversampling keeps the aliasing floor low on a bright wave", "[oscil
     REQUIRE (alias / (harmonic + alias) < 0.05);
 }
 
+TEST_CASE ("PD wave combine alternates waveforms per cycle", "[oscillator][combine]")
+{
+    const double sr = 48000.0, freq = 220.0;
+    const int    n  = 16384;
+
+    // Plain square vs square combined with a sawtooth every other cycle.
+    PhaseDistortionOscillator plain;
+    plain.setSampleRate (sr); plain.setFrequency (freq); plain.setAmount (0.6);
+    plain.setWave (PdWave::Square); plain.reset();
+    std::vector<float> a (n);
+    plain.processBlock (a.data(), n);
+
+    PhaseDistortionOscillator comb;
+    comb.setSampleRate (sr); comb.setFrequency (freq); comb.setAmount (0.6);
+    comb.setWave (PdWave::Square); comb.setWaveB (PdWave::Sawtooth);
+    comb.setCombine (true); comb.reset();
+    std::vector<float> b (n);
+    comb.processBlock (b.data(), n);
+
+    REQUIRE_FALSE (hasBadValues (b));
+
+    double diff = 0.0;
+    for (int i = 0; i < n; ++i) diff += std::abs (a[i] - b[i]);
+    REQUIRE (diff > 1.0);                     // combine changes the tone
+
+    // Alternating cycles halve the effective period -> energy appears at f/2.
+    auto spec = computeSpectrum (b, sr);
+    REQUIRE (spec.magnitudeNearHz (freq * 0.5) > spec.magnitudeNearHz (freq) * 0.1);
+}
+
 TEST_CASE ("PD oscillator is block-size invariant", "[oscillator][invariance]")
 {
     const double sr = 48000.0, freq = 330.0, amount = 0.6;

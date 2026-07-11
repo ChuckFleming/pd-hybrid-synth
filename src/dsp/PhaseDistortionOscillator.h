@@ -47,6 +47,8 @@ public:
     void  setFrequency   (double frequencyHz) noexcept;
     void  setAmount      (double amount01) noexcept;   // 0 = pure sine .. 1 = max distortion
     void  setWave        (PdWave wave) noexcept { wave_ = wave; }
+    void  setWaveB       (PdWave wave) noexcept { waveB_ = wave; }   // 2nd wave for combine
+    void  setCombine     (bool on) noexcept     { combine_ = on; }   // alternate wave per cycle
     void  setOversampling (int factor) noexcept;       // 1, 2, 4, or 8
     void  reset          () noexcept;
 
@@ -63,6 +65,9 @@ private:
     double phase_      = 0.0;   // normalised [0, 1)
     double amount_     = 0.0;
     PdWave wave_       = PdWave::Sawtooth;
+    PdWave waveB_      = PdWave::Sawtooth;   // alternate wave when combine_ is on
+    bool   combine_    = false;
+    bool   useB_       = false;              // which wave the current cycle uses
 
     Oversampler os_;
     int         osFactor_ = 4;

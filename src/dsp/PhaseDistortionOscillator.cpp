@@ -40,6 +40,7 @@ void PhaseDistortionOscillator::setOversampling (int factor) noexcept
 void PhaseDistortionOscillator::reset() noexcept
 {
     phase_ = 0.0;
+    useB_  = false;
     if (os_.factor() != osFactor_)
         os_.prepare (osFactor_);
     os_.reset();
@@ -85,9 +86,10 @@ double PhaseDistortionOscillator::coreSample() noexcept
 {
     const double p = phase_;
     const double a = amount_;
+    const PdWave w = (combine_ && useB_) ? waveB_ : wave_;   // alternate per cycle
     double y;
 
-    switch (wave_)
+    switch (w)
     {
         case PdWave::Sawtooth:
         {
@@ -146,7 +148,7 @@ double PhaseDistortionOscillator::coreSample() noexcept
         {
             // Windowed sync: sine at k x fundamental, `amount` sweeps k.
             const double k = 1.0 + a * 7.0;                   // resonant multiple 1 -> 8
-            y = resonantWindow (p, wave_) * std::sin (kTwoPi * k * p);
+            y = resonantWindow (p, w) * std::sin (kTwoPi * k * p);
         } break;
 
         default:
@@ -156,7 +158,11 @@ double PhaseDistortionOscillator::coreSample() noexcept
 
     phase_ += phaseInc_ / osFactor_;
     if (phase_ >= 1.0)
+    {
         phase_ -= 1.0;
+        if (combine_)
+            useB_ = ! useB_;   // swap waveforms on the next cycle (click-free at p=0)
+    }
 
     return y;
 }

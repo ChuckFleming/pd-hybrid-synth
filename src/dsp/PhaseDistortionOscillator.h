@@ -49,8 +49,12 @@ public:
     void  setWave        (PdWave wave) noexcept { wave_ = wave; }
     void  setWaveB       (PdWave wave) noexcept { waveB_ = wave; }   // 2nd wave for combine
     void  setCombine     (bool on) noexcept     { combine_ = on; }   // alternate wave per cycle
+    void  setPhaseMod    (double offset) noexcept { phaseMod_ = offset; }   // phase-mod input
     void  setOversampling (int factor) noexcept;       // 1, 2, 4, or 8
     void  reset          () noexcept;
+
+    bool  wrapped   () const noexcept { return wrapped_; }   // base phase wrapped last sample
+    void  syncReset () noexcept { phase_ = 0.0; }            // hard-sync slave reset
 
     float processSample () noexcept;
     void  processBlock  (float* out, int numSamples) noexcept;
@@ -68,6 +72,8 @@ private:
     PdWave waveB_      = PdWave::Sawtooth;   // alternate wave when combine_ is on
     bool   combine_    = false;
     bool   useB_       = false;              // which wave the current cycle uses
+    double phaseMod_   = 0.0;                // phase-mod input
+    bool   wrapped_    = false;              // base phase wrapped during last processSample
 
     Oversampler os_;
     int         osFactor_ = 4;

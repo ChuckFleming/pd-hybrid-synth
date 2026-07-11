@@ -308,20 +308,38 @@ void Voice::release()
 
 float Voice::renderOneSample() noexcept
 {
-    // Sum the active sources only; skipping silent ones keeps the hot path cheap
-    // (Osc A always runs, Osc B and the noise generator are skipped at level 0).
-    const double sA = unitA_.processSample();
-    double s = sA * oscALevelMod_;
+    // Osc A + Osc B with optional cross-modulation. Osc B runs when it is mixed,
+    // ring-modulated, or cross-modulating (hard sync / phase mod).
+    const double ring  = params_.ringModLevel;
+    const int    cross = params_.oscCrossMod;
+    const bool   needB = (oscBLevelMod_ > 1.0e-5) || (ring > 1.0e-5) || (cross != 0);
 
-    // Osc B runs when it is mixed in OR when ring modulation needs it.
-    const double ring = params_.ringModLevel;
-    if (oscBLevelMod_ > 1.0e-5 || ring > 1.0e-5)
+    double sA, sB = 0.0;
+    if (cross == 2)          // Phase Mod: Osc B modulates Osc A's phase
     {
-        const double sB = unitB_.processSample();
-        s += sB * oscBLevelMod_;
-        if (ring > 1.0e-5)
-            s += sA * sB * ring;   // CZ line ring modulation
+        sB = unitB_.processSample();
+        unitA_.setPhaseMod (sB * params_.crossModAmount * 0.5);
+        sA = unitA_.processSample();
     }
+    else if (cross == 1)     // Hard Sync: Osc A masters Osc B (reset on A's wrap)
+    {
+        unitA_.setPhaseMod (0.0);
+        sA = unitA_.processSample();
+        if (unitA_.wrapped())
+            unitB_.syncReset();
+        sB = unitB_.processSample();
+    }
+    else                     // Off
+    {
+        unitA_.setPhaseMod (0.0);
+        sA = unitA_.processSample();
+        if (needB)
+            sB = unitB_.processSample();
+    }
+
+    double s = sA * oscALevelMod_ + sB * oscBLevelMod_;
+    if (ring > 1.0e-5)
+        s += sA * sB * ring;   // CZ line ring modulation
 
     if (noiseLevelMod_ > 1.0e-5)
     {

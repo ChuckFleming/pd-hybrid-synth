@@ -99,6 +99,10 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     pf ("noiseLevel", "Noise Level", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
     pf ("ringMod", "Ring Mod", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "oscCrossMod", 1 }, "Osc Cross Mod",
+        juce::StringArray { "Off", "Hard Sync", "Phase Mod" }, 0));
+    pf ("crossModAmount", "Cross Mod Amount", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
     pf ("cutoff", "Filter Cutoff",
         juce::NormalisableRange<float> (20.0f, 18000.0f, 0.0f, 0.3f), 8000.0f, hz);
@@ -511,6 +515,8 @@ void PDHybridAudioProcessor::pushParams()
     p.oscBCombine = apvts.getRawParameterValue ("oscBCombine")->load() > 0.5f;
     p.noiseLevel  = apvts.getRawParameterValue ("noiseLevel")->load();
     p.ringModLevel = apvts.getRawParameterValue ("ringMod")->load();
+    p.oscCrossMod    = static_cast<int> (apvts.getRawParameterValue ("oscCrossMod")->load());
+    p.crossModAmount = apvts.getRawParameterValue ("crossModAmount")->load();
 
     p.cutoffHz    = apvts.getRawParameterValue ("cutoff")->load();
     p.resonance   = apvts.getRawParameterValue ("resonance")->load();

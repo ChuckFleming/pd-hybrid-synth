@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 
 #include "dsp/PhaseDistortionOscillator.h"
 #include "harness/Spectrum.h"
@@ -10,6 +11,7 @@
 
 using pdhybrid::PhaseDistortionOscillator;
 using pdhybrid::PdWave;
+using Catch::Approx;
 using namespace harness;
 
 namespace {
@@ -209,6 +211,52 @@ TEST_CASE ("PD wave combine alternates waveforms per cycle", "[oscillator][combi
     // Alternating cycles halve the effective period -> energy appears at f/2.
     auto spec = computeSpectrum (b, sr);
     REQUIRE (spec.magnitudeNearHz (freq * 0.5) > spec.magnitudeNearHz (freq) * 0.1);
+}
+
+TEST_CASE ("Phase-mod input is a no-op at zero offset", "[oscillator][crossmod]")
+{
+    const double sr = 48000.0;
+    auto a = renderOsc (330.0, 0.6, sr, 4096, 128, PdWave::Sawtooth);
+
+    PhaseDistortionOscillator osc;
+    osc.setSampleRate (sr); osc.setFrequency (330.0); osc.setAmount (0.6);
+    osc.setWave (PdWave::Sawtooth); osc.reset();
+    std::vector<float> b (4096);
+    for (int i = 0; i < 4096; ++i) { osc.setPhaseMod (0.0); b[i] = osc.processSample(); }
+
+    for (std::size_t i = 0; i < a.size(); ++i)
+        REQUIRE (a[i] == b[i]);          // bit-identical when PM offset is 0
+}
+
+TEST_CASE ("Hard sync locks the slave to the master period", "[oscillator][crossmod]")
+{
+    const double sr = 48000.0;
+    const double fMaster = 220.0, fSlave = 337.0;   // slave detuned higher
+
+    PhaseDistortionOscillator master, slave;
+    for (auto* o : { &master, &slave }) { o->setSampleRate (sr); o->setAmount (0.5); o->setWave (PdWave::Sawtooth); o->reset(); }
+    master.setFrequency (fMaster);
+    slave.setFrequency (fSlave);
+
+    const int n = 16384;
+    std::vector<float> synced (n);
+    for (int i = 0; i < n; ++i)
+    {
+        const float m = master.processSample();   // advances + flags wrap
+        (void) m;
+        if (master.wrapped())
+            slave.syncReset();
+        synced[i] = slave.processSample();
+    }
+
+    REQUIRE_FALSE (hasBadValues (synced));
+    // The sync-reset forces the slave's period to the master's, so all the
+    // energy lands on the master's harmonic series (n * 220 Hz). A free-running
+    // slave would instead peak near 337 Hz, which is not a 220 Hz harmonic.
+    auto spec = computeSpectrum (synced, sr);
+    const double ratio = spec.peakFrequency() / fMaster;
+    REQUIRE (std::abs (ratio - std::round (ratio)) < 0.12);   // peak is a master harmonic
+    REQUIRE (std::round (ratio) >= 1.0);
 }
 
 TEST_CASE ("PD oscillator is block-size invariant", "[oscillator][invariance]")

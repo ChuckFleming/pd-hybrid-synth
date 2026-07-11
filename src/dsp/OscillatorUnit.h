@@ -25,6 +25,13 @@ public:
     void setPdWave     (PdWave wave) noexcept   { pd_.setWave (wave); }
     void setPdWaveB    (PdWave wave) noexcept   { pd_.setWaveB (wave); }
     void setPdCombine  (bool on) noexcept       { pd_.setCombine (on); }
+
+    // Cross-modulation (hard sync + phase mod). Dispatch to the active engine.
+    void setPhaseMod (double offset) noexcept   { pd_.setPhaseMod (offset); analog_.setPhaseMod (offset); }
+    bool wrapped     () const noexcept
+    { return (type_ == OscType::PhaseDistortion) ? pd_.wrapped() : analog_.wrapped(); }
+    void syncReset   () noexcept
+    { if (type_ == OscType::PhaseDistortion) pd_.syncReset(); else analog_.syncReset(); }
     void setEq         (double lowDb, double midDb, double highDb) noexcept
     { eq_.setGains (lowDb, midDb, highDb); }
     void setAmount     (double amount01) noexcept { pd_.setAmount (amount01); }

@@ -25,20 +25,26 @@ public:
     void setFrequency  (double frequencyHz) noexcept;
     void setWaveform   (AnalogWave wave) noexcept   { wave_ = wave; }
     void setPulseWidth (double pulseWidth01) noexcept;
+    void setPhaseMod   (double offset) noexcept { phaseMod_ = offset; }   // phase-mod input
     void reset         () noexcept;
+
+    bool wrapped   () const noexcept { return wrapped_; }   // phase wrapped last sample
+    void syncReset () noexcept { phase_ = 0.0; }            // hard-sync slave reset
 
     float processSample () noexcept;
     void  processBlock  (float* out, int numSamples) noexcept;
 
 private:
-    double squareValue (double pulseWidth) const noexcept;
+    double squareValue (double pulseWidth, double ph) const noexcept;
 
     double sampleRate_ = 44100.0;
     double frequency_  = 440.0;
     double inc_        = 440.0 / 44100.0;
     double phase_      = 0.0;
+    double phaseMod_   = 0.0;
     double pulseWidth_ = 0.5;
     double triState_   = 0.0;
+    bool   wrapped_    = false;
     AnalogWave wave_   = AnalogWave::Saw;
 };
 

@@ -84,7 +84,8 @@ static inline double resonantWindow (double p, PdWave wave) noexcept
 
 double PhaseDistortionOscillator::coreSample() noexcept
 {
-    const double p = phase_;
+    double p = phase_ + phaseMod_;            // phase-mod input (0 = identical to before)
+    p -= std::floor (p);
     const double a = amount_;
     const PdWave w = (combine_ && useB_) ? waveB_ : wave_;   // alternate per cycle
     double y;
@@ -160,6 +161,7 @@ double PhaseDistortionOscillator::coreSample() noexcept
     if (phase_ >= 1.0)
     {
         phase_ -= 1.0;
+        wrapped_ = true;
         if (combine_)
             useB_ = ! useB_;   // swap waveforms on the next cycle (click-free at p=0)
     }
@@ -169,6 +171,7 @@ double PhaseDistortionOscillator::coreSample() noexcept
 
 float PhaseDistortionOscillator::processSample() noexcept
 {
+    wrapped_ = false;
     float high[8];
     for (int j = 0; j < osFactor_; ++j)
         high[j] = static_cast<float> (coreSample());

@@ -92,6 +92,8 @@ struct SynthParams
     double  oscBLevel  = 0.0;   // B silent by default -> single-osc patches unchanged
     double  noiseLevel = 0.0;
     double  ringModLevel = 0.0; // CZ-style ring mod: adds (oscA * oscB) at this level
+    int     oscCrossMod  = 0;   // 0=Off, 1=Hard Sync (A masters B), 2=Phase Mod (B -> A)
+    double  crossModAmount = 0.0;
 
     FilterType filterType   = FilterType::Ladder;
     double     cutoffHz     = 8000.0;

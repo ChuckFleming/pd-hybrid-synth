@@ -1,4 +1,5 @@
 #include "AnalogOscillator.h"
+#include <cmath>
 
 namespace pdhybrid {
 
@@ -47,11 +48,11 @@ void AnalogOscillator::reset() noexcept
     triState_ = 0.0;
 }
 
-double AnalogOscillator::squareValue (double pulseWidth) const noexcept
+double AnalogOscillator::squareValue (double pulseWidth, double ph) const noexcept
 {
-    double v = (phase_ < pulseWidth) ? 1.0 : -1.0;
-    v += polyBLEP (phase_, inc_);                          // rising edge at 0
-    double t = phase_ - pulseWidth;
+    double v = (ph < pulseWidth) ? 1.0 : -1.0;
+    v += polyBLEP (ph, inc_);                              // rising edge at 0
+    double t = ph - pulseWidth;
     if (t < 0.0) t += 1.0;
     v -= polyBLEP (t, inc_);                               // falling edge at pw
     return v;
@@ -62,23 +63,27 @@ float AnalogOscillator::processSample() noexcept
     const double dt = inc_;
     double out = 0.0;
 
+    // Phase-mod input shifts the read phase (0 = no PM -> identical to before).
+    double ph = phase_ + phaseMod_;
+    ph -= std::floor (ph);
+
     switch (wave_)
     {
         case AnalogWave::Saw:
-            out = (2.0 * phase_ - 1.0) - polyBLEP (phase_, dt);
+            out = (2.0 * ph - 1.0) - polyBLEP (ph, dt);
             break;
 
         case AnalogWave::Square:
-            out = squareValue (0.5);
+            out = squareValue (0.5, ph);
             break;
 
         case AnalogWave::Pulse:
-            out = squareValue (pulseWidth_);
+            out = squareValue (pulseWidth_, ph);
             break;
 
         case AnalogWave::Triangle:
         {
-            const double sq = squareValue (0.5);
+            const double sq = squareValue (0.5, ph);
             // Leaky integration of the band-limited square yields a triangle.
             triState_ = 0.9995 * triState_ + 4.0 * dt * sq;
             out = triState_;
@@ -86,9 +91,13 @@ float AnalogOscillator::processSample() noexcept
         }
     }
 
+    wrapped_ = false;
     phase_ += inc_;
     if (phase_ >= 1.0)
+    {
         phase_ -= 1.0;
+        wrapped_ = true;
+    }
 
     return static_cast<float> (out);
 }

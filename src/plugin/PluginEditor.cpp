@@ -256,9 +256,10 @@ void PDHybridEditor::buildSections()
     // --- Mixer ---
     mixer.title = "Mixer";
     mixer.cols  = 3;
+    mixer.combos = { &addCombo ("oscCrossMod", { "X-Mod Off", "Hard Sync", "Phase Mod" }) };
     mixer.knobs = { &addKnob ("oscALevel", "Osc A"), &addKnob ("oscBLevel", "Osc B"),
                     &addKnob ("noiseLevel", "Noise"), &addKnob ("ringMod", "Ring"),
-                    &addKnob ("noiseMod", "N.Mod") };
+                    &addKnob ("noiseMod", "N.Mod"), &addKnob ("crossModAmount", "X-Amt") };
 
     // --- Unison ---
     unison.title = "Unison";

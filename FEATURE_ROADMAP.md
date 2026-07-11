@@ -5,6 +5,30 @@ User-stated priority: **voice modes & allocation control, including changeable p
 
 ---
 
+## IMPLEMENTATION STATUS (updated 2026-07-11)
+Most of v6 is implemented. Each item below verified: full suite green (147 cases) + pluginval strictness-8 clean. Build with Bash.
+
+**DONE:**
+- §1 Voice modes / polyphony / steal policy / note priority (5007f67); live-mode-switch flush (aff624a)
+- §4a Sustain pedal CC64 (5007f67); §2f pitch-bend range param (5007f67)
+- §2c Ring modulation (aff624a); §2a 8-stage pitch (DCO) envelope (34099f1); §2d noise pitch mod (6b3d328); §2e wave combine (e81db9b)
+- §5b envelope velocity sensitivity + §5e drive position (6b3d328)
+- §4c velocity curve + §4d master tune/transpose (09b6e09)
+- §3a Chorus (21c6825); §3b Reverb (790146d)
+- §4b Arpeggiator (d63ffa3)
+- §5c LFO fade-in/phase/free-retrig (516dacb); §5d new mod dests LFO-rate/noise-level (ee79165)
+- §6 panic button + preset delete (c56b4c7)
+
+**REMAINING (for a future session):**
+- §5a Osc hard sync + phase-mod cross-mod — the one remaining *core* sound-design item. Needs per-osc phase-wrap exposure + reset in `renderOneSample`; PD osc is oversampled so wrap is at the core rate. Medium/high risk — do carefully with a spectral test.
+- §2b full per-osc DCW envelope (a dedicated 5th env; the pitch env pattern in Voice is the template).
+- §5f per-mod-slot response curve (Linear/Exp/S) in `ModMatrix::evaluate`.
+- §6 A/B compare + patch randomize (editor + APVTS state snapshots).
+- §4e MPE config params / §4f microtuning (stretch; §4d already created the `noteHz` tuning seam).
+- Minor: MonoBass doesn't yet honour master tune/transpose (documented in 09b6e09); expose pitchEnv as `ModSource::PitchEnv`.
+
+---
+
 ## 0. How this repo works — read before implementing anything
 
 **Architecture.** DSP lives in `src/dsp/` as pure C++ (no JUCE) so the offline test harness can drive it. The JUCE wrapper is `src/plugin/PluginProcessor.{h,cpp}` (parameters, MIDI, master FX chain) and `src/plugin/PluginEditor.{h,cpp}` (tabbed card-based editor). Per-voice DSP is `src/dsp/Voice.{h,cpp}`, voice allocation is `src/dsp/SynthEngine.{h,cpp}`, the per-block parameter snapshot is `src/dsp/SynthParams.h`.

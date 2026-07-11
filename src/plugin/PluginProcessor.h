@@ -75,7 +75,6 @@ private:
     pdhybrid::Lfo         globalLfo;
     pdhybrid::ModMatrix   globalMatrix;
     double                macro1_ = 0.0, macro2_ = 0.0, modWheel_ = 0.0;
-    bool                  sustain_ = false;   // sustain pedal (CC64) state
     double                delayMixBase_ = 0.0, delayFbBase_ = 0.30;
     double                eqHighFreqBase_ = 8000.0, eqHighGainBase_ = 0.0;
     bool                  compOn_ = true, delayOn_ = true, globalEqOn_ = true;

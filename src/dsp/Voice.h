@@ -33,8 +33,13 @@ public:
     void start   (int note, float velocity, double glideFromHz = 0.0, double glideSamples = 0.0);
     void release ();                            // note-off -> envelope release
 
-    bool isActive() const noexcept { return env_.isActive(); }
-    int  note    () const noexcept { return note_; }
+    // Legato note change: retune (optionally gliding) WITHOUT retriggering the
+    // envelopes or LFOs. Used by the mono legato voice modes.
+    void changeNote (int note, double glideFromHz = 0.0, double glideSamples = 0.0);
+
+    bool   isActive() const noexcept { return env_.isActive(); }
+    int    note    () const noexcept { return note_; }
+    double envLevel() const noexcept { return env_.level(); }   // for quietest-steal
 
     void setPitchBendSemitones (double semitones) noexcept { pitchBend_ = semitones; }
     void setPressure           (double pressure01) noexcept { pressure_ = pressure01; }

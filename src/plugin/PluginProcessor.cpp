@@ -534,7 +534,7 @@ void PDHybridAudioProcessor::pushParams()
     p.stealPolicy    = static_cast<int> (apvts.getRawParameterValue ("stealPolicy")->load());
     p.monoRetrigger  = apvts.getRawParameterValue ("monoRetrigger")->load() > 0.5f;
     p.pitchBendRange = apvts.getRawParameterValue ("pitchBendRange")->load();
-    p.sustainPedalHeld = sustain_;  // MIDI CC64 sets this in handleMidiMessage
+    pitchBendRangeSemis = p.pitchBendRange;   // used when converting MIDI bend
 
     const int lfoSync  = static_cast<int> (apvts.getRawParameterValue ("lfoSync")->load());
     const int lfo2Sync = static_cast<int> (apvts.getRawParameterValue ("lfo2Sync")->load());
@@ -645,8 +645,8 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
     }
     else if (msg.isController() && msg.getControllerNumber() == 64)
     {
-        // Sustain pedal (CC64): > 63 = pedal down, <= 63 = pedal up. Routed to SynthParams.
-        sustain_ = msg.getControllerValue() >= 64;
+        // Sustain pedal (CC64): >= 64 = pedal down, < 64 = pedal up.
+        engine.setSustain (msg.getControllerValue() >= 64);
     }
     else if (msg.isAllNotesOff() || msg.isAllSoundOff())
     {

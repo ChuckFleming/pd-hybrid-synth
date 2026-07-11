@@ -228,6 +228,28 @@ void Voice::start (int note, float velocity, double glideFromHz, double glideSam
     applyModulation();
 }
 
+void Voice::changeNote (int note, double glideFromHz, double glideSamples)
+{
+    // Legato: retune (optionally gliding) but leave every envelope/LFO running.
+    note_          = note;
+    glideTargetHz_ = midiNoteToHz (note);
+    if (glideFromHz > 0.0 && glideSamples > 0.5)
+    {
+        glideStartHz_ = glideFromHz;
+        glideSamples_ = glideSamples;
+        glidePos_     = 0.0;
+        baseFreq_     = glideFromHz;
+    }
+    else
+    {
+        glideStartHz_ = glideTargetHz_;
+        glideSamples_ = 0.0;
+        glidePos_     = 1.0;
+        baseFreq_     = glideTargetHz_;
+    }
+    applyModulation();
+}
+
 void Voice::release()
 {
     env_.noteOff();

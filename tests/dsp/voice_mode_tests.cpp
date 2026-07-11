@@ -1,0 +1,166 @@
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
+
+#include "dsp/SynthEngine.h"
+#include "dsp/Voice.h"
+#include "harness/Spectrum.h"
+
+#include <vector>
+
+using pdhybrid::SynthEngine;
+using pdhybrid::SynthParams;
+using pdhybrid::Voice;
+using pdhybrid::midiNoteToHz;
+using Catch::Approx;
+using namespace harness;
+
+namespace {
+
+// Clean sustained tone so a single fundamental dominates the spectrum.
+SynthParams cleanParams()
+{
+    SynthParams p;
+    p.oscAAmount = 0.10;
+    p.cutoffHz   = 12000.0;
+    p.resonance  = 0.0;
+    p.attack     = 0.001;
+    p.decay      = 0.001;
+    p.sustain    = 1.0;
+    p.release    = 0.05;
+    p.gain       = 0.9;
+    return p;
+}
+
+void advance (SynthEngine& e, int numSamples)
+{
+    std::vector<float> l (numSamples), r (numSamples);
+    e.renderBlock (l.data(), r.data(), numSamples);
+}
+
+double soundingHz (SynthEngine& e, double sr)
+{
+    std::vector<float> l (16384), r (16384);
+    e.renderBlock (l.data(), r.data(), static_cast<int> (l.size()));
+    return computeSpectrum (l, sr).peakFrequency();
+}
+
+} // namespace
+
+TEST_CASE ("Polyphony parameter caps the number of active voices", "[voice][poly]")
+{
+    SynthEngine e;
+    e.setSampleRate (48000.0);
+    auto p = cleanParams();
+    p.voiceMode    = 0;    // Poly
+    p.unisonVoices = 1;
+    p.polyphony    = 2;
+    e.setParams (p);
+
+    e.noteOn (60, 1.0f, 1);
+    e.noteOn (64, 1.0f, 2);
+    e.noteOn (67, 1.0f, 3);   // exceeds the 2-voice limit -> must steal
+    advance (e, 64);
+
+    REQUIRE (e.activeVoiceCount() <= 2);
+}
+
+TEST_CASE ("Mono mode keeps a single voice sounding", "[voice][mono]")
+{
+    SynthEngine e;
+    e.setSampleRate (48000.0);
+    auto p = cleanParams();
+    p.voiceMode    = 1;    // Mono
+    p.unisonVoices = 1;
+    e.setParams (p);
+
+    e.noteOn (60, 1.0f, 1);
+    e.noteOn (67, 1.0f, 2);
+    advance (e, 64);
+
+    REQUIRE (e.activeVoiceCount() == 1);
+}
+
+TEST_CASE ("Mono note priority selects the intended held note", "[voice][mono][priority]")
+{
+    const double sr = 48000.0;
+
+    auto run = [&] (int priority, int first, int second)
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = cleanParams();
+        p.voiceMode    = 1;
+        p.unisonVoices = 1;
+        p.notePriority = priority;
+        e.setParams (p);
+        e.noteOn (first, 1.0f, 1);
+        e.noteOn (second, 1.0f, 2);
+        return soundingHz (e, sr);
+    };
+
+    // Bottom priority -> lowest held note sounds.
+    REQUIRE (run (2, 72, 60) == Approx (midiNoteToHz (60)).epsilon (0.05));
+    // Top priority -> highest held note sounds.
+    REQUIRE (run (1, 60, 72) == Approx (midiNoteToHz (72)).epsilon (0.05));
+    // Last priority -> most recent press sounds.
+    REQUIRE (run (0, 60, 72) == Approx (midiNoteToHz (72)).epsilon (0.05));
+}
+
+TEST_CASE ("Mono priority falls back to the remaining note on release", "[voice][mono][priority]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+    auto p = cleanParams();
+    p.voiceMode    = 1;
+    p.unisonVoices = 1;
+    p.notePriority = 0;   // Last
+    e.setParams (p);
+
+    e.noteOn (60, 1.0f, 1);
+    e.noteOn (72, 1.0f, 2);   // 72 sounds
+    e.noteOff (72, 2);        // fall back to 60
+
+    REQUIRE (soundingHz (e, sr) == Approx (midiNoteToHz (60)).epsilon (0.05));
+}
+
+TEST_CASE ("Sustain pedal holds a released note until pedal-up", "[voice][sustain]")
+{
+    SynthEngine e;
+    e.setSampleRate (48000.0);
+    auto p = cleanParams();
+    p.voiceMode    = 0;
+    p.unisonVoices = 1;
+    p.release      = 0.05;
+    e.setParams (p);
+
+    e.noteOn (60, 1.0f, 1);
+    e.setSustain (true);
+    e.noteOff (60, 1);
+    advance (e, 128);
+    REQUIRE (e.activeVoiceCount() == 1);   // pedal keeps it alive
+
+    e.setSustain (false);                  // now it releases
+    for (int i = 0; i < 200; ++i)          // > release time (0.05 s @ 48k)
+        advance (e, 128);
+    REQUIRE (e.activeVoiceCount() == 0);
+}
+
+TEST_CASE ("Legato changeNote retunes without retriggering the envelope", "[voice][legato]")
+{
+    Voice v;
+    v.prepare (48000.0);
+    auto p = cleanParams();
+    v.setParams (p);
+
+    v.start (60, 1.0f);
+    std::vector<float> l (4096), r (4096);
+    v.renderBlock (l.data(), r.data(), static_cast<int> (l.size()));   // reach sustain
+
+    const double before = v.envLevel();
+    REQUIRE (before > 0.5);            // sustaining
+
+    v.changeNote (72);
+    REQUIRE (v.note() == 72);
+    REQUIRE (v.envLevel() == Approx (before));   // envelope untouched (no restart from 0)
+}

@@ -5,6 +5,38 @@ Date: 2026-07-10. Analysis only — **no code was changed**. Each finding lists 
 
 ---
 
+## IMPLEMENTATION STATUS (updated 2026-07-11)
+All changes below verified: 127/127 tests green + pluginval strictness-8 clean.
+
+- **DONE** — P0-1, P0-2 (audio-thread allocations) [9ed868f]
+- **DONE** — P1-1c (change-guards on OscEq / LadderFilter cutoff / GlobalEq / Osc tuning) [9ed868f]
+- **DONE** — P1-2 (skip mono-bass scratch when disabled) [9ed868f]
+- **DONE** — P2-3 (mono-bass early-out + chunked pitch) [9ed868f]
+- **DONE** — P2-4 (OscEq bypass when flat) [9ed868f]
+- **DONE** — P2-5 (cache bit-crush level) [9ed868f]
+- **DONE** — P2-1 (oversampler: circular buffer [622a7cd] + full polyphase [ef0dfc7])
+- **DONE** — P2-6 (compressor bypass when transparent) [622a7cd]
+- **DONE** — P2-2 (advance LFOs per control chunk) [5cbd5a0]
+- **DONE** — P2-8 (power-of-two delay buffer, masked wrap) [6a9598b]
+
+- **DEFERRED — P1-1a** (cache atomic param pointers in pushParams): after the P1-1c
+  guards the remaining per-block cost is ~120 map lookups (~0.1–0.2% CPU). Hand-caching
+  120 pointers risks silent param mis-routing that automated tests won't catch. Low
+  reward vs risk; revisit only if profiling flags it.
+- **DEFERRED — P1-1b** (dirty-flag / version-gated Voice::setParams): the expensive
+  transcendental redesigns are already gated by P1-1c, so the remaining per-voice cost
+  is a struct copy + cheap assigns. A correct dirty flag must also catch tempo changes
+  and relies on synchronous parameter-listener callbacks; risk (silently unapplied
+  params) outweighs the now-small benefit.
+- **DEFERRED — P2-7** (fewer ladder Newton iterations): alters the saturation character
+  (it is the sound); intentionally not changed.
+- **DEFERRED — P3-1** (report `setLatencySamples`): the oversampler group delay varies
+  with osQuality and the mixed osc/overdrive paths; reporting a wrong value is worse than
+  0. Needs an offline impulse-alignment measurement first (see P3-1 below). Note this is a
+  host-alignment nicety, not an RTT reduction.
+
+---
+
 ## P0 — Audio-thread heap allocations (dropout risk; blocks small buffers)
 
 ### 1. `Voice::setParams` allocates a `std::vector` every call, every voice, every block

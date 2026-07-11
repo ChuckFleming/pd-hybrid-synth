@@ -121,6 +121,15 @@ struct SynthParams
 
     int    oscOversampling = 4;   // PD oscillator + overdrive oversampling (1/2/4)
 
+    // v6.0: Voice allocation & pitch bend
+    int    polyphony = 16;        // active voices (1-16)
+    int    voiceMode = 0;         // 0=Poly, 1=Mono, 2=Legato, 3=Unison-Legato
+    int    notePriority = 0;      // 0=Last, 1=Top, 2=Bottom (mono mode fallback)
+    int    stealPolicy = 0;       // 0=Oldest, 1=Quietest
+    bool   monoRetrigger = true;  // true=retrig on note change, false=true legato
+    double pitchBendRange = 2.0;  // semitones for MIDI bend (1-24)
+    bool   sustainPedalHeld = false;  // sustain pedal state (CC64)
+
     // Stereo placement: master pan plus a per-voice spread by keyboard position
     // (low notes left, high notes right) for a wider sound.
     double pan       = 0.0;    // -1 = hard left .. +1 = hard right

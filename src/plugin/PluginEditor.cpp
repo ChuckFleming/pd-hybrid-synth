@@ -280,6 +280,15 @@ void PDHybridEditor::buildSections()
                        &addKnob ("bassAttack", "Atk"), &addKnob ("bassDecay", "Dec"),
                        &addKnob ("bassSustain", "Sus"), &addKnob ("bassRelease", "Rel") };
 
+    // --- v6.0: Voice mode & allocation ---
+    voiceSec.title = "Voice";
+    voiceSec.cols  = 3;
+    voiceSec.combos = { &addCombo ("voiceMode", { "Poly", "Mono", "Legato", "Unison Legato" }),
+                        &addCombo ("notePriority", { "Last", "Top", "Bottom" }),
+                        &addCombo ("stealPolicy", { "Oldest", "Quietest" }),
+                        &addCombo ("monoRetrigger", { "Legato", "Retrigger" }) };
+    voiceSec.knobs = { &addKnob ("polyphony", "Poly", 0), &addKnob ("pitchBendRange", "Bend", 0) };
+
     // --- Stereo / Drift ---
     stereo.title = "Stereo / Drift";
     stereo.cols  = 3;
@@ -455,7 +464,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     const int matrixH = kHeaderH + (kNumModRows / 2) * kMatrixRowH + kCardPad * 2;
 
     std::vector<Page> layout {
-        { "Oscillators", { &oscA, &oscB, &mixer, &unison, &glideSec, &stereo, &bassSec }, nullptr, {}, 0 },
+        { "Oscillators", { &oscA, &oscB, &mixer, &unison, &glideSec, &voiceSec, &stereo, &bassSec }, nullptr, {}, 0 },
         { "Filters",     { &filter, &filter2, &filterEnv, &filter2Env },        nullptr, {}, 0 },
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec },                   nullptr, {}, 0 },
         { "Modulation",  { &lfo, &lfo2 }, &matrixHolder,

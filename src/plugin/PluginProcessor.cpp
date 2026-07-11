@@ -251,6 +251,23 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::ParameterID { "osQuality", 1 }, "Oversampling",
         juce::StringArray { "1x", "2x", "4x" }, 2));   // default 4x
 
+    // --- v6.0: Voice allocation ---
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "polyphony", 1 }, "Polyphony", 1, 16, 16));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "voiceMode", 1 }, "Voice Mode",
+        juce::StringArray { "Poly", "Mono", "Legato", "Unison Legato" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "notePriority", 1 }, "Note Priority",
+        juce::StringArray { "Last", "Top", "Bottom" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "stealPolicy", 1 }, "Steal Policy",
+        juce::StringArray { "Oldest", "Quietest" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "monoRetrigger", 1 }, "Retrigger", true));
+    pf ("pitchBendRange", "Pitch Bend Range",
+        juce::NormalisableRange<float> (1.0f, 24.0f), 2.0f, cnt);
+
     // --- Glide / portamento ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "glideMode", 1 }, "Glide Mode",
@@ -510,6 +527,15 @@ void PDHybridAudioProcessor::pushParams()
     master.setGainDb (apvts.getRawParameterValue ("masterLevel")->load());
     master.setLimiterEnabled (apvts.getRawParameterValue ("masterLimiter")->load() > 0.5f);
 
+    // v6.0: Voice allocation
+    p.polyphony      = static_cast<int> (apvts.getRawParameterValue ("polyphony")->load());
+    p.voiceMode      = static_cast<int> (apvts.getRawParameterValue ("voiceMode")->load());
+    p.notePriority   = static_cast<int> (apvts.getRawParameterValue ("notePriority")->load());
+    p.stealPolicy    = static_cast<int> (apvts.getRawParameterValue ("stealPolicy")->load());
+    p.monoRetrigger  = apvts.getRawParameterValue ("monoRetrigger")->load() > 0.5f;
+    p.pitchBendRange = apvts.getRawParameterValue ("pitchBendRange")->load();
+    p.sustainPedalHeld = sustain_;  // MIDI CC64 sets this in handleMidiMessage
+
     const int lfoSync  = static_cast<int> (apvts.getRawParameterValue ("lfoSync")->load());
     const int lfo2Sync = static_cast<int> (apvts.getRawParameterValue ("lfo2Sync")->load());
     p.lfoRate  = (lfoSync == 0) ? apvts.getRawParameterValue ("lfoRate")->load()
@@ -616,6 +642,11 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
     {
         modWheel_ = msg.getControllerValue() / 127.0;
         engine.setModWheel (modWheel_);
+    }
+    else if (msg.isController() && msg.getControllerNumber() == 64)
+    {
+        // Sustain pedal (CC64): > 63 = pedal down, <= 63 = pedal up. Routed to SynthParams.
+        sustain_ = msg.getControllerValue() >= 64;
     }
     else if (msg.isAllNotesOff() || msg.isAllSoundOff())
     {

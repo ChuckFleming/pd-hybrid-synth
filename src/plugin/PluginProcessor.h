@@ -4,6 +4,7 @@
 #include "dsp/SynthEngine.h"
 #include "dsp/Compressor.h"
 #include "dsp/Delay.h"
+#include "dsp/Chorus.h"
 #include "dsp/GlobalEq.h"
 #include "dsp/MonoBass.h"
 #include "dsp/MasterStage.h"
@@ -63,6 +64,7 @@ private:
 
     pdhybrid::SynthEngine engine;
     pdhybrid::Compressor  compressor;           // global output compressor
+    pdhybrid::Chorus      chorus;               // global chorus / ensemble
     pdhybrid::Delay       delay;                // global ducking delay
     pdhybrid::GlobalEq    globalEq;             // final master EQ
     pdhybrid::MonoBass    monoBass;             // monophonic sub-bass layer
@@ -79,6 +81,7 @@ private:
     double                delayMixBase_ = 0.0, delayFbBase_ = 0.30;
     double                eqHighFreqBase_ = 8000.0, eqHighGainBase_ = 0.0;
     bool                  compOn_ = true, delayOn_ = true, globalEqOn_ = true;
+    bool                  chorusOn_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDHybridAudioProcessor)
 };

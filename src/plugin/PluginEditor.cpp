@@ -383,6 +383,14 @@ void PDHybridEditor::buildSections()
                      &addKnob ("gain", "Gain"), &addKnob ("crushBits", "Crush"),
                      &addKnob ("downsample", "Downsmpl") };
 
+    // --- Chorus / ensemble ---
+    chorusSec.title  = "Chorus";
+    chorusSec.cols   = 3;
+    chorusSec.combos = { &addCombo ("chorusOn", { "Off", "On" }),
+                         &addCombo ("chorusMode", { "I", "II", "I+II" }) };
+    chorusSec.knobs  = { &addKnob ("chorusRate", "Rate"), &addKnob ("chorusDepth", "Depth"),
+                         &addKnob ("chorusMix", "Mix") };
+
     // --- Compressor ---
     comp.title  = "Compressor";
     comp.cols   = 5;
@@ -485,7 +493,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec, &pitchEnvSec },     nullptr, {}, 0 },
         { "Modulation",  { &lfo, &lfo2 }, &matrixHolder,
           "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
-        { "FX",          { &drive, &comp, &delaySec, &globalEqSec, &masterSec }, nullptr, {}, 0 },
+        { "FX",          { &drive, &chorusSec, &comp, &delaySec, &globalEqSec, &masterSec }, nullptr, {}, 0 },
     };
 
     for (auto& pg : layout)

@@ -191,6 +191,16 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "compOn", 1 }, "Compressor On", true));
 
+    // --- Chorus / ensemble ---
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "chorusOn", 1 }, "Chorus On", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "chorusMode", 1 }, "Chorus Mode",
+        juce::StringArray { "I", "II", "I+II" }, 2));
+    pf ("chorusRate", "Chorus Rate", juce::NormalisableRange<float> (0.05f, 5.0f, 0.0f, 0.4f), 0.5f, rate);
+    pf ("chorusDepth", "Chorus Depth", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
+    pf ("chorusMix", "Chorus Mix", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
+
     // --- Delay (mix 0 = bypass) ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "delayMode", 1 }, "Delay Mode",
@@ -404,6 +414,8 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     engine.setSampleRate (sampleRate);
     compressor.setSampleRate (sampleRate);
     compressor.reset();
+    chorus.setSampleRate (sampleRate);
+    chorus.reset();
     delay.setSampleRate (sampleRate);
     delay.reset();
     globalEq.setSampleRate (sampleRate);
@@ -528,6 +540,12 @@ void PDHybridAudioProcessor::pushParams()
     delay.setFeedback (apvts.getRawParameterValue ("delayFeedback")->load());
     delay.setMix      (apvts.getRawParameterValue ("delayMix")->load());
     delay.setDuck     (apvts.getRawParameterValue ("delayDuck")->load());
+
+    chorusOn_ = apvts.getRawParameterValue ("chorusOn")->load() > 0.5f;
+    chorus.setMode  (static_cast<int> (apvts.getRawParameterValue ("chorusMode")->load()));
+    chorus.setRate  (apvts.getRawParameterValue ("chorusRate")->load());
+    chorus.setDepth (apvts.getRawParameterValue ("chorusDepth")->load());
+    chorus.setMix   (apvts.getRawParameterValue ("chorusMix")->load());
 
     // Master EQ bands (high-shelf gain is further modulated per block below).
     globalEq.setBand (pdhybrid::GlobalEq::LowShelf,
@@ -782,6 +800,9 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         if (compOn_)
             compressor.processStereo (buffer.getWritePointer (0),
                                       buffer.getWritePointer (1), numSamples);
+        if (chorusOn_)
+            chorus.processStereo (buffer.getWritePointer (0),
+                                  buffer.getWritePointer (1), numSamples);
         if (delayOn_)
             delay.processStereo (buffer.getWritePointer (0),
                                  buffer.getWritePointer (1), numSamples);

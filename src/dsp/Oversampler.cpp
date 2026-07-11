@@ -35,7 +35,8 @@ void Oversampler::buildPrototype (int tapsPerPhase)
     for (double& c : proto_)     // normalise to unity DC gain
         c /= sum;
 
-    upState_.assign (static_cast<std::size_t> (L), 0.0);
+    tapsPerPhase_ = tapsPerPhase;
+    upBase_.assign (static_cast<std::size_t> (tapsPerPhase), 0.0);
     downState_.assign (static_cast<std::size_t> (L), 0.0);
 }
 
@@ -49,7 +50,7 @@ void Oversampler::prepare (int factor)
     if (factor_ == 1)
     {
         proto_.clear();
-        upState_.clear();
+        upBase_.clear();
         downState_.clear();
         return;
     }
@@ -58,26 +59,30 @@ void Oversampler::prepare (int factor)
 
 void Oversampler::reset() noexcept
 {
-    for (double& v : upState_)   v = 0.0;
+    for (double& v : upBase_)    v = 0.0;
     for (double& v : downState_) v = 0.0;
-    upPos_ = downPos_ = 0;
+    upBasePos_ = downPos_ = 0;
 }
 
-double Oversampler::firStep (std::vector<double>& state, int& pos,
-                             const std::vector<double>& taps, double in) noexcept
+void Oversampler::firPush (std::vector<double>& state, int& pos, double in) noexcept
+{
+    const int L = static_cast<int> (state.size());
+    state[static_cast<std::size_t> (pos)] = in;
+    pos = (pos == L - 1) ? 0 : (pos + 1);
+}
+
+double Oversampler::firDot (const std::vector<double>& state, int pos,
+                            const std::vector<double>& taps) noexcept
 {
     const int L = static_cast<int> (taps.size());
-    state[static_cast<std::size_t> (pos)] = in;   // newest sample at pos
+    int idx = (pos == 0) ? (L - 1) : (pos - 1);   // most-recently written sample
 
     double acc = 0.0;
-    int idx = pos;
     for (int i = 0; i < L; ++i)                    // taps[0] * newest, taps[1] * prev, ...
     {
         acc += taps[static_cast<std::size_t> (i)] * state[static_cast<std::size_t> (idx)];
         idx = (idx == 0) ? (L - 1) : (idx - 1);
     }
-
-    pos = (pos == L - 1) ? 0 : (pos + 1);
     return acc;
 }
 
@@ -89,12 +94,26 @@ void Oversampler::upsample (float x, float* highOut) noexcept
         return;
     }
 
-    // Zero-stuff (energy compensated by `factor`), then interpolation lowpass.
-    for (int j = 0; j < factor_; ++j)
+    // Polyphase interpolation: the zero-stuffed input means output phase p only
+    // touches taps p, p+factor, p+2*factor, ... applied to the base-rate history
+    // (energy compensated by `factor`). Bit-identical to filtering the
+    // zero-stuffed stream, but factor x fewer multiplies.
+    upBase_[static_cast<std::size_t> (upBasePos_)] = x;
+
+    for (int p = 0; p < factor_; ++p)
     {
-        const double in = (j == 0) ? static_cast<double> (x) * factor_ : 0.0;
-        highOut[j] = static_cast<float> (firStep (upState_, upPos_, proto_, in));
+        double acc = 0.0;
+        int idx = upBasePos_;
+        for (int m = 0; m < tapsPerPhase_; ++m)
+        {
+            acc += proto_[static_cast<std::size_t> (p + m * factor_)]
+                 * upBase_[static_cast<std::size_t> (idx)];
+            idx = (idx == 0) ? (tapsPerPhase_ - 1) : (idx - 1);
+        }
+        highOut[p] = static_cast<float> (acc * factor_);
     }
+
+    upBasePos_ = (upBasePos_ == tapsPerPhase_ - 1) ? 0 : (upBasePos_ + 1);
 }
 
 float Oversampler::downsample (const float* highIn) noexcept
@@ -102,10 +121,12 @@ float Oversampler::downsample (const float* highIn) noexcept
     if (factor_ == 1)
         return highIn[0];
 
-    double y = 0.0;
+    // Push every high-rate sample (state must stay correct), but only the
+    // retained (aligned) output is used, so compute the dot product once.
     for (int j = 0; j < factor_; ++j)
-        y = firStep (downState_, downPos_, proto_, static_cast<double> (highIn[j]));
-    return static_cast<float> (y);   // aligned (last-phase) sample
+        firPush (downState_, downPos_, static_cast<double> (highIn[j]));
+
+    return static_cast<float> (firDot (downState_, downPos_, proto_));
 }
 
 } // namespace pdhybrid

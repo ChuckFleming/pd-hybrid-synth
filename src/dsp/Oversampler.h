@@ -25,17 +25,21 @@ public:
 
 private:
     void buildPrototype (int tapsPerPhase);
-    // Circular-buffer FIR: writes `in` at `pos`, accumulates, advances `pos`.
-    // Same arithmetic as a shift register but without the O(L) copy.
-    static double firStep (std::vector<double>& state, int& pos,
-                           const std::vector<double>& taps, double in) noexcept;
+    // Circular-buffer FIR helpers: `firPush` writes one sample and advances the
+    // index; `firDot` computes the dot product with the most-recent sample as
+    // taps[0]. Splitting them lets decimation push `factor` samples but compute
+    // only the one retained output.
+    static void   firPush (std::vector<double>& state, int& pos, double in) noexcept;
+    static double firDot  (const std::vector<double>& state, int pos,
+                           const std::vector<double>& taps) noexcept;
 
     int                 factor_ = 1;
+    int                 tapsPerPhase_ = 0;
     std::vector<double> proto_;
-    std::vector<double> upState_;
-    std::vector<double> downState_;
-    int                 upPos_   = 0;
-    int                 downPos_ = 0;
+    std::vector<double> upBase_;      // base-rate history for polyphase interpolation
+    std::vector<double> downState_;   // high-rate history for decimation
+    int                 upBasePos_ = 0;
+    int                 downPos_   = 0;
 };
 
 } // namespace pdhybrid

@@ -20,6 +20,11 @@ Most of v6 is implemented. Each item below verified: full suite green (147 cases
 - §6 panic button + preset delete (c56b4c7)
 
 **REMAINING (for a future session):**
+- **§3d Delay ↔ Reverb routing** (requested 2026-07-11). Today the master chain in `PluginProcessor::processBlock` is fixed: compressor → chorus → **delay → reverb** → globalEq → master. Add a `fxRouting` choice param (editor combo on the FX tab, near the reverb/delay cards) with three modes:
+  1. **"Delay → Reverb"** (current default): reverb hears the delay tails. Keep the existing in-place order.
+  2. **"Reverb → Delay"**: run `reverb.processStereo` before `delay.processStereo` so echoes are of the reverbed signal.
+  3. **"Reverb, Dry Delay"** (parallel): the main path goes synth → reverb, while the delay is fed from the *pre-reverb* signal and its echoes are added back **without** reverb. Implementation: copy the pre-FX (post-chorus) stereo buffer into a scratch (reuse a preallocated `std::vector<float>`/`AudioBuffer` member like `scratchL/R`), run `reverb` on the main buffer, run `delay` on the scratch copy, then sum the scratch into the main. To avoid doubling the dry signal, the delay must contribute **wet-only** in this mode — either add a `Delay::processWetInto(dry, out)` that writes just the echo (skip the `dry*(1-mix)` term), or feed the delay a copy and add `mix * echo` only. This dry-handling is the one subtle part.
+  Respect the existing `delayOn_`/`reverbOn_` gates in every mode. Test at the processor level (or factor the routing into a small helper): feed an impulse, assert mode 3 produces delayed taps with no reverb smear on the echoes while the direct signal is reverbed; modes 1/2 differ from each other.
 - §5a Osc hard sync + phase-mod cross-mod — the one remaining *core* sound-design item. Needs per-osc phase-wrap exposure + reset in `renderOneSample`; PD osc is oversampled so wrap is at the core rate. Medium/high risk — do carefully with a spectral test.
 - §2b full per-osc DCW envelope (a dedicated 5th env; the pitch env pattern in Voice is the template).
 - §5f per-mod-slot response curve (Linear/Exp/S) in `ModMatrix::evaluate`.

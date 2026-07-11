@@ -6,6 +6,7 @@
 #include "dsp/Delay.h"
 #include "dsp/Chorus.h"
 #include "dsp/Reverb.h"
+#include "dsp/Arpeggiator.h"
 #include "dsp/GlobalEq.h"
 #include "dsp/MonoBass.h"
 #include "dsp/MasterStage.h"
@@ -85,6 +86,8 @@ private:
     double                eqHighFreqBase_ = 8000.0, eqHighGainBase_ = 0.0;
     bool                  compOn_ = true, delayOn_ = true, globalEqOn_ = true;
     bool                  chorusOn_ = false, reverbOn_ = false;
+    pdhybrid::Arpeggiator arp_;
+    bool                  arpOn_ = false, arpWasOn_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDHybridAudioProcessor)
 };

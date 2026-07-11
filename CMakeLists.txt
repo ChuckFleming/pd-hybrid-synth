@@ -49,6 +49,7 @@ add_library(pdhybrid_dsp STATIC
     src/dsp/MasterStage.cpp
     src/dsp/Chorus.cpp
     src/dsp/Reverb.cpp
+    src/dsp/Arpeggiator.cpp
 )
 target_include_directories(pdhybrid_dsp PUBLIC src)
 target_compile_features(pdhybrid_dsp PUBLIC cxx_std_17)

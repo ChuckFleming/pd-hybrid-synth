@@ -191,6 +191,21 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "compOn", 1 }, "Compressor On", true));
 
+    // --- Arpeggiator ---
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "arpOn", 1 }, "Arp On", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "arpMode", 1 }, "Arp Mode",
+        juce::StringArray { "Up", "Down", "Up-Down", "Random", "As Played" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "arpRate", 1 }, "Arp Rate",
+        juce::StringArray { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8.", "1/4T", "1/8T" }, 4));
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "arpOctaves", 1 }, "Arp Octaves", 1, 4, 1));
+    pf ("arpGate", "Arp Gate", juce::NormalisableRange<float> (0.05f, 1.0f), 0.5f, pct);
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "arpLatch", 1 }, "Arp Latch", false));
+
     // --- Chorus / ensemble ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "chorusOn", 1 }, "Chorus On", false));
@@ -538,6 +553,17 @@ void PDHybridAudioProcessor::pushParams()
             if (auto b = pos->getBpm())
                 bpm = *b;
 
+    // Arpeggiator (step length from tempo; note events generated in processBlock).
+    arpOn_ = apvts.getRawParameterValue ("arpOn")->load() > 0.5f;
+    {
+        const int arpRate = static_cast<int> (apvts.getRawParameterValue ("arpRate")->load());
+        arp_.setStepSamples (pdhybrid::syncedDelaySeconds (bpm, arpRate) * getSampleRate());
+        arp_.setMode    (static_cast<int> (apvts.getRawParameterValue ("arpMode")->load()));
+        arp_.setOctaves (static_cast<int> (apvts.getRawParameterValue ("arpOctaves")->load()));
+        arp_.setGate    (apvts.getRawParameterValue ("arpGate")->load());
+        arp_.setLatch   (apvts.getRawParameterValue ("arpLatch")->load() > 0.5f);
+    }
+
     delay.setMode (static_cast<pdhybrid::DelayMode> (
         static_cast<int> (apvts.getRawParameterValue ("delayMode")->load())));
     const int dSyncL = static_cast<int> (apvts.getRawParameterValue ("delaySyncL")->load());
@@ -797,12 +823,54 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const int numSamples = buffer.getNumSamples();
     int cursor = 0;
 
-    for (const auto meta : midi)
+    // Flush hanging notes when the arpeggiator is switched on or off.
+    if (arpOn_ != arpWasOn_)
     {
-        const int pos = juce::jlimit (0, numSamples, meta.samplePosition);
-        renderSegment (buffer, cursor, pos - cursor);
-        cursor = pos;
-        handleMidiMessage (meta.getMessage());
+        engine.allNotesOff();
+        monoBass.allNotesOff();
+        arp_.reset();
+    }
+    arpWasOn_ = arpOn_;
+
+    if (arpOn_)
+    {
+        // Held notes feed the arp pool; other messages pass through (block-rate).
+        for (const auto meta : midi)
+        {
+            const auto msg = meta.getMessage();
+            if (msg.isNoteOn())        arp_.noteOn (msg.getNoteNumber(), msg.getFloatVelocity());
+            else if (msg.isNoteOff())  arp_.noteOff (msg.getNoteNumber());
+            else                       handleMidiMessage (msg);
+        }
+
+        pdhybrid::Arpeggiator::Event ev[128];
+        const int nev = arp_.generate (numSamples, ev, 128);
+        for (int e = 0; e < nev; ++e)
+        {
+            const int pos = juce::jlimit (0, numSamples, ev[e].pos);
+            renderSegment (buffer, cursor, pos - cursor);
+            cursor = pos;
+            if (ev[e].noteOn)
+            {
+                engine.noteOn (ev[e].note, ev[e].velocity, 1);
+                monoBass.noteOn (ev[e].note, ev[e].velocity);
+            }
+            else
+            {
+                engine.noteOff (ev[e].note, 1);
+                monoBass.noteOff (ev[e].note);
+            }
+        }
+    }
+    else
+    {
+        for (const auto meta : midi)
+        {
+            const int pos = juce::jlimit (0, numSamples, meta.samplePosition);
+            renderSegment (buffer, cursor, pos - cursor);
+            cursor = pos;
+            handleMidiMessage (meta.getMessage());
+        }
     }
 
     renderSegment (buffer, cursor, numSamples - cursor);

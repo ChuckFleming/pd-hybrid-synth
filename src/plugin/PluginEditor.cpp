@@ -371,6 +371,15 @@ void PDHybridEditor::buildSections()
     lfo2.combos = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames) };
     lfo2.knobs  = { &addKnob ("lfo2Rate", "Rate") };
 
+    // --- Arpeggiator ---
+    arpSec.title  = "Arpeggiator";
+    arpSec.cols   = 3;
+    arpSec.combos = { &addCombo ("arpOn", { "Off", "On" }),
+                      &addCombo ("arpMode", { "Up", "Down", "Up-Down", "Random", "As Played" }),
+                      &addCombo ("arpRate", { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8.", "1/4T", "1/8T" }),
+                      &addCombo ("arpLatch", { "Latch Off", "Latch On" }) };
+    arpSec.knobs  = { &addKnob ("arpOctaves", "Oct", 0), &addKnob ("arpGate", "Gate") };
+
     // --- Overdrive ---
     drive.title  = "Overdrive";
     drive.cols   = 5;
@@ -498,7 +507,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         { "Oscillators", { &oscA, &oscB, &mixer, &unison, &glideSec, &voiceSec, &stereo, &bassSec }, nullptr, {}, 0 },
         { "Filters",     { &filter, &filter2, &filterEnv, &filter2Env },        nullptr, {}, 0 },
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec, &pitchEnvSec },     nullptr, {}, 0 },
-        { "Modulation",  { &lfo, &lfo2 }, &matrixHolder,
+        { "Modulation",  { &lfo, &lfo2, &arpSec }, &matrixHolder,
           "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
         { "FX",          { &drive, &chorusSec, &comp, &delaySec, &reverbSec, &globalEqSec, &masterSec }, nullptr, {}, 0 },
     };

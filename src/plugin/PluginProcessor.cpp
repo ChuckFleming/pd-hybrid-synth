@@ -420,6 +420,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     const juce::StringArray dstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
                                        "Resonance", "Morph", "Drive", "Amplitude", "Pan",
                                        "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
+                                       "LFO Rate", "LFO 2 Rate", "Noise Lvl",
                                        "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ" };
     for (int i = 1; i <= pdhybrid::ModMatrix::kNumSlots; ++i)
     {

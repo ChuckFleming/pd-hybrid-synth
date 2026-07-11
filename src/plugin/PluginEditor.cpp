@@ -38,6 +38,7 @@ const juce::StringArray kSyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
 const juce::StringArray kDstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
                                     "Resonance", "Morph", "Drive", "Amplitude", "Pan",
                                     "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
+                                    "LFO Rate", "LFO 2 Rate", "Noise Lvl",
                                     "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ" };
 }
 

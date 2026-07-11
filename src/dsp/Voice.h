@@ -97,6 +97,7 @@ private:
     double ampMod_    = 1.0;    // amplitude modulation multiplier
     double oscALevelMod_ = 1.0; // mixer levels after matrix modulation
     double oscBLevelMod_ = 0.0;
+    double noiseLevelMod_ = 0.0; // noise level after matrix modulation
     double randomMod_ = 0.0;    // per-note sample & hold random source
     double panL_      = 0.70710678;   // equal-power pan gains (default centre)
     double panR_      = 0.70710678;

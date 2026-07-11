@@ -198,8 +198,13 @@ void Voice::applyModulation() noexcept
     velAmp_ = (1.0 - params_.ampVelSens) + params_.ampVelSens * velGain_;
 
     // Mixer levels after matrix modulation.
-    oscALevelMod_ = std::clamp (params_.oscALevel + md (ModDest::OscALevel), 0.0, 1.0);
-    oscBLevelMod_ = std::clamp (params_.oscBLevel + md (ModDest::OscBLevel), 0.0, 1.0);
+    oscALevelMod_  = std::clamp (params_.oscALevel + md (ModDest::OscALevel), 0.0, 1.0);
+    oscBLevelMod_  = std::clamp (params_.oscBLevel + md (ModDest::OscBLevel), 0.0, 1.0);
+    noiseLevelMod_ = std::clamp (params_.noiseLevel + md (ModDest::NoiseLevel), 0.0, 1.0);
+
+    // LFO rates can be modulated (+/- 2 octaves); no change when unrouted.
+    lfo_.setFrequency  (params_.lfoRate  * std::pow (2.0, md (ModDest::LfoRate)  * 2.0));
+    lfo2_.setFrequency (params_.lfo2Rate * std::pow (2.0, md (ModDest::Lfo2Rate) * 2.0));
 
     // Stereo position: master pan plus keyboard-position spread and matrix pan,
     // then equal-power constant-power law (centre = -3 dB each side).
@@ -314,11 +319,11 @@ float Voice::renderOneSample() noexcept
             s += sA * sB * ring;   // CZ line ring modulation
     }
 
-    if (params_.noiseLevel > 1.0e-5)
+    if (noiseLevelMod_ > 1.0e-5)
     {
         rng_ = rng_ * 1664525u + 1013904223u;   // cheap white-noise LCG in [-1, 1)
         s += (static_cast<double> (static_cast<std::int32_t> (rng_)) / 2147483648.0)
-             * params_.noiseLevel;
+             * noiseLevelMod_;
     }
 
     // Overdrive can sit before the filter (pre) or after it (post, default).

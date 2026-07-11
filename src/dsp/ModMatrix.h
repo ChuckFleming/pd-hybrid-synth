@@ -41,6 +41,9 @@ enum class ModDest : int
     OscBLevel,
     Detune,       // cents (both oscillators)
     Filter2Cutoff, // octaves (Filter B)
+    LfoRate,      // LFO 1 rate (octaves)
+    Lfo2Rate,     // LFO 2 rate (octaves)
+    NoiseLevel,   // noise mix level
     DelayMix,     // global dests below (applied in the processor)
     DelayFeedback,
     MasterPan,

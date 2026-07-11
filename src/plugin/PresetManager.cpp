@@ -50,6 +50,15 @@ void PresetManager::loadPreset (const juce::String& name)
     }
 }
 
+void PresetManager::deletePreset (const juce::String& name)
+{
+    auto file = presetDirectory().getChildFile (name + kExt);
+    if (file.existsAsFile())
+        file.deleteFile();
+    if (currentName_ == name)
+        currentName_ = {};
+}
+
 void PresetManager::loadByOffset (int delta)
 {
     const auto names = getPresetNames();

@@ -836,6 +836,13 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     pushParams();
 
+    if (panic_.exchange (false))   // editor "Panic": kill all sounding notes
+    {
+        engine.allNotesOff();
+        monoBass.allNotesOff();
+        arp_.reset();
+    }
+
     const int numSamples = buffer.getNumSamples();
     int cursor = 0;
 

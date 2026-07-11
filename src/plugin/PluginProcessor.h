@@ -54,7 +54,11 @@ public:
 
     PresetManager& getPresetManager() noexcept { return presets; }
 
+    // All-notes-off "panic", triggered from the editor (thread-safe).
+    void triggerPanic() noexcept { panic_.store (true); }
+
 private:
+    std::atomic<bool> panic_ { false };
     PresetManager presets { apvts };   // constructed after apvts (declaration order)
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();

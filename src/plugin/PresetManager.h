@@ -14,6 +14,7 @@ public:
 
     void savePreset (const juce::String& name);
     void loadPreset (const juce::String& name);
+    void deletePreset (const juce::String& name);        // remove the named preset file
     void loadByOffset (int delta);                       // browse prev/next, wrapping
 
     juce::StringArray getPresetNames() const;            // sorted, no extension

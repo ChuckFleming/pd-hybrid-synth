@@ -473,6 +473,18 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     nextButton.onClick = [this] { proc.getPresetManager().loadByOffset (1); refreshPresetList(); };
     addAndMakeVisible (saveButton);
     saveButton.onClick = [this] { showSavePresetDialog(); };
+    addAndMakeVisible (deleteButton);
+    deleteButton.onClick = [this]
+    {
+        const auto name = proc.getPresetManager().getCurrentPresetName();
+        if (name.isNotEmpty())
+        {
+            proc.getPresetManager().deletePreset (name);
+            refreshPresetList();
+        }
+    };
+    addAndMakeVisible (panicButton);
+    panicButton.onClick = [this] { proc.triggerPanic(); };
     refreshPresetList();
 
     buildSections();
@@ -611,7 +623,9 @@ void PDHybridEditor::resized()
 
     int x = top.getRight() - 76;
     initButton.setBounds (x, y, 64, 26);
+    x -= 62;  panicButton.setBounds (x, y, 56, 26);
     x -= 70;  saveButton.setBounds (x, y, 64, 26);
+    x -= 46;  deleteButton.setBounds (x, y, 40, 26);
     x -= 32;  nextButton.setBounds (x, y, 28, 26);
     x -= 32;  prevButton.setBounds (x, y, 28, 26);
     x -= 190; presetBox.setBounds  (x, y, 184, 26);

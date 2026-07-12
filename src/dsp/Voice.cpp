@@ -31,6 +31,7 @@ void Voice::prepare (double sampleRate)
     filter2Env_.setSampleRate (sampleRate);
     multiEnv_.setSampleRate (sampleRate);
     pitchEnv_.setSampleRate (sampleRate);
+    dcwEnv_.setSampleRate (sampleRate);
     lfo_.setSampleRate (sampleRate);
     lfo2_.setSampleRate (sampleRate);
 
@@ -45,6 +46,7 @@ void Voice::prepare (double sampleRate)
     filter2Env_.reset();
     multiEnv_.reset();
     pitchEnv_.reset();
+    dcwEnv_.reset();
     lfo_.reset();
     lfo2_.reset();
 }
@@ -71,6 +73,11 @@ void Voice::setParams (const SynthParams& params)
     for (int i = 0; i < 8; ++i)
         pitchStages_[i] = { params.pitchEnvLevel[i], params.pitchEnvRate[i], 0.0 };
     pitchEnv_.setStages (pitchStages_.data(), 8, std::clamp (params.pitchEnvSustain - 1, 0, 7));
+
+    // CZ DCW envelope: same structure, drives the PD wave depth.
+    for (int i = 0; i < 8; ++i)
+        dcwStages_[i] = { params.dcwEnvLevel[i], params.dcwEnvRate[i], 0.0 };
+    dcwEnv_.setStages (dcwStages_.data(), 8, std::clamp (params.dcwEnvSustain - 1, 0, 7));
 
     lfo_.setFrequency (params.lfoRate);
     lfo_.setWaveform (static_cast<LfoWave> (params.lfoWave));
@@ -165,8 +172,10 @@ void Voice::applyModulation() noexcept
     unitA_.setBaseFrequency (freq);
     unitB_.setBaseFrequency (freq);
 
-    // PD amount and pulse width are modulated equally on both slots.
-    const double pdMod = md (ModDest::PdAmount) + driftPdAmt;
+    // PD amount and pulse width are modulated equally on both slots. The CZ DCW
+    // envelope adds a bipolar-around-0.5 deviation scaled by dcwEnvAmount.
+    const double dcwEnvMod = params_.dcwEnvAmount * (dcwEnv_.level() - 0.5) * 2.0;
+    const double pdMod = md (ModDest::PdAmount) + driftPdAmt + dcwEnvMod;
     const double pwMod = md (ModDest::PulseWidth) * 0.45;
     unitA_.setAmount     (std::clamp (params_.oscAAmount + pdMod, 0.0, 1.0));
     unitB_.setAmount     (std::clamp (params_.oscBAmount + pdMod, 0.0, 1.0));
@@ -271,6 +280,7 @@ void Voice::start (int note, float velocity, double glideFromHz, double glideSam
     filter2Env_.noteOn();
     multiEnv_.noteOn();
     pitchEnv_.noteOn();
+    dcwEnv_.noteOn();
     env_.noteOn();
     applyModulation();
 }
@@ -305,6 +315,7 @@ void Voice::release()
     filter2Env_.noteOff();
     multiEnv_.noteOff();
     pitchEnv_.noteOff();
+    dcwEnv_.noteOff();
 }
 
 float Voice::renderOneSample() noexcept
@@ -412,6 +423,7 @@ void Voice::renderBlock (float* left, float* right, int numSamples)
             filter2Env_.processSample();
             multiEnv_.processSample();
             pitchEnv_.processSample();
+            dcwEnv_.processSample();
         }
 
         // LFO values are read only once per control chunk, so advance them by

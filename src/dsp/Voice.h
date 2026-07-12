@@ -71,12 +71,14 @@ private:
     MultiStageEnvelope        filter2Env_; // Filter B cutoff envelope
     MultiStageEnvelope        multiEnv_;   // CZ-style 8-stage envelope (-> cutoff / matrix)
     MultiStageEnvelope        pitchEnv_;   // CZ-style 8-stage pitch (DCO) envelope
+    MultiStageEnvelope        dcwEnv_;     // CZ-style 8-stage DCW (wave-depth) envelope
     Lfo                       lfo_;
     Lfo                       lfo2_;
 
     SynthParams params_;
     std::array<EnvStage, 8> czStages_ { };    // scratch for the CZ envelope (no per-block alloc)
     std::array<EnvStage, 8> pitchStages_ { }; // scratch for the pitch envelope
+    std::array<EnvStage, 8> dcwStages_ { };   // scratch for the DCW envelope
     double sampleRate_ = 44100.0;
 
     int    note_      = -1;

@@ -424,6 +424,19 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::NormalisableRange<float> (0.0f, 1.0f), peLevelDef[i - 1], pct);
     }
 
+    // --- CZ-style 8-stage DCW (wave-depth) envelope (bipolar around 0.5). ---
+    pf ("dcwEnvAmount", "DCW Env Amount", juce::NormalisableRange<float> (-1.0f, 1.0f), 0.0f, pct);
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "dcwEnvSustain", 1 }, "DCW Env Sustain", 1, 8, 8));
+    for (int i = 1; i <= 8; ++i)
+    {
+        const auto s = juce::String (i);
+        pf ("dcwEnvRate" + s, "DCW Env Rate " + s,
+            juce::NormalisableRange<float> (0.001f, 30.0f, 0.0f, 0.25f), peRateDef[i - 1], sec);
+        pf ("dcwEnvLevel" + s, "DCW Env Level " + s,
+            juce::NormalisableRange<float> (0.0f, 1.0f), peLevelDef[i - 1], pct);
+    }
+
     const juce::StringArray srcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
                                        "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2",
                                        "Multi Env", "Amp Env", "Filt Env A", "Filt Env B",
@@ -709,6 +722,15 @@ void PDHybridAudioProcessor::pushParams()
         const auto s = juce::String (i);
         p.pitchEnvRate[i - 1]  = apvts.getRawParameterValue ("pitchEnvRate" + s)->load();
         p.pitchEnvLevel[i - 1] = apvts.getRawParameterValue ("pitchEnvLevel" + s)->load();
+    }
+
+    p.dcwEnvAmount  = apvts.getRawParameterValue ("dcwEnvAmount")->load();
+    p.dcwEnvSustain = static_cast<int> (apvts.getRawParameterValue ("dcwEnvSustain")->load());
+    for (int i = 1; i <= 8; ++i)
+    {
+        const auto s = juce::String (i);
+        p.dcwEnvRate[i - 1]  = apvts.getRawParameterValue ("dcwEnvRate" + s)->load();
+        p.dcwEnvLevel[i - 1] = apvts.getRawParameterValue ("dcwEnvLevel" + s)->load();
     }
 
     p.macro1 = apvts.getRawParameterValue ("macro1")->load();

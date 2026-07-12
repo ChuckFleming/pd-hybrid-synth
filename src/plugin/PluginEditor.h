@@ -125,7 +125,7 @@ private:
     // Named sections (built once, then handed to pages).
     Section oscA, oscB, mixer, unison, glideSec, stereo, voiceSec, bassSec;  // Oscillators
     Section filter, filter2, filterEnv, filter2Env;                      // Filters
-    Section envelope, modEnv, multiEnvSec, pitchEnvSec;                  // Envelopes
+    Section envelope, modEnv, multiEnvSec, pitchEnvSec, dcwEnvSec;       // Envelopes
     Section lfo, lfo2, arpSec;                                           // Modulation
     Section drive, chorusSec, comp, delaySec, reverbSec, globalEqSec, masterSec;  // FX
 

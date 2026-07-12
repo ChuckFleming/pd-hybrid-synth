@@ -188,6 +188,13 @@ struct SynthParams
     double pitchEnvRate[8]  = { 0.02, 0.20, 0.30, 0.40, 0.50, 0.50, 0.50, 0.50 };
     double pitchEnvLevel[8] = { 0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50 };
 
+    // CZ-style 8-stage DCW (wave-depth) envelope. Same bipolar-around-0.5
+    // convention; dcwEnvAmount scales the deviation added to both oscs' PD amount.
+    double dcwEnvAmount = 0.0;
+    int    dcwEnvSustain = 8;
+    double dcwEnvRate[8]  = { 0.02, 0.20, 0.30, 0.40, 0.50, 0.50, 0.50, 0.50 };
+    double dcwEnvLevel[8] = { 0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50, 0.50 };
+
     // Macro sources (also usable as global mod sources).
     double macro1 = 0.0, macro2 = 0.0;
 

@@ -207,6 +207,40 @@ TEST_CASE ("Master tune and transpose shift the pitch", "[voice][tuning]")
     REQUIRE (peakHz (460.0, 0)  == Approx (460.0).epsilon (0.03));   // retuned A4
 }
 
+TEST_CASE ("DCW envelope shifts the PD wave depth", "[voice][dcwenv]")
+{
+    const double sr = 48000.0;
+
+    // Hold the DCW env at a constant level so the wave depth is steady, and
+    // measure brightness (energy above the fundamental).
+    auto highEnergy = [&] (double amount, double level)
+    {
+        Voice v;
+        v.prepare (sr);
+        SynthParams p = cleanParams();
+        p.oscAType      = pdhybrid::OscType::PhaseDistortion;
+        p.oscAAmount    = 0.2;
+        p.cutoffHz      = 18000.0;
+        p.dcwEnvAmount  = amount;
+        p.dcwEnvSustain = 1;
+        for (int i = 0; i < 8; ++i) { p.dcwEnvLevel[i] = level; p.dcwEnvRate[i] = 0.001; }
+        v.setParams (p);
+        v.start (45, 1.0f);
+        std::vector<float> l (16384), r (16384);
+        v.renderBlock (l.data(), r.data(), static_cast<int> (l.size()));
+        auto spec = computeSpectrum (l, sr);
+        const double f0 = midiNoteToHz (45);
+        double above = 0.0;
+        for (double f = f0 * 2.0; f < 12000.0; f += f0)
+            above += spec.magnitudeNearHz (f);
+        return above;
+    };
+
+    // A positive DCW offset (level 0.9, amount 1) raises the PD amount -> more
+    // harmonics than the neutral 0.5 level.
+    REQUIRE (highEnergy (1.0, 0.9) > highEnergy (1.0, 0.5) * 1.2);
+}
+
 TEST_CASE ("Drive position (pre vs post filter) changes the tone", "[voice][drivepos]")
 {
     const double sr = 48000.0;

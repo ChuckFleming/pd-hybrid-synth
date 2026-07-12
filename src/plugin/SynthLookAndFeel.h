@@ -91,7 +91,7 @@ public:
         }
 
         const juce::Colour accent (0xff4be08a);
-        const juce::Colour track  (0xff173a29);
+        const juce::Colour track  (0xff2b6b46);   // visible dim-green rail on black
 
         const float cyf = (float) y + (float) height * 0.5f;
         const float x0  = minSliderPos;
@@ -101,6 +101,6 @@ public:
         g.fillRect (x0, cyf - 1.5f, juce::jmax (1.0f, x1 - x0), 3.0f);
         g.setColour (accent);
         g.fillRect (x0, cyf - 1.5f, juce::jmax (0.0f, sliderPos - x0), 3.0f);
-        g.fillRect (sliderPos - 1.5f, cyf - 7.0f, 3.0f, 14.0f);
+        g.fillRect (sliderPos - 2.0f, cyf - 7.0f, 4.0f, 14.0f);
     }
 };

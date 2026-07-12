@@ -1,18 +1,19 @@
 #include "PluginEditor.h"
 
 namespace {
-constexpr int kKnobW    = 66;
+// Layout is on an 8-point grid so vertical/horizontal rhythm stays consistent.
+constexpr int kKnobW    = 64;
 constexpr int kKnobH    = 64;   // rotary + text box below
-constexpr int kLabelH   = 14;
+constexpr int kLabelH   = 16;
 constexpr int kCellW    = 72;   // one knob cell (knob + gutter)
-constexpr int kCellH    = kLabelH + kKnobH;
-constexpr int kHeaderH  = 22;   // card title strip
+constexpr int kCellH    = kLabelH + kKnobH;   // 80
+constexpr int kHeaderH  = 24;   // card title strip
 constexpr int kComboRowH = 24;
-constexpr int kCardPad  = 7;    // inner padding of a card
-constexpr int kGap      = 10;   // gap between cards
-constexpr int kMargin   = 12;   // panel outer margin
+constexpr int kCardPad  = 8;    // inner padding of a card
+constexpr int kGap      = 8;    // gap between cards
+constexpr int kMargin   = 16;   // panel outer margin
 constexpr int kMatrixRowH = 26;
-constexpr int kTopBar   = 46;   // title bar above the tabs
+constexpr int kTopBar   = 48;   // title bar above the tabs
 
 // Palette — "CZ Terminal": black with green phosphor, outlined boxes.
 const juce::Colour kBg       (0xff000000);
@@ -80,76 +81,93 @@ void PDHybridEditor::SectionPanel::setTrailing (juce::Component* c, int fullHeig
 int PDHybridEditor::SectionPanel::layout (bool apply, int width)
 {
     const int comboMinW = 132;   // enough to read the longest choice ("Phase Distortion")
+    const int minColW   = 300;   // a 4-column knob card fits inside one grid column
 
-    // A card is as wide as its knob columns, but never so narrow that its combos
-    // truncate — combos wrap onto extra rows rather than shrinking below comboMinW.
+    // A card's natural width: its knob columns, but never so narrow that combos
+    // would truncate below comboMinW.
     auto innerW = [&] (const Section& s)
     {
         const int knobW  = s.cols * kCellW;
         const int comboW = juce::jmin (static_cast<int> (s.combos.size()), 2) * comboMinW;
         return juce::jmax (knobW, comboW);
     };
-    auto combosPerRow = [&] (const Section& s) { return juce::jmax (1, innerW (s) / comboMinW); };
-    auto comboRows = [&] (const Section& s)
+    auto naturalW = [&] (const Section& s) { return innerW (s) + 2 * kCardPad; };
+    auto knobRows = [&] (const Section& s)
+    {
+        return (static_cast<int> (s.knobs.size()) + s.cols - 1) / juce::jmax (1, s.cols);
+    };
+
+    // Column grid: card left/right edges snap to a shared set of columns so they
+    // line up across rows. Columns stretch to justify against the panel width.
+    const int contentW = juce::jmax (minColW, width - 2 * kMargin);
+    const int numCols   = juce::jlimit (1, 6, (contentW + kGap) / (minColW + kGap));
+    const int colW      = (contentW - (numCols - 1) * kGap) / numCols;
+    const int colPitch  = colW + kGap;
+
+    auto spanOf = [&] (const Section& s)
+    {
+        const int sp = (naturalW (s) + kGap + colPitch - 1) / colPitch;   // ceil
+        return juce::jlimit (1, numCols, sp);
+    };
+    auto cardW = [&] (int span) { return span * colW + (span - 1) * kGap; };
+    auto comboRowsFor = [&] (const Section& s, int cw)
     {
         if (s.combos.empty()) return 0;
-        const int cpr = combosPerRow (s);
+        const int cpr = juce::jmax (1, (cw - 2 * kCardPad) / comboMinW);
         return (static_cast<int> (s.combos.size()) + cpr - 1) / cpr;
     };
-    auto cardWidth  = [&] (const Section& s) { return innerW (s) + 2 * kCardPad; };
-    auto cardHeight = [&] (const Section& s)
-    {
-        const int knobRows = (static_cast<int> (s.knobs.size()) + s.cols - 1) / juce::jmax (1, s.cols);
-        return kHeaderH + 2 * kCardPad + knobRows * kCellH + comboRows (s) * kComboRowH;
-    };
 
-    // Pass 1: assign each card to a row and record the tallest card per row so a
-    // row's cards all share a common height (aligned bottoms).
-    std::vector<int> rowOf (sections.size(), 0);
-    std::vector<int> rowHeights;
+    // Pass 1: pack cards into rows of numCols grid columns.
+    std::vector<int> rowOf (sections.size(), 0), colOf (sections.size(), 0), spanV (sections.size(), 1);
     {
-        int x = kMargin, row = 0, curH = 0;
+        int col = 0, row = 0;
         for (std::size_t i = 0; i < sections.size(); ++i)
         {
-            const int cw = cardWidth (sections[i]);
-            const int ch = cardHeight (sections[i]);
-            if (x > kMargin && x + cw > width - kMargin)
-            {
-                rowHeights.push_back (curH);
-                x = kMargin; ++row; curH = 0;
-            }
-            rowOf[i] = row;
-            curH = juce::jmax (curH, ch);
-            x += cw + kGap;
+            const int sp = spanOf (sections[i]);
+            if (col > 0 && col + sp > numCols) { ++row; col = 0; }
+            rowOf[i] = row; colOf[i] = col; spanV[i] = sp;
+            col += sp;
         }
-        rowHeights.push_back (curH);
     }
+    const int numRows = sections.empty() ? 0 : (rowOf.back() + 1);
 
-    // Pass 2: place cards (and their controls) using the shared row heights.
-    int x = kMargin, y = kMargin, row = 0;
+    // Per-row uniform combo zone (so knob bands align) + shared row heights.
+    std::vector<int> rowComboRows (juce::jmax (1, numRows), 0), rowHeight (juce::jmax (1, numRows), 0);
+    for (std::size_t i = 0; i < sections.size(); ++i)
+        rowComboRows[rowOf[i]] = juce::jmax (rowComboRows[rowOf[i]], comboRowsFor (sections[i], cardW (spanV[i])));
     for (std::size_t i = 0; i < sections.size(); ++i)
     {
-        auto& s = sections[i];
-        const int cw = cardWidth (s);
-        if (rowOf[i] != row) { y += rowHeights[row] + kGap; row = rowOf[i]; x = kMargin; }
-        const int ch = rowHeights[row];
+        const int r = rowOf[i];
+        const int h = kHeaderH + 2 * kCardPad + rowComboRows[r] * kComboRowH + knobRows (sections[i]) * kCellH;
+        rowHeight[r] = juce::jmax (rowHeight[r], h);
+    }
 
-        if (apply)
+    std::vector<int> rowY (juce::jmax (1, numRows), kMargin);
+    { int yy = kMargin; for (int r = 0; r < numRows; ++r) { rowY[r] = yy; yy += rowHeight[r] + kGap; } }
+
+    if (apply)
+    {
+        for (std::size_t i = 0; i < sections.size(); ++i)
         {
-            s.bounds = { x, y, cw, ch };
-            const int iw = innerW (s);
+            auto& s = sections[i];
+            const int r  = rowOf[i];
+            const int cx = kMargin + colOf[i] * colPitch;
+            const int cw = cardW (spanV[i]);
+            s.bounds = { cx, rowY[r], cw, rowHeight[r] };
 
             auto inner = s.bounds;
             inner.removeFromTop (kHeaderH);
             inner = inner.reduced (kCardPad);
 
+            // Reserved combo zone (same height for every card in the row).
+            auto comboZone = inner.removeFromTop (rowComboRows[r] * kComboRowH);
             if (! s.combos.empty())
             {
-                const int cpr = combosPerRow (s);
+                const int cpr = juce::jmax (1, comboZone.getWidth() / comboMinW);
                 std::size_t ci = 0;
                 while (ci < s.combos.size())
                 {
-                    auto crow = inner.removeFromTop (kComboRowH).reduced (0, 2);
+                    auto crow = comboZone.removeFromTop (kComboRowH).reduced (0, 2);
                     const int inThis = juce::jmin (cpr, static_cast<int> (s.combos.size() - ci));
                     const int cwd = crow.getWidth() / inThis;
                     for (int k = 0; k < inThis; ++k, ++ci)
@@ -157,7 +175,9 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
                 }
             }
 
-            const int cellW = iw / juce::jmax (1, s.cols);
+            // Knobs: cells stretch to fill the card width so each card reads as a
+            // full, evenly-spaced block (rows already share a baseline).
+            const int cellW = inner.getWidth() / juce::jmax (1, s.cols);
             std::size_t k = 0;
             while (k < s.knobs.size())
             {
@@ -170,11 +190,9 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
                 }
             }
         }
-
-        x += cw + kGap;
     }
 
-    y += rowHeights.empty() ? 0 : rowHeights[row];
+    int y = numRows > 0 ? (rowY[numRows - 1] + rowHeight[numRows - 1]) : kMargin;
 
     if (trailing != nullptr)
     {
@@ -632,7 +650,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
     setResizable (true, true);
     setResizeLimits (720, 460, 2200, 1500);
-    setSize (1200, 860);
+    setSize (1200, 920);
 }
 
 PDHybridEditor::~PDHybridEditor()
@@ -656,11 +674,11 @@ void PDHybridEditor::layoutMatrix()
         {
             const int idx = rowI * 2 + colI;
             auto cell = row.removeFromLeft (half).reduced (3, 0);
-            modSrcBox[idx].setBounds  (cell.removeFromLeft (94));
+            modSrcBox[idx].setBounds  (cell.removeFromLeft (92));
             cell.removeFromLeft (4);
-            modDestBox[idx].setBounds (cell.removeFromLeft (94));
+            modDestBox[idx].setBounds (cell.removeFromLeft (92));
             cell.removeFromLeft (4);
-            modCurveBox[idx].setBounds (cell.removeFromLeft (48));
+            modCurveBox[idx].setBounds (cell.removeFromLeft (64));
             cell.removeFromLeft (6);
             modDepthSlider[idx].setBounds (cell);
         }

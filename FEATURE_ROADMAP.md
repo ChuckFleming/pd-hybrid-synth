@@ -20,13 +20,13 @@ Most of v6 is implemented. Each item below verified: full suite green (147 cases
 - §6 panic button + preset delete (c56b4c7)
 - §3d Delay ↔ Reverb routing — fxRouting {Delay→Reverb, Reverb→Delay, Reverb+Dry Delay via Delay::processWet} (44215b2)
 - §5a Osc hard sync + phase mod — oscCrossMod {Off, Hard Sync, Phase Mod} + crossModAmount; both oscillators expose wrapped()/syncReset()/setPhaseMod() (cdf4af0)
+- §6 workflow — panic + preset delete (c56b4c7), patch randomize (309bcea), A/B compare (dd953dc)
+- Follow-ups — ModSource::PitchEnv + MonoBass master tune/transpose (3d8a16e)
 
 **REMAINING (for a future session):**
-- §2b full per-osc DCW envelope (a dedicated 5th env; the pitch env pattern in Voice is the template).
-- §5f per-mod-slot response curve (Linear/Exp/S) in `ModMatrix::evaluate`.
-- §6 A/B compare + patch randomize (editor + APVTS state snapshots).
-- §4e MPE config params / §4f microtuning (stretch; §4d already created the `noteHz` tuning seam).
-- Minor: MonoBass doesn't yet honour master tune/transpose (documented in 09b6e09); expose pitchEnv as `ModSource::PitchEnv`.
+- §5f per-mod-slot response curve (Linear/Exp/S) in `ModMatrix::evaluate` — DSP is clean; the 10-row matrix UI is dense (add a compact per-row curve combo or defer the control to the UI overhaul).
+- §2b full per-osc DCW envelope (a dedicated 5th env; the pitch env pattern in Voice is the template). Largely redundant with routing `MultiEnv`→`PdAmount` in the matrix, so low priority.
+- §4e MPE config params / §4f microtuning (stretch; §4d already created the `noteHz` tuning seam — a `TuningTable` behind it is the clean approach).
 
 ---
 

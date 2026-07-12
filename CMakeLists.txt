@@ -26,6 +26,7 @@ FetchContent_MakeAvailable(JUCE)
 add_library(pdhybrid_dsp STATIC
     src/dsp/PhaseDistortionOscillator.cpp
     src/dsp/AnalogOscillator.cpp
+    src/dsp/VpsOscillator.cpp
     src/dsp/OscillatorUnit.cpp
     src/dsp/OscEq.cpp
     src/dsp/GlobalEq.cpp

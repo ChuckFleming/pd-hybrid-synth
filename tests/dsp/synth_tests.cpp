@@ -97,6 +97,22 @@ TEST_CASE ("Engine plays a note at the correct pitch", "[synth][midi]")
     REQUIRE (spec.peakFrequency() == Approx (440.0).epsilon (0.01));
 }
 
+TEST_CASE ("Engine renders a Vector-PS oscillator at the correct pitch", "[synth][vps]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+    auto p = brightSustainParams();
+    p.oscAType = OscType::VPS;   // amount -> vertical, pulse width -> horizontal
+    e.setParams (p);
+    e.noteOn (69, 1.0f, 1);   // A4 = 440 Hz
+
+    auto buf  = renderEngine (e, 16384);
+    REQUIRE_FALSE (hasBadValues (buf));
+    REQUIRE (rms (buf) > 0.01f);                                 // audibly non-silent
+    REQUIRE (computeSpectrum (buf, sr).peakFrequency() == Approx (440.0).epsilon (0.01));
+}
+
 TEST_CASE ("Engine is polyphonic and frees voices after release", "[synth][midi]")
 {
     const double sr = 48000.0;

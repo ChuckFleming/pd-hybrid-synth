@@ -31,7 +31,7 @@ juce::Font monoFont (float height, bool bold = false)
                        bold ? juce::Font::bold : juce::Font::plain);
 }
 
-const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" };
+const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS" };
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                         "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
 // Must match the "modXSource" choice parameter exactly: ComboBoxParameterAttachment

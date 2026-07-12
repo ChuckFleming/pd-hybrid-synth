@@ -19,7 +19,8 @@ enum class OscType
     Saw,                   // analog PolyBLEP waveforms
     Square,
     Triangle,
-    Pulse
+    Pulse,
+    VPS                    // vector phaseshaping (movable 2D inflection point)
 };
 
 enum class GlideMode

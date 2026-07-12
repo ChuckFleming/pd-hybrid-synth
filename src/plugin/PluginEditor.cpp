@@ -671,6 +671,16 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
     buildSections();
 
+    // Keep the PD-only wave controls greyed out unless the slot is a PD engine.
+    // Driven off the type parameter (via a Value) so it also tracks presets and
+    // automation, not just user clicks -- and without stealing the combo's
+    // onChange, which the ComboBoxAttachment owns.
+    oscATypeValue = proc.apvts.getParameterAsValue ("oscAType");
+    oscBTypeValue = proc.apvts.getParameterAsValue ("oscBType");
+    oscATypeValue.addListener (this);
+    oscBTypeValue.addListener (this);
+    updateOscWaveEnablement();
+
     // --- Modulation matrix widgets (hosted on the Modulation tab) ---
     for (int i = 0; i < kNumModRows; ++i)
     {
@@ -745,8 +755,32 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
 PDHybridEditor::~PDHybridEditor()
 {
+    oscATypeValue.removeListener (this);
+    oscBTypeValue.removeListener (this);
     tabs.clearTabs();     // release content components before members are destroyed
     setLookAndFeel (nullptr);
+}
+
+void PDHybridEditor::valueChanged (juce::Value&)
+{
+    updateOscWaveEnablement();
+}
+
+void PDHybridEditor::updateOscWaveEnablement()
+{
+    // The PD Wave / PD Wave 2 / Combine controls feed only the phase-distortion
+    // engine; on any other osc type (analog waves or Vector PS) they do nothing,
+    // so dim them and block interaction to make that obvious.
+    auto setActive = [] (juce::ComboBox* c, bool on)
+    {
+        c->setEnabled (on);
+        c->setAlpha (on ? 1.0f : 0.4f);
+    };
+    const bool aPd = juce::roundToInt (proc.apvts.getRawParameterValue ("oscAType")->load()) == 0;
+    const bool bPd = juce::roundToInt (proc.apvts.getRawParameterValue ("oscBType")->load()) == 0;
+    // Section combos are ordered { type, wave, wave2, combine }.
+    for (int i = 1; i <= 3; ++i) setActive (oscA.combos[(size_t) i], aPd);
+    for (int i = 1; i <= 3; ++i) setActive (oscB.combos[(size_t) i], bPd);
 }
 
 void PDHybridEditor::layoutMatrix()

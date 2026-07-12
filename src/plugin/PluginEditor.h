@@ -17,7 +17,8 @@
     Each tab flows its cards to the available width and lives inside a Viewport,
     so the window stays small, is freely resizable, and never clips its contents.
 */
-class PDHybridEditor : public juce::AudioProcessorEditor
+class PDHybridEditor : public juce::AudioProcessorEditor,
+                       private juce::Value::Listener
 {
 public:
     explicit PDHybridEditor (PDHybridAudioProcessor&);
@@ -94,6 +95,12 @@ private:
 
     void buildSections();
     void layoutMatrix();
+
+    // Grey out the PD-only wave controls (PD Wave / PD Wave 2 / Combine) on a
+    // slot whose engine isn't Phase Distortion, since they have no effect there.
+    void valueChanged (juce::Value&) override;
+    void updateOscWaveEnablement();
+    juce::Value oscATypeValue, oscBTypeValue;
 
     PDHybridAudioProcessor& proc;
     SynthLookAndFeel lnf;

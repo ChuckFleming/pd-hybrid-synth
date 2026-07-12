@@ -492,6 +492,20 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     panicButton.onClick = [this] { proc.triggerPanic(); };
     addAndMakeVisible (randButton);
     randButton.onClick = [this] { randomizePatch(); };
+
+    // A/B compare: two snapshots; the button stashes the current state into the
+    // active slot and loads the other.
+    abState_[0] = proc.apvts.copyState();
+    abState_[1] = proc.apvts.copyState();
+    addAndMakeVisible (abButton);
+    abButton.onClick = [this]
+    {
+        abState_[abSlot_] = proc.apvts.copyState();
+        abSlot_ ^= 1;
+        if (abState_[abSlot_].isValid())
+            proc.apvts.replaceState (abState_[abSlot_].createCopy());
+        abButton.setButtonText (abSlot_ == 0 ? "A/B: A" : "A/B: B");
+    };
     refreshPresetList();
 
     buildSections();
@@ -663,6 +677,7 @@ void PDHybridEditor::resized()
     x -= 46;  deleteButton.setBounds (x, y, 40, 26);
     x -= 32;  nextButton.setBounds (x, y, 28, 26);
     x -= 32;  prevButton.setBounds (x, y, 28, 26);
+    x -= 58;  abButton.setBounds   (x, y, 52, 26);
     x -= 190; presetBox.setBounds  (x, y, 184, 26);
 
     tabs.setBounds (r);

@@ -104,7 +104,11 @@ private:
     juce::TextButton deleteButton { "Del" };
     juce::TextButton prevButton { "<" };
     juce::TextButton nextButton { ">" };
+    juce::TextButton abButton { "A/B: A" };
     juce::ComboBox   presetBox;
+
+    juce::ValueTree  abState_[2];   // A/B compare snapshots
+    int              abSlot_ = 0;
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
 
     void refreshPresetList();

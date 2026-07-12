@@ -4,9 +4,9 @@
 
 namespace pdhybrid {
 
-double MonoBass::noteHz (int note) noexcept
+double MonoBass::noteHz (int note) const noexcept
 {
-    return 440.0 * std::pow (2.0, (note - 69) / 12.0);
+    return masterTuneHz_ * std::pow (2.0, (note + transpose_ - 69) / 12.0);
 }
 
 void MonoBass::setSampleRate (double sampleRateHz) noexcept

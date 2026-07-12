@@ -427,7 +427,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     const juce::StringArray srcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
                                        "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2",
                                        "Multi Env", "Amp Env", "Filt Env A", "Filt Env B",
-                                       "Random", "Global LFO", "Macro 1", "Macro 2" };
+                                       "Random", "Global LFO", "Macro 1", "Macro 2", "Pitch Env" };
     const juce::StringArray dstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
                                        "Resonance", "Morph", "Drive", "Amplitude", "Pan",
                                        "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
@@ -653,6 +653,8 @@ void PDHybridAudioProcessor::pushParams()
                       apvts.getRawParameterValue ("bassDecay")->load(),
                       apvts.getRawParameterValue ("bassSustain")->load(),
                       apvts.getRawParameterValue ("bassRelease")->load());
+    monoBass.setMasterTune (apvts.getRawParameterValue ("masterTune")->load(),
+                            static_cast<int> (apvts.getRawParameterValue ("transpose")->load()));
 
     master.setGainDb (apvts.getRawParameterValue ("masterLevel")->load());
     master.setLimiterEnabled (apvts.getRawParameterValue ("masterLimiter")->load() > 0.5f);

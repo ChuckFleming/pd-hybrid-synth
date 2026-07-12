@@ -30,7 +30,7 @@ const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double S
 const juce::StringArray kSrcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
                                     "Timbre", "Pitch Bend", "Key Track", "Mod Wheel", "LFO 2",
                                     "Multi Env", "Amp Env", "Filt Env A", "Filt Env B",
-                                    "Random", "Global LFO", "Macro 1", "Macro 2" };
+                                    "Random", "Global LFO", "Macro 1", "Macro 2", "Pitch Env" };
 const juce::StringArray kLfoWaveNames { "Sine", "Triangle", "Square", "Saw", "Ramp Down",
                                         "Sample & Hold", "Smooth Random", "Exponential" };
 const juce::StringArray kSyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",

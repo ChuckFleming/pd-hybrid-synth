@@ -22,6 +22,7 @@ enum class ModSource : int
     GlobalLfo,    // global (processor-level) sources
     Macro1,
     Macro2,
+    PitchEnv,     // CZ pitch (DCO) envelope, bipolar
     Count
 };
 

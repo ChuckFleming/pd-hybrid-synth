@@ -35,6 +35,7 @@ public:
     void setGlideTime(double seconds) noexcept   { glideTime_ = seconds < 0.0 ? 0.0 : seconds; }
     void setPriority (BassPriority p) noexcept   { priority_ = p; updateTarget (false); }
     void setADSR     (double a, double d, double s, double r) noexcept { env_.setADSR (a, d, s, r); }
+    void setMasterTune (double a4Hz, int transpose) noexcept { masterTuneHz_ = a4Hz; transpose_ = transpose; }
 
     // --- Note events (from the processor) ---
     void noteOn     (int note, float velocity) noexcept;
@@ -49,7 +50,7 @@ public:
     void renderBlock (float* mono, int numSamples) noexcept;
 
 private:
-    static double noteHz (int note) noexcept;
+    double noteHz (int note) const noexcept;
     void   retune () noexcept;
     int    selectNote () const noexcept;                 // -1 if nothing held
     void   updateTarget (bool allowRetrigger) noexcept;  // pick note by priority
@@ -66,6 +67,8 @@ private:
     int    octave_     = -1;            // default one octave below the played note
     double tuneCents_  = 0.0;
     double tuneMul_    = 1.0;
+    double masterTuneHz_ = 440.0;
+    int    transpose_    = 0;
     double harmonics_  = 0.0;
     double level_      = 0.8;
     double glideTime_  = 0.05;

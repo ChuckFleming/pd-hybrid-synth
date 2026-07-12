@@ -128,6 +128,7 @@ void Voice::applyModulation() noexcept
     src[ModSource::Random]     = randomMod_;
     src[ModSource::Macro1]     = params_.macro1;
     src[ModSource::Macro2]     = params_.macro2;
+    src[ModSource::PitchEnv]   = (pitchEnv_.level() - 0.5) * 2.0;   // bipolar
     // GlobalLfo stays 0 here; it drives the global dests in the processor.
 
     double mod[ModMatrix::kNumDests];

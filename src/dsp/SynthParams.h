@@ -21,7 +21,8 @@ enum class OscType
     Triangle,
     Pulse,
     VPS,                   // vector phaseshaping (movable 2D inflection point)
-    Scanned                // scanned synthesis (a plucked mass-spring ring)
+    Scanned,               // scanned synthesis (a plucked mass-spring ring)
+    Vosim                  // VOSIM (bursts of decaying sin^2 pulses -> formants)
 };
 
 enum class GlideMode

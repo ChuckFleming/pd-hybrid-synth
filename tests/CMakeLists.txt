@@ -12,6 +12,7 @@ add_executable(pdhybrid_tests
     dsp/analog_oscillator_tests.cpp
     dsp/vps_oscillator_tests.cpp
     dsp/scanned_oscillator_tests.cpp
+    dsp/vosim_oscillator_tests.cpp
     dsp/filter_tests.cpp
     dsp/svf_tests.cpp
     dsp/amp_tests.cpp

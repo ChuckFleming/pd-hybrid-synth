@@ -96,10 +96,10 @@ private:
     void buildSections();
     void layoutMatrix();
 
-    // Grey out the PD-only wave controls (PD Wave / PD Wave 2 / Combine) on a
-    // slot whose engine isn't Phase Distortion, since they have no effect there.
+    // Track each slot's engine type: grey out the PD-only wave controls, and
+    // relabel / grey the two shared timbre knobs to match the active engine.
     void valueChanged (juce::Value&) override;
-    void updateOscWaveEnablement();
+    void updateOscControls();
     juce::Value oscATypeValue, oscBTypeValue;
 
     PDHybridAudioProcessor& proc;

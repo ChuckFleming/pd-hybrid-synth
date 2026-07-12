@@ -130,6 +130,25 @@ TEST_CASE ("Engine renders a scanned-synthesis oscillator, plucked on note-on", 
     REQUIRE (std::abs (computeSpectrum (buf, sr).peakFrequency() - 440.0) < 6.0);
 }
 
+TEST_CASE ("Engine renders a VOSIM oscillator, periodic at the note", "[synth][vosim]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+    auto p = brightSustainParams();
+    p.oscAType = OscType::Vosim;      // amount -> formant, pulse width -> decay
+    e.setParams (p);
+    e.noteOn (69, 1.0f, 1);           // A4 = 440 Hz
+
+    auto buf  = renderEngine (e, 16384);
+    auto spec = computeSpectrum (buf, sr);
+    REQUIRE_FALSE (hasBadValues (buf));
+    REQUIRE (rms (buf) > 0.01f);
+    // All energy on harmonics of 440 Hz (the formant peak is one of them).
+    const double ratio = spec.peakFrequency() / 440.0;
+    REQUIRE (std::abs (ratio - std::round (ratio)) < 0.15);
+}
+
 TEST_CASE ("Engine is polyphonic and frees voices after release", "[synth][midi]")
 {
     const double sr = 48000.0;

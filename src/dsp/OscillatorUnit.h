@@ -4,6 +4,7 @@
 #include "AnalogOscillator.h"
 #include "VpsOscillator.h"
 #include "ScannedOscillator.h"
+#include "VosimOscillator.h"
 #include "OscEq.h"
 #include "SynthParams.h"   // OscType
 
@@ -23,7 +24,7 @@ public:
     void reset         () noexcept;
 
     void setType       (OscType type) noexcept;
-    void setOversampling (int factor) noexcept  { pd_.setOversampling (factor); vps_.setOversampling (factor); scanned_.setOversampling (factor); }
+    void setOversampling (int factor) noexcept  { pd_.setOversampling (factor); vps_.setOversampling (factor); scanned_.setOversampling (factor); vosim_.setOversampling (factor); }
     void setPdWave     (PdWave wave) noexcept   { pd_.setWave (wave); }
     void setPdWaveB    (PdWave wave) noexcept   { pd_.setWaveB (wave); }
     void setPdCombine  (bool on) noexcept       { pd_.setCombine (on); }
@@ -33,27 +34,30 @@ public:
 
     // Cross-modulation (hard sync + phase mod). Dispatch to the active engine.
     void setPhaseMod (double offset) noexcept
-    { pd_.setPhaseMod (offset); vps_.setPhaseMod (offset); scanned_.setPhaseMod (offset); analog_.setPhaseMod (offset); }
+    { pd_.setPhaseMod (offset); vps_.setPhaseMod (offset); scanned_.setPhaseMod (offset); vosim_.setPhaseMod (offset); analog_.setPhaseMod (offset); }
     bool wrapped     () const noexcept
     { return (type_ == OscType::PhaseDistortion) ? pd_.wrapped()
            : (type_ == OscType::VPS)             ? vps_.wrapped()
            : (type_ == OscType::Scanned)         ? scanned_.wrapped()
+           : (type_ == OscType::Vosim)           ? vosim_.wrapped()
                                                  : analog_.wrapped(); }
     void syncReset   () noexcept
     { if      (type_ == OscType::PhaseDistortion) pd_.syncReset();
       else if (type_ == OscType::VPS)             vps_.syncReset();
       else if (type_ == OscType::Scanned)         scanned_.syncReset();
+      else if (type_ == OscType::Vosim)           vosim_.syncReset();
       else                                        analog_.syncReset(); }
     void setEq         (double lowDb, double midDb, double highDb) noexcept
     { eq_.setGains (lowDb, midDb, highDb); }
-    // The DCW "amount" knob doubles as the VPS vertical (formant) coordinate and
-    // the scanned-string stiffness; the pulse-width knob as the VPS horizontal
-    // (inflection X) and the scanned-string damping. So both stay mod-matrix
-    // destinations and the DCW envelope sweeps them, whatever the engine.
+    // The DCW "amount" knob doubles as the VPS vertical (formant) coordinate, the
+    // scanned-string stiffness and the VOSIM formant; the pulse-width knob as the
+    // VPS horizontal (inflection X), the scanned-string damping and the VOSIM
+    // decay. So both stay mod-matrix destinations and the DCW envelope sweeps
+    // them, whatever the engine.
     void setAmount     (double amount01) noexcept
-    { pd_.setAmount (amount01); vps_.setVertical (amount01 * kVpsVMax); scanned_.setStiffness (amount01); }
+    { pd_.setAmount (amount01); vps_.setVertical (amount01 * kVpsVMax); scanned_.setStiffness (amount01); vosim_.setFormant (amount01); }
     void setPulseWidth (double pulseWidth01) noexcept
-    { analog_.setPulseWidth (pulseWidth01); vps_.setHorizontal (pulseWidth01); scanned_.setDamping (pulseWidth01); }
+    { analog_.setPulseWidth (pulseWidth01); vps_.setHorizontal (pulseWidth01); scanned_.setDamping (pulseWidth01); vosim_.setDecay (pulseWidth01); }
 
     // Octave (whole octaves), semitone offset, and fine detune in cents.
     void setTuning        (int octave, int semitone, double fineCents) noexcept;
@@ -69,6 +73,7 @@ private:
     AnalogOscillator          analog_;
     VpsOscillator             vps_;
     ScannedOscillator         scanned_;
+    VosimOscillator           vosim_;
     OscEq                     eq_;
     OscType type_    = OscType::PhaseDistortion;
     double  tuneMul_ = 1.0;

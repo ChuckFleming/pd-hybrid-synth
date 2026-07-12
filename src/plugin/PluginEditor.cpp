@@ -31,9 +31,29 @@ juce::Font monoFont (float height, bool bold = false)
                        bold ? juce::Font::bold : juce::Font::plain);
 }
 
-const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned" };
+const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM" };
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                         "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
+
+// Per-type role of the two shared timbre knobs (the "amount" and "pulse width"
+// knobs). Each engine reads them differently, and some ignore one or both, so
+// the editor relabels them and greys out the ones an engine doesn't use.
+struct OscKnobRoles { juce::String amountLabel; bool amountActive; juce::String pwLabel; bool pwActive; };
+OscKnobRoles oscKnobRoles (int type)
+{
+    switch (static_cast<pdhybrid::OscType> (type))
+    {
+        case pdhybrid::OscType::PhaseDistortion: return { "PD Amt", true,  "Width", false };  // DCW; PD ignores pulse width
+        case pdhybrid::OscType::Saw:             return { "PD Amt", false, "Width", false };
+        case pdhybrid::OscType::Square:          return { "PD Amt", false, "Width", true  };
+        case pdhybrid::OscType::Triangle:        return { "PD Amt", false, "Width", false };
+        case pdhybrid::OscType::Pulse:           return { "PD Amt", false, "Width", true  };
+        case pdhybrid::OscType::VPS:             return { "Vert",   true,  "Horiz", true  };  // 2D inflection point
+        case pdhybrid::OscType::Scanned:         return { "Stiff",  true,  "Damp",  true  };  // string stiffness / damping
+        case pdhybrid::OscType::Vosim:           return { "Formant", true, "Decay", true  };  // formant / burst decay
+        default:                                 return { "PD Amt", true,  "Width", true  };
+    }
+}
 // Must match the "modXSource" choice parameter exactly: ComboBoxParameterAttachment
 // maps by item index / (item count - 1), so a shorter list mis-routes every source.
 const juce::StringArray kSrcNames { "None", "Mod Env", "LFO", "Velocity", "Pressure",
@@ -679,7 +699,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     oscBTypeValue = proc.apvts.getParameterAsValue ("oscBType");
     oscATypeValue.addListener (this);
     oscBTypeValue.addListener (this);
-    updateOscWaveEnablement();
+    updateOscControls();
 
     // --- Modulation matrix widgets (hosted on the Modulation tab) ---
     for (int i = 0; i < kNumModRows; ++i)
@@ -763,24 +783,37 @@ PDHybridEditor::~PDHybridEditor()
 
 void PDHybridEditor::valueChanged (juce::Value&)
 {
-    updateOscWaveEnablement();
+    updateOscControls();
 }
 
-void PDHybridEditor::updateOscWaveEnablement()
+void PDHybridEditor::updateOscControls()
 {
-    // The PD Wave / PD Wave 2 / Combine controls feed only the phase-distortion
-    // engine; on any other osc type (analog waves or Vector PS) they do nothing,
-    // so dim them and block interaction to make that obvious.
-    auto setActive = [] (juce::ComboBox* c, bool on)
+    auto comboActive = [] (juce::ComboBox* c, bool on)
     {
         c->setEnabled (on);
         c->setAlpha (on ? 1.0f : 0.4f);
     };
-    const bool aPd = juce::roundToInt (proc.apvts.getRawParameterValue ("oscAType")->load()) == 0;
-    const bool bPd = juce::roundToInt (proc.apvts.getRawParameterValue ("oscBType")->load()) == 0;
-    // Section combos are ordered { type, wave, wave2, combine }.
-    for (int i = 1; i <= 3; ++i) setActive (oscA.combos[(size_t) i], aPd);
-    for (int i = 1; i <= 3; ++i) setActive (oscB.combos[(size_t) i], bPd);
+    auto knobRole = [] (LabeledKnob* k, const juce::String& label, bool on)
+    {
+        k->label.setText (label, juce::dontSendNotification);
+        k->slider.setEnabled (on);
+        k->slider.setAlpha (on ? 1.0f : 0.4f);
+        k->label.setAlpha  (on ? 1.0f : 0.4f);
+    };
+    auto apply = [&] (Section& sec, const char* typeParam)
+    {
+        const int type = juce::roundToInt (proc.apvts.getRawParameterValue (typeParam)->load());
+        // PD Wave / PD Wave 2 / Combine (section combos 1..3) feed only the PD
+        // engine, so dim them for any other type.
+        for (int i = 1; i <= 3; ++i) comboActive (sec.combos[(size_t) i], type == 0);
+        // The amount (knob 0) and pulse-width (knob 1) knobs are relabelled to
+        // the active engine's role and greyed when it doesn't use them.
+        const auto roles = oscKnobRoles (type);
+        knobRole (sec.knobs[0], roles.amountLabel, roles.amountActive);
+        knobRole (sec.knobs[1], roles.pwLabel,     roles.pwActive);
+    };
+    apply (oscA, "oscAType");
+    apply (oscB, "oscBType");
 }
 
 void PDHybridEditor::layoutMatrix()

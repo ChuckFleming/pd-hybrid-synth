@@ -1,4 +1,5 @@
 #include "MonoBass.h"
+#include "SynthParams.h"   // tuningCentsOffset
 #include <algorithm>
 #include <cmath>
 
@@ -6,7 +7,9 @@ namespace pdhybrid {
 
 double MonoBass::noteHz (int note) const noexcept
 {
-    return masterTuneHz_ * std::pow (2.0, (note + transpose_ - 69) / 12.0);
+    const int n = note + transpose_;
+    const double etHz = masterTuneHz_ * std::pow (2.0, (n - 69) / 12.0);
+    return etHz * std::pow (2.0, tuningCentsOffset (tuningScale_, n) / 1200.0);
 }
 
 void MonoBass::setSampleRate (double sampleRateHz) noexcept

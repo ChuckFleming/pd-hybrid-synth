@@ -60,6 +60,21 @@ inline double syncedDelaySeconds (double bpm, int divIndex) noexcept
     return t < 0.001 ? 0.001 : (t > 2.0 ? 2.0 : t);
 }
 
+// Microtuning: cents deviation from 12-TET for a pitch class (0 = C .. 11 = B),
+// for a built-in temperament (0 = Equal, 1 = Just, 2 = Pythagorean). Equal
+// returns 0 so the default is bit-identical to standard tuning.
+inline double tuningCentsOffset (int scale, int pitchClass) noexcept
+{
+    static const double kJust[12] = { 0.0, 11.7, 3.9, 15.6, -13.7, -2.0, -10.2,
+                                      2.0, 13.7, -15.6, 17.6, -11.7 };
+    static const double kPyth[12] = { 0.0, 13.7, 3.9, -5.9, 7.8, -2.0, 11.7,
+                                      2.0, 15.6, 5.9, -3.9, 9.8 };
+    const int pc = ((pitchClass % 12) + 12) % 12;
+    if (scale == 1) return kJust[pc];
+    if (scale == 2) return kPyth[pc];
+    return 0.0;
+}
+
 // Per-block synth settings pushed from the host/UI down to every voice.
 struct SynthParams
 {
@@ -143,6 +158,7 @@ struct SynthParams
     double pitchBendRange = 2.0;  // semitones for MIDI bend (1-24)
     double masterTuneHz = 440.0;  // A4 reference (415-465)
     int    transpose    = 0;      // semitone transpose (-24..24)
+    int    tuningScale  = 0;      // 0=Equal, 1=Just, 2=Pythagorean
 
     // Stereo placement: master pan plus a per-voice spread by keyboard position
     // (low notes left, high notes right) for a wider sound.

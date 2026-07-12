@@ -13,7 +13,9 @@ double midiNoteToHz (int note) noexcept
 
 double Voice::noteHz (int note) const noexcept
 {
-    return params_.masterTuneHz * std::pow (2.0, (note + params_.transpose - 69) / 12.0);
+    const int n = note + params_.transpose;
+    const double etHz = params_.masterTuneHz * std::pow (2.0, (n - 69) / 12.0);
+    return etHz * std::pow (2.0, tuningCentsOffset (params_.tuningScale, n) / 1200.0);
 }
 
 void Voice::prepare (double sampleRate)

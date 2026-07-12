@@ -35,7 +35,8 @@ public:
     void setGlideTime(double seconds) noexcept   { glideTime_ = seconds < 0.0 ? 0.0 : seconds; }
     void setPriority (BassPriority p) noexcept   { priority_ = p; updateTarget (false); }
     void setADSR     (double a, double d, double s, double r) noexcept { env_.setADSR (a, d, s, r); }
-    void setMasterTune (double a4Hz, int transpose) noexcept { masterTuneHz_ = a4Hz; transpose_ = transpose; }
+    void setMasterTune (double a4Hz, int transpose, int scale) noexcept
+    { masterTuneHz_ = a4Hz; transpose_ = transpose; tuningScale_ = scale; }
 
     // --- Note events (from the processor) ---
     void noteOn     (int note, float velocity) noexcept;
@@ -69,6 +70,7 @@ private:
     double tuneMul_    = 1.0;
     double masterTuneHz_ = 440.0;
     int    transpose_    = 0;
+    int    tuningScale_  = 0;
     double harmonics_  = 0.0;
     double level_      = 0.8;
     double glideTime_  = 0.05;

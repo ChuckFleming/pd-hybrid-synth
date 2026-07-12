@@ -329,6 +329,9 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "velCurve", 1 }, "Velocity Curve",
         juce::StringArray { "Linear", "Soft", "Hard", "Fixed" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "tuningScale", 1 }, "Tuning",
+        juce::StringArray { "Equal", "Just", "Pythagorean" }, 0));
 
     // --- Glide / portamento ---
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
@@ -670,7 +673,8 @@ void PDHybridAudioProcessor::pushParams()
                       apvts.getRawParameterValue ("bassSustain")->load(),
                       apvts.getRawParameterValue ("bassRelease")->load());
     monoBass.setMasterTune (apvts.getRawParameterValue ("masterTune")->load(),
-                            static_cast<int> (apvts.getRawParameterValue ("transpose")->load()));
+                            static_cast<int> (apvts.getRawParameterValue ("transpose")->load()),
+                            static_cast<int> (apvts.getRawParameterValue ("tuningScale")->load()));
 
     master.setGainDb (apvts.getRawParameterValue ("masterLevel")->load());
     master.setLimiterEnabled (apvts.getRawParameterValue ("masterLimiter")->load() > 0.5f);
@@ -685,6 +689,7 @@ void PDHybridAudioProcessor::pushParams()
     pitchBendRangeSemis = p.pitchBendRange;   // used when converting MIDI bend
     p.masterTuneHz = apvts.getRawParameterValue ("masterTune")->load();
     p.transpose    = static_cast<int> (apvts.getRawParameterValue ("transpose")->load());
+    p.tuningScale  = static_cast<int> (apvts.getRawParameterValue ("tuningScale")->load());
     velCurve_      = static_cast<int> (apvts.getRawParameterValue ("velCurve")->load());
 
     const int lfoSync  = static_cast<int> (apvts.getRawParameterValue ("lfoSync")->load());

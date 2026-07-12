@@ -292,7 +292,8 @@ void PDHybridEditor::buildSections()
                         &addCombo ("notePriority", { "Last", "Top", "Bottom" }),
                         &addCombo ("stealPolicy", { "Oldest", "Quietest" }),
                         &addCombo ("monoRetrigger", { "Legato", "Retrigger" }),
-                        &addCombo ("velCurve", { "Linear", "Soft", "Hard", "Fixed" }) };
+                        &addCombo ("velCurve", { "Linear", "Soft", "Hard", "Fixed" }),
+                        &addCombo ("tuningScale", { "Equal", "Just", "Pythagorean" }) };
     voiceSec.knobs = { &addKnob ("polyphony", "Poly", 0), &addKnob ("pitchBendRange", "Bend", 0),
                        &addKnob ("masterTune", "Tune", 1), &addKnob ("transpose", "Transp", 0) };
 

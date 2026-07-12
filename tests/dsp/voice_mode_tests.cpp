@@ -207,6 +207,30 @@ TEST_CASE ("Master tune and transpose shift the pitch", "[voice][tuning]")
     REQUIRE (peakHz (460.0, 0)  == Approx (460.0).epsilon (0.03));   // retuned A4
 }
 
+TEST_CASE ("Just intonation retunes intervals", "[voice][tuning]")
+{
+    const double sr = 48000.0;
+
+    auto peakHz = [&] (int note, int scale)
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = cleanParams();
+        p.oscAType    = pdhybrid::OscType::Triangle;
+        p.tuningScale = scale;
+        e.setParams (p);
+        e.noteOn (note, 1.0f, 1);
+        return soundingHz (e, sr);
+    };
+
+    // E5 (note 76). Just major third above C is ~13.7 cents flat of ET.
+    const double etE   = peakHz (76, 0);
+    const double justE = peakHz (76, 1);
+    const double expected = etE * std::pow (2.0, -13.7 / 1200.0);
+    REQUIRE (justE == Approx (expected).epsilon (0.01));
+    REQUIRE (justE < etE);           // flatter than equal temperament
+}
+
 TEST_CASE ("DCW envelope shifts the PD wave depth", "[voice][dcwenv]")
 {
     const double sr = 48000.0;

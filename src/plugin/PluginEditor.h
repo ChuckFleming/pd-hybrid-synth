@@ -98,6 +98,7 @@ private:
     juce::TooltipWindow tooltips { this, 600 };
 
     juce::TextButton initButton { "Init" };
+    juce::TextButton randButton { "Rand" };
     juce::TextButton panicButton { "Panic" };
     juce::TextButton saveButton { "Save" };
     juce::TextButton deleteButton { "Del" };
@@ -108,6 +109,7 @@ private:
 
     void refreshPresetList();
     void showSavePresetDialog();
+    void randomizePatch();
 
     std::vector<std::unique_ptr<LabeledKnob>> knobs;
     std::vector<std::unique_ptr<juce::ComboBox>> combos;

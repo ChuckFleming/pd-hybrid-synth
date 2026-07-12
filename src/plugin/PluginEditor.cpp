@@ -490,6 +490,8 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     };
     addAndMakeVisible (panicButton);
     panicButton.onClick = [this] { proc.triggerPanic(); };
+    addAndMakeVisible (randButton);
+    randButton.onClick = [this] { randomizePatch(); };
     refreshPresetList();
 
     buildSections();
@@ -598,6 +600,33 @@ void PDHybridEditor::refreshPresetList()
         presetBox.setSelectedItemIndex (idx, juce::dontSendNotification);
 }
 
+void PDHybridEditor::randomizePatch()
+{
+    // Curated set of timbre/character params. Audibility-critical params
+    // (osc/master levels, amp envelope, polyphony, FX on/off) are left alone so
+    // a random patch always plays.
+    static const char* ids[] = {
+        "oscAWave", "oscAWave2", "oscACombine", "oscAAmount", "oscAPulseWidth", "oscASemi",
+        "oscBType", "oscBWave", "oscBAmount", "oscBSemi", "oscBLevel",
+        "ringMod", "oscCrossMod", "crossModAmount", "noiseMod",
+        "filterType", "resonance", "filterMorph", "filterEnvAmount", "keyTrack",
+        "filterEnvD", "filterEnvS",
+        "driveType", "drive", "bias",
+        "decay", "czAmount", "pitchEnvAmount",
+        "lfoWave", "lfoRate", "lfo2Wave", "lfo2Rate",
+        "unisonDetune", "drift", "panSpread"
+    };
+
+    juce::Random rng;
+    for (const char* id : ids)
+        if (auto* p = proc.apvts.getParameter (id))
+            p->setValueNotifyingHost (rng.nextFloat());
+
+    // Cutoff: keep it out of the muddy bottom so the patch stays bright enough.
+    if (auto* c = proc.apvts.getParameter ("cutoff"))
+        c->setValueNotifyingHost (0.4f + 0.6f * rng.nextFloat());
+}
+
 void PDHybridEditor::showSavePresetDialog()
 {
     auto* aw = new juce::AlertWindow ("Save Preset", "Preset name:",
@@ -628,6 +657,7 @@ void PDHybridEditor::resized()
 
     int x = top.getRight() - 76;
     initButton.setBounds (x, y, 64, 26);
+    x -= 58;  randButton.setBounds (x, y, 52, 26);
     x -= 62;  panicButton.setBounds (x, y, 56, 26);
     x -= 70;  saveButton.setBounds (x, y, 64, 26);
     x -= 46;  deleteButton.setBounds (x, y, 40, 26);

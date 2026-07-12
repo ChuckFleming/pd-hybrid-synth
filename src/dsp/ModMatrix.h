@@ -52,11 +52,19 @@ enum class ModDest : int
     Count
 };
 
+enum class ModCurve : int
+{
+    Linear = 0,     // v
+    Exponential,    // sign(v) * v^2  (slow near 0, fast near the extremes)
+    SCurve          // smoothstep     (flat at both ends, steep in the middle)
+};
+
 struct ModRoute
 {
     ModSource source = ModSource::None;
     ModDest   dest   = ModDest::None;
     double    depth  = 0.0;
+    ModCurve  curve  = ModCurve::Linear;
 };
 
 // Current values of every modulation source for one voice.
@@ -80,7 +88,8 @@ public:
     static constexpr int kNumDests  = static_cast<int> (ModDest::Count);
 
     void clear() noexcept;
-    void setRoute (int slot, ModSource source, ModDest dest, double depth) noexcept;
+    void setRoute (int slot, ModSource source, ModDest dest, double depth,
+                   ModCurve curve = ModCurve::Linear) noexcept;
     ModRoute route (int slot) const noexcept { return routes_[slot]; }
 
     // Accumulates depth*source per destination into out[kNumDests].

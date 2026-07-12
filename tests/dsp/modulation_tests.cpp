@@ -123,6 +123,27 @@ TEST_CASE ("A single route scales a source into its destination", "[mod][matrix]
     REQUIRE (out[static_cast<int> (ModDest::Pitch)]  == Approx (0.0));
 }
 
+TEST_CASE ("Mod-slot response curves shape the source", "[mod][matrix][curve]")
+{
+    auto shaped = [] (double v, ModCurve c)
+    {
+        ModMatrix m; m.clear();
+        m.setRoute (0, ModSource::Velocity, ModDest::Cutoff, 1.0, c);
+        ModSources s; s[ModSource::Velocity] = v;
+        double out[ModMatrix::kNumDests];
+        m.evaluate (s, out);
+        return out[static_cast<int> (ModDest::Cutoff)];
+    };
+
+    // Linear passes through; Exp is v^2 (sign-preserving); S-curve is smoothstep.
+    REQUIRE (shaped (0.5, ModCurve::Linear)      == Approx (0.5));
+    REQUIRE (shaped (0.5, ModCurve::Exponential) == Approx (0.25));
+    REQUIRE (shaped (-0.5, ModCurve::Exponential) == Approx (-0.25));   // sign kept
+    REQUIRE (shaped (0.5, ModCurve::SCurve)      == Approx (0.5));      // symmetric midpoint
+    REQUIRE (shaped (1.0, ModCurve::SCurve)      == Approx (1.0));
+    REQUIRE (shaped (0.25, ModCurve::SCurve)     < 0.25);               // flat near 0
+}
+
 TEST_CASE ("Multiple routes to one destination sum; None routes are ignored", "[mod][matrix]")
 {
     ModMatrix m;

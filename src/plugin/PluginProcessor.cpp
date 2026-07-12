@@ -442,6 +442,9 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::ParameterID { "mod" + s + "Dest", 1 }, "Mod " + s + " Dest", dstNames, 0));
         pf ("mod" + s + "Depth", "Mod " + s + " Depth",
             juce::NormalisableRange<float> (-1.0f, 1.0f), 0.0f, amt);
+        params.push_back (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { "mod" + s + "Curve", 1 }, "Mod " + s + " Curve",
+            juce::StringArray { "Linear", "Exp", "S-Curve" }, 0));
     }
 
     return { params.begin(), params.end() };
@@ -720,7 +723,9 @@ void PDHybridAudioProcessor::pushParams()
         const auto dst = static_cast<pdhybrid::ModDest> (
             static_cast<int> (apvts.getRawParameterValue ("mod" + s + "Dest")->load()));
         const double depth = apvts.getRawParameterValue ("mod" + s + "Depth")->load();
-        p.modMatrix.setRoute (i - 1, src, dst, depth);
+        const auto curve = static_cast<pdhybrid::ModCurve> (
+            static_cast<int> (apvts.getRawParameterValue ("mod" + s + "Curve")->load()));
+        p.modMatrix.setRoute (i - 1, src, dst, depth, curve);
     }
 
     engine.setParams (p);

@@ -134,9 +134,11 @@ private:
     CallbackComponent matrixHolder;
     juce::ComboBox modSrcBox[kNumModRows];
     juce::ComboBox modDestBox[kNumModRows];
+    juce::ComboBox modCurveBox[kNumModRows];
     juce::Slider   modDepthSlider[kNumModRows];
     std::unique_ptr<ComboBoxAttachment> modSrcAtt[kNumModRows];
     std::unique_ptr<ComboBoxAttachment> modDestAtt[kNumModRows];
+    std::unique_ptr<ComboBoxAttachment> modCurveAtt[kNumModRows];
     std::unique_ptr<SliderAttachment>   modDepthAtt[kNumModRows];
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PDHybridEditor)

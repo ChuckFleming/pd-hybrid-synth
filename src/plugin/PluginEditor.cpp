@@ -528,6 +528,10 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         modDepthSlider[i].setNumDecimalPlacesToDisplay (2);
         matrixHolder.addAndMakeVisible (modDepthSlider[i]);
         modDepthAtt[i] = std::make_unique<SliderAttachment> (proc.apvts, "mod" + s + "Depth", modDepthSlider[i]);
+
+        modCurveBox[i].addItemList ({ "Lin", "Exp", "S" }, 1);
+        matrixHolder.addAndMakeVisible (modCurveBox[i]);
+        modCurveAtt[i] = std::make_unique<ComboBoxAttachment> (proc.apvts, "mod" + s + "Curve", modCurveBox[i]);
     }
     matrixHolder.onResized = [this] { layoutMatrix(); };
 
@@ -594,9 +598,11 @@ void PDHybridEditor::layoutMatrix()
         {
             const int idx = rowI * 2 + colI;
             auto cell = row.removeFromLeft (half).reduced (3, 0);
-            modSrcBox[idx].setBounds  (cell.removeFromLeft (100));
+            modSrcBox[idx].setBounds  (cell.removeFromLeft (94));
             cell.removeFromLeft (4);
-            modDestBox[idx].setBounds (cell.removeFromLeft (100));
+            modDestBox[idx].setBounds (cell.removeFromLeft (94));
+            cell.removeFromLeft (4);
+            modCurveBox[idx].setBounds (cell.removeFromLeft (48));
             cell.removeFromLeft (6);
             modDepthSlider[idx].setBounds (cell);
         }

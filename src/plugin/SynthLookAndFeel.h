@@ -47,10 +47,12 @@ public:
                                bool over, bool down) override
     {
         auto r = b.getLocalBounds();
+        const bool lit = b.getToggleState();   // toggle buttons show an "on" glow
         g.setColour (down ? juce::Colour (0xff0d2a1c)
-                          : (over ? juce::Colour (0xff09190f) : juce::Colour (0xff000000)));
+                          : (lit ? juce::Colour (0xff123322)
+                                 : (over ? juce::Colour (0xff09190f) : juce::Colour (0xff000000))));
         g.fillRect (r);
-        g.setColour (juce::Colour (0xff2b6b46));
+        g.setColour (lit ? juce::Colour (0xff4be08a) : juce::Colour (0xff2b6b46));
         g.drawRect (r, 1);
     }
 

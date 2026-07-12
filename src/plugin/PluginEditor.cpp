@@ -652,6 +652,21 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
             proc.apvts.replaceState (abState_[abSlot_].createCopy());
         abButton.setButtonText (abSlot_ == 0 ? "A/B: A" : "A/B: B");
     };
+
+    // CRT effect toggle (persisted as a non-automatable property on the state
+    // tree, so it survives reopening the editor without being a synth param).
+    addAndMakeVisible (crtButton);
+    crtButton.setClickingTogglesState (true);
+    const bool crtOn = (bool) proc.apvts.state.getProperty ("crtEnabled", true);
+    crtButton.setToggleState (crtOn, juce::dontSendNotification);
+    crtOverlay.setEffectEnabled (crtOn);
+    crtButton.onClick = [this]
+    {
+        const bool on = crtButton.getToggleState();
+        crtOverlay.setEffectEnabled (on);
+        proc.apvts.state.setProperty ("crtEnabled", on, nullptr);
+    };
+
     refreshPresetList();
 
     buildSections();
@@ -719,6 +734,9 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         pages.push_back (std::move (panel));
         scrollers.push_back (std::move (scroller));
     }
+
+    // Added last so it sits on top of the tabs; it never intercepts the mouse.
+    addAndMakeVisible (crtOverlay);
 
     setResizable (true, true);
     setResizeLimits (720, 460, 2200, 1500);
@@ -831,10 +849,12 @@ void PDHybridEditor::resized()
     x -= 46;  deleteButton.setBounds (x, y, 40, 26);
     x -= 32;  nextButton.setBounds (x, y, 28, 26);
     x -= 32;  prevButton.setBounds (x, y, 28, 26);
+    x -= 52;  crtButton.setBounds  (x, y, 46, 26);
     x -= 58;  abButton.setBounds   (x, y, 52, 26);
     x -= 190; presetBox.setBounds  (x, y, 184, 26);
 
     tabs.setBounds (r);
+    crtOverlay.setBounds (getLocalBounds());
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)

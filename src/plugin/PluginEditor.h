@@ -4,6 +4,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
 #include "SynthLookAndFeel.h"
+#include "CrtOverlay.h"
 #include <functional>
 #include <memory>
 #include <vector>
@@ -106,6 +107,7 @@ private:
     juce::TextButton prevButton { "<" };
     juce::TextButton nextButton { ">" };
     juce::TextButton abButton { "A/B: A" };
+    juce::TextButton crtButton { "CRT" };
     juce::ComboBox   presetBox;
 
     juce::ValueTree  abState_[2];   // A/B compare snapshots
@@ -122,6 +124,8 @@ private:
 
     std::vector<std::unique_ptr<SectionPanel>> pages;
     std::vector<std::unique_ptr<ScrollPanel>>  scrollers;
+
+    CrtOverlay crtOverlay;   // click-through CRT effect layered over everything
 
     // Named sections (built once, then handed to pages).
     Section oscA, oscB, mixer, unison, glideSec, stereo, voiceSec, bassSec;  // Oscillators

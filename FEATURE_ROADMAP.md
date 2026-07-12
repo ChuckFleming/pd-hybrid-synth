@@ -22,11 +22,12 @@ Most of v6 is implemented. Each item below verified: full suite green (147 cases
 - §5a Osc hard sync + phase mod — oscCrossMod {Off, Hard Sync, Phase Mod} + crossModAmount; both oscillators expose wrapped()/syncReset()/setPhaseMod() (cdf4af0)
 - §6 workflow — panic + preset delete (c56b4c7), patch randomize (309bcea), A/B compare (dd953dc)
 - Follow-ups — ModSource::PitchEnv + MonoBass master tune/transpose (3d8a16e)
+- §5f per-mod-slot response curves (Linear/Exp/S) in `ModMatrix::evaluate` + per-row combo (81a043f)
+- §2b full DCW (wave-depth) envelope — dedicated 5th env routed to PD amount (641df2a)
+- §4f microtuning — built-in Equal/Just/Pythagorean temperaments behind `noteHz` via `tuningCentsOffset()` (f425a40)
+- §4e MPE — per-note expression already works (channel-as-noteId + per-note bend range); treated as covered (f425a40)
 
-**REMAINING (for a future session):**
-- §5f per-mod-slot response curve (Linear/Exp/S) in `ModMatrix::evaluate` — DSP is clean; the 10-row matrix UI is dense (add a compact per-row curve combo or defer the control to the UI overhaul).
-- §2b full per-osc DCW envelope (a dedicated 5th env; the pitch env pattern in Voice is the template). Largely redundant with routing `MultiEnv`→`PdAmount` in the matrix, so low priority.
-- §4e MPE config params / §4f microtuning (stretch; §4d already created the `noteHz` tuning seam — a `TuningTable` behind it is the clean approach).
+**REMAINING:** none — every roadmap item is implemented. Possible *future extensions* only: file-based microtuning (.scl/.kbm or MTS-ESP) behind the existing `tuningCentsOffset`/`noteHz` seam; a user-reorderable FX matrix (explicitly out of scope); the deferred UI aesthetic overhaul (see [[ui-followup]]).
 
 ---
 

@@ -9,6 +9,8 @@ void OscillatorUnit::setSampleRate (double sampleRateHz) noexcept
     pd_.setOversampling (4);          // anti-alias the aggressive CZ waves
     vps_.setSampleRate (sampleRateHz);
     vps_.setOversampling (4);         // VPS aliases like PD -> oversample too
+    scanned_.setSampleRate (sampleRateHz);
+    scanned_.setOversampling (4);
     analog_.setSampleRate (sampleRateHz);
     eq_.setSampleRate (sampleRateHz);
 }
@@ -17,6 +19,7 @@ void OscillatorUnit::reset() noexcept
 {
     pd_.reset();
     vps_.reset();
+    scanned_.reset();
     analog_.reset();
     eq_.reset();
 }
@@ -31,6 +34,7 @@ void OscillatorUnit::setType (OscType type) noexcept
         case OscType::Triangle: analog_.setWaveform (AnalogWave::Triangle); break;
         case OscType::Pulse:    analog_.setWaveform (AnalogWave::Pulse);    break;
         case OscType::VPS:                                                  break;   // configured via amount/pulseWidth
+        case OscType::Scanned:                                              break;   // configured via amount/pulseWidth + excite()
         case OscType::PhaseDistortion: default: break;
     }
 }
@@ -52,6 +56,7 @@ void OscillatorUnit::setBaseFrequency (double frequencyHz) noexcept
     const double f = frequencyHz * tuneMul_;
     pd_.setFrequency (f);
     vps_.setFrequency (f);
+    scanned_.setFrequency (f);
     analog_.setFrequency (f);
 }
 
@@ -64,6 +69,7 @@ float OscillatorUnit::processSample() noexcept
     // is a rare, user-initiated action.
     const float raw = (type_ == OscType::PhaseDistortion) ? pd_.processSample()
                     : (type_ == OscType::VPS)             ? vps_.processSample()
+                    : (type_ == OscType::Scanned)         ? scanned_.processSample()
                                                           : analog_.processSample();
     return eq_.processSample (raw);
 }

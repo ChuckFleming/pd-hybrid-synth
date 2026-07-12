@@ -277,6 +277,8 @@ void Voice::start (int note, float velocity, double glideFromHz, double glideSam
     if (params_.lfo2Retrig) lfo2_.reset();
     lfo_.trigger();
     lfo2_.trigger();
+    unitA_.excite();   // re-pluck the scanned ring (no-op for the other engines)
+    unitB_.excite();
     env2_.noteOn();
     filterEnv_.noteOn();
     filter2Env_.noteOn();

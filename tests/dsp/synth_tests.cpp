@@ -113,6 +113,23 @@ TEST_CASE ("Engine renders a Vector-PS oscillator at the correct pitch", "[synth
     REQUIRE (computeSpectrum (buf, sr).peakFrequency() == Approx (440.0).epsilon (0.01));
 }
 
+TEST_CASE ("Engine renders a scanned-synthesis oscillator, plucked on note-on", "[synth][scanned]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+    auto p = brightSustainParams();
+    p.oscAType = OscType::Scanned;    // amount -> stiffness, pulse width -> damping
+    p.oscAPulseWidth = 0.2;           // light damping so the note sustains
+    e.setParams (p);
+    e.noteOn (69, 1.0f, 1);           // A4 -> Voice::start plucks the ring
+
+    auto buf = renderEngine (e, 16384);
+    REQUIRE_FALSE (hasBadValues (buf));
+    REQUIRE (rms (buf) > 0.01f);                                  // the pluck sounds
+    REQUIRE (std::abs (computeSpectrum (buf, sr).peakFrequency() - 440.0) < 6.0);
+}
+
 TEST_CASE ("Engine is polyphonic and frees voices after release", "[synth][midi]")
 {
     const double sr = 48000.0;

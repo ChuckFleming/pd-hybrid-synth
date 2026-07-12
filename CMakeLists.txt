@@ -27,6 +27,7 @@ add_library(pdhybrid_dsp STATIC
     src/dsp/PhaseDistortionOscillator.cpp
     src/dsp/AnalogOscillator.cpp
     src/dsp/VpsOscillator.cpp
+    src/dsp/ScannedOscillator.cpp
     src/dsp/OscillatorUnit.cpp
     src/dsp/OscEq.cpp
     src/dsp/GlobalEq.cpp

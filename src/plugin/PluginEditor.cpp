@@ -14,13 +14,21 @@ constexpr int kMargin   = 12;   // panel outer margin
 constexpr int kMatrixRowH = 26;
 constexpr int kTopBar   = 46;   // title bar above the tabs
 
-// Palette
-const juce::Colour kBg       (0xff1b1f26);
-const juce::Colour kCardBg   (0xff262b34);
-const juce::Colour kCardEdge (0xff333b47);
-const juce::Colour kHeaderBg (0xff2f3846);
-const juce::Colour kAccent   (0xff8fb7ff);
-const juce::Colour kTitleCol (0xffe7edf6);
+// Palette — "CZ Terminal": black with green phosphor, outlined boxes.
+const juce::Colour kBg       (0xff000000);
+const juce::Colour kCardBg   (0xff000000);
+const juce::Colour kCardEdge (0xff1c3a2b);   // dim green box outline
+const juce::Colour kHeaderBg (0xff000000);
+const juce::Colour kAccent   (0xff4be08a);   // phosphor green
+const juce::Colour kTitleCol (0xff4be08a);
+const juce::Colour kLabelCol (0xff37b06e);   // dim green control labels
+const juce::Colour kValueCol (0xff4be08a);   // bright green readouts
+
+juce::Font monoFont (float height, bool bold = false)
+{
+    return juce::Font (juce::Font::getDefaultMonospacedFontName(), height,
+                       bold ? juce::Font::bold : juce::Font::plain);
+}
 
 const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse" };
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
@@ -71,35 +79,65 @@ void PDHybridEditor::SectionPanel::setTrailing (juce::Component* c, int fullHeig
 
 int PDHybridEditor::SectionPanel::layout (bool apply, int width)
 {
-    auto cardWidth = [] (const Section& s)
+    const int comboMinW = 132;   // enough to read the longest choice ("Phase Distortion")
+
+    // A card is as wide as its knob columns, but never so narrow that its combos
+    // truncate — combos wrap onto extra rows rather than shrinking below comboMinW.
+    auto innerW = [&] (const Section& s)
     {
-        return s.cols * kCellW + 2 * kCardPad;
+        const int knobW  = s.cols * kCellW;
+        const int comboW = juce::jmin (static_cast<int> (s.combos.size()), 2) * comboMinW;
+        return juce::jmax (knobW, comboW);
     };
-    auto cardHeight = [] (const Section& s)
+    auto combosPerRow = [&] (const Section& s) { return juce::jmax (1, innerW (s) / comboMinW); };
+    auto comboRows = [&] (const Section& s)
     {
-        const int rows = (static_cast<int> (s.knobs.size()) + s.cols - 1) / juce::jmax (1, s.cols);
-        int h = kHeaderH + 2 * kCardPad + rows * kCellH;
-        if (! s.combos.empty()) h += kComboRowH;
-        return h;
+        if (s.combos.empty()) return 0;
+        const int cpr = combosPerRow (s);
+        return (static_cast<int> (s.combos.size()) + cpr - 1) / cpr;
+    };
+    auto cardWidth  = [&] (const Section& s) { return innerW (s) + 2 * kCardPad; };
+    auto cardHeight = [&] (const Section& s)
+    {
+        const int knobRows = (static_cast<int> (s.knobs.size()) + s.cols - 1) / juce::jmax (1, s.cols);
+        return kHeaderH + 2 * kCardPad + knobRows * kCellH + comboRows (s) * kComboRowH;
     };
 
-    int x = kMargin, y = kMargin, rowH = 0;
-
-    for (auto& s : sections)
+    // Pass 1: assign each card to a row and record the tallest card per row so a
+    // row's cards all share a common height (aligned bottoms).
+    std::vector<int> rowOf (sections.size(), 0);
+    std::vector<int> rowHeights;
     {
-        const int cw = cardWidth (s);
-        const int ch = cardHeight (s);
-
-        if (x > kMargin && x + cw > width - kMargin)   // wrap to next row
+        int x = kMargin, row = 0, curH = 0;
+        for (std::size_t i = 0; i < sections.size(); ++i)
         {
-            x = kMargin;
-            y += rowH + kGap;
-            rowH = 0;
+            const int cw = cardWidth (sections[i]);
+            const int ch = cardHeight (sections[i]);
+            if (x > kMargin && x + cw > width - kMargin)
+            {
+                rowHeights.push_back (curH);
+                x = kMargin; ++row; curH = 0;
+            }
+            rowOf[i] = row;
+            curH = juce::jmax (curH, ch);
+            x += cw + kGap;
         }
+        rowHeights.push_back (curH);
+    }
+
+    // Pass 2: place cards (and their controls) using the shared row heights.
+    int x = kMargin, y = kMargin, row = 0;
+    for (std::size_t i = 0; i < sections.size(); ++i)
+    {
+        auto& s = sections[i];
+        const int cw = cardWidth (s);
+        if (rowOf[i] != row) { y += rowHeights[row] + kGap; row = rowOf[i]; x = kMargin; }
+        const int ch = rowHeights[row];
 
         if (apply)
         {
             s.bounds = { x, y, cw, ch };
+            const int iw = innerW (s);
 
             auto inner = s.bounds;
             inner.removeFromTop (kHeaderH);
@@ -107,30 +145,36 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
 
             if (! s.combos.empty())
             {
-                auto comboRow = inner.removeFromTop (kComboRowH).reduced (0, 2);
-                const int cwidth = comboRow.getWidth() / static_cast<int> (s.combos.size());
-                for (auto* c : s.combos)
-                    c->setBounds (comboRow.removeFromLeft (cwidth).reduced (2, 0));
+                const int cpr = combosPerRow (s);
+                std::size_t ci = 0;
+                while (ci < s.combos.size())
+                {
+                    auto crow = inner.removeFromTop (kComboRowH).reduced (0, 2);
+                    const int inThis = juce::jmin (cpr, static_cast<int> (s.combos.size() - ci));
+                    const int cwd = crow.getWidth() / inThis;
+                    for (int k = 0; k < inThis; ++k, ++ci)
+                        s.combos[ci]->setBounds (crow.removeFromLeft (cwd).reduced (2, 0));
+                }
             }
 
-            std::size_t i = 0;
-            while (i < s.knobs.size())
+            const int cellW = iw / juce::jmax (1, s.cols);
+            std::size_t k = 0;
+            while (k < s.knobs.size())
             {
-                auto row = inner.removeFromTop (kCellH);
-                for (int c = 0; c < s.cols && i < s.knobs.size(); ++c, ++i)
+                auto krow = inner.removeFromTop (kCellH);
+                for (int c = 0; c < s.cols && k < s.knobs.size(); ++c, ++k)
                 {
-                    auto cell = row.removeFromLeft (kCellW);
-                    s.knobs[i]->label.setBounds  (cell.removeFromTop (kLabelH));
-                    s.knobs[i]->slider.setBounds (cell);
+                    auto cell = krow.removeFromLeft (cellW);
+                    s.knobs[k]->label.setBounds  (cell.removeFromTop (kLabelH));
+                    s.knobs[k]->slider.setBounds (cell);
                 }
             }
         }
 
         x += cw + kGap;
-        rowH = juce::jmax (rowH, ch);
     }
 
-    y += rowH;
+    y += rowHeights.empty() ? 0 : rowHeights[row];
 
     if (trailing != nullptr)
     {
@@ -157,20 +201,20 @@ void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
 {
     auto drawFrame = [&g] (juce::Rectangle<int> b, const juce::String& title)
     {
+        // Black box with a thin green outline (square corners, terminal style).
         g.setColour (kCardBg);
-        g.fillRoundedRectangle (b.toFloat(), 6.0f);
-
-        auto header = b.withHeight (kHeaderH);
-        g.setColour (kHeaderBg);
-        g.fillRoundedRectangle (header.toFloat(), 6.0f);
-        g.fillRect (header.withTrimmedTop (kHeaderH / 2));   // square off the bottom corners
-
-        g.setColour (kAccent);
-        g.setFont (juce::Font (12.5f, juce::Font::bold));
-        g.drawText (" " + title, header, juce::Justification::centredLeft);
-
+        g.fillRect (b);
         g.setColour (kCardEdge);
-        g.drawRoundedRectangle (b.toFloat().reduced (0.5f), 6.0f, 1.0f);
+        g.drawRect (b, 1);
+
+        // Title label sits in a black notch breaking the top border.
+        g.setFont (monoFont (11.5f));
+        const int tw = g.getCurrentFont().getStringWidth (title) + 14;
+        juce::Rectangle<int> tag (b.getX() + 12, b.getY() - 1, tw, kHeaderH - 6);
+        g.setColour (kCardBg);
+        g.fillRect (tag);
+        g.setColour (kTitleCol);
+        g.drawText (title, tag.withTrimmedLeft (5), juce::Justification::centredLeft);
     };
 
     for (const auto& s : sections)
@@ -209,7 +253,8 @@ PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramI
 
     knob->label.setText (text, juce::dontSendNotification);
     knob->label.setJustificationType (juce::Justification::centred);
-    knob->label.setFont (juce::Font (11.0f, juce::Font::bold));
+    knob->label.setFont (monoFont (10.5f));
+    knob->label.setColour (juce::Label::textColourId, kLabelCol);
 
     knob->attachment = std::make_unique<SliderAttachment> (proc.apvts, paramId, knob->slider);
 
@@ -550,6 +595,8 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     tabs.setTabBarDepth (30);
     tabs.setColour (juce::TabbedComponent::backgroundColourId, kBg);
     tabs.setColour (juce::TabbedComponent::outlineColourId, kCardEdge);
+    tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::tabTextColourId, kLabelCol);
+    tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::frontTextColourId, kAccent);
     addAndMakeVisible (tabs);
 
     struct Page { juce::String name; std::vector<Section*> secs; juce::Component* trailing; juce::String trailingTitle; int trailingH; };
@@ -585,7 +632,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
     setResizable (true, true);
     setResizeLimits (720, 460, 2200, 1500);
-    setSize (1000, 640);
+    setSize (1200, 860);
 }
 
 PDHybridEditor::~PDHybridEditor()
@@ -706,6 +753,11 @@ void PDHybridEditor::paint (juce::Graphics& g)
 
     auto top = getLocalBounds().removeFromTop (kTopBar);
     g.setColour (kTitleCol);
-    g.setFont (juce::Font (21.0f, juce::Font::bold));
-    g.drawText ("  PD Hybrid Synth", top, juce::Justification::centredLeft);
+    g.setFont (monoFont (18.0f));
+    g.drawText ("  PD_HYBRID", top, juce::Justification::centredLeft);
+    g.setColour (kLabelCol);
+    g.setFont (monoFont (11.0f));
+    g.drawText ("v6", top.withTrimmedLeft (150), juce::Justification::centredLeft);
+    g.setColour (kCardEdge);
+    g.fillRect (0, kTopBar - 1, getWidth(), 1);
 }

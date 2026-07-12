@@ -4,71 +4,79 @@
 #include <cmath>
 
 /**
-    Custom look for the PD Hybrid Synth editor:
-      - rotary knobs drawn as a "tick ring" (lit ticks up to the value) with a
-        centre indicator line, matching the chosen style;
-      - horizontal linear sliders drawn as a "notched" slider (filled track with
-        a rectangular notch thumb), used by the modulation-matrix depths;
-      - dark combo box / popup menu / value-box colours to fit the panel.
+    "CZ Terminal" look for the PD Hybrid Synth editor: pure-black background with
+    green phosphor monospace text, wireframe rotary knobs (outlined circle + a
+    line indicator), and thin green-outlined combo boxes / buttons / value boxes.
 */
 class SynthLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
     SynthLookAndFeel()
     {
-        setColour (juce::Slider::textBoxTextColourId,       juce::Colour (0xff9fb0c6));
-        setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xff191d23));
-        setColour (juce::Slider::textBoxOutlineColourId,    juce::Colours::transparentBlack);
+        setColour (juce::Slider::textBoxTextColourId,       juce::Colour (0xff4be08a));
+        setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xff000000));
+        setColour (juce::Slider::textBoxOutlineColourId,    juce::Colour (0xff17402c));
 
-        setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff20242b));
-        setColour (juce::ComboBox::textColourId,       juce::Colour (0xffc7cedb));
-        setColour (juce::ComboBox::outlineColourId,    juce::Colour (0xff47515f));
-        setColour (juce::ComboBox::arrowColourId,      juce::Colour (0xff8fb7ff));
+        setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff000000));
+        setColour (juce::ComboBox::textColourId,       juce::Colour (0xff4be08a));
+        setColour (juce::ComboBox::outlineColourId,    juce::Colour (0xff2b6b46));
+        setColour (juce::ComboBox::arrowColourId,      juce::Colour (0xff4be08a));
 
-        setColour (juce::PopupMenu::backgroundColourId,            juce::Colour (0xff20242b));
-        setColour (juce::PopupMenu::textColourId,                  juce::Colour (0xffc7cedb));
-        setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colour (0xff2c3440));
-        setColour (juce::PopupMenu::highlightedTextColourId,       juce::Colour (0xffe7edf6));
+        setColour (juce::PopupMenu::backgroundColourId,            juce::Colour (0xff030503));
+        setColour (juce::PopupMenu::textColourId,                  juce::Colour (0xff37b06e));
+        setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colour (0xff123322));
+        setColour (juce::PopupMenu::highlightedTextColourId,       juce::Colour (0xff4be08a));
+
+        setColour (juce::TextButton::buttonColourId,   juce::Colour (0xff000000));
+        setColour (juce::TextButton::textColourOffId,  juce::Colour (0xff4be08a));
+        setColour (juce::TextButton::textColourOnId,   juce::Colour (0xff4be08a));
+    }
+
+    static juce::Font mono (float h, bool bold = false)
+    {
+        return juce::Font (juce::Font::getDefaultMonospacedFontName(), h,
+                           bold ? juce::Font::bold : juce::Font::plain);
+    }
+
+    juce::Font getComboBoxFont (juce::ComboBox&) override          { return mono (11.5f); }
+    juce::Font getPopupMenuFont () override                        { return mono (12.0f); }
+    juce::Font getLabelFont (juce::Label& l) override              { return mono (l.getFont().getHeight()); }
+    juce::Font getTextButtonFont (juce::TextButton&, int) override { return mono (11.5f); }
+
+    void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&,
+                               bool over, bool down) override
+    {
+        auto r = b.getLocalBounds();
+        g.setColour (down ? juce::Colour (0xff0d2a1c)
+                          : (over ? juce::Colour (0xff09190f) : juce::Colour (0xff000000)));
+        g.fillRect (r);
+        g.setColour (juce::Colour (0xff2b6b46));
+        g.drawRect (r, 1);
     }
 
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                            float pos, float startAngle, float endAngle,
                            juce::Slider&) override
     {
-        const juce::Colour accent  (0xff8fb7ff);
-        const juce::Colour tickOff (0xff3f4855);
-        const juce::Colour body    (0xff2b313a);
-        const juce::Colour hub     (0xff333b45);
+        const juce::Colour ring    (0xff2b6b46);
+        const juce::Colour face    (0xff04140c);
+        const juce::Colour pointer (0xff4be08a);
 
-        auto bounds = juce::Rectangle<float> (x, y, width, height).reduced (3.0f);
+        auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height).reduced (3.0f);
         const float cx = bounds.getCentreX();
         const float cy = bounds.getCentreY();
         const float r  = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 2.0f;
         const float ang = startAngle + pos * (endAngle - startAngle);
 
-        auto px = [cx] (float a, float rr) { return cx + rr * std::sin (a); };
-        auto py = [cy] (float a, float rr) { return cy - rr * std::cos (a); };
+        g.setColour (face);
+        g.fillEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
+        g.setColour (ring);
+        g.drawEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f, 1.2f);
 
-        const int N = 24;
-        for (int i = 0; i <= N; ++i)
-        {
-            const float t = (float) i / (float) N;
-            const float a = startAngle + t * (endAngle - startAngle);
-            const bool  on = t <= pos + 1.0e-4f;
-            g.setColour (on ? accent : tickOff);
-            g.drawLine (px (a, r - 3.0f), py (a, r - 3.0f),
-                        px (a, r + 2.5f), py (a, r + 2.5f), 2.2f);
-        }
-
-        const float hr = juce::jmax (2.0f, r - 7.0f);
-        g.setColour (body);
-        g.fillEllipse (cx - hr, cy - hr, hr * 2.0f, hr * 2.0f);
-
-        g.setColour (accent);
-        g.drawLine (cx, cy, px (ang, r - 6.0f), py (ang, r - 6.0f), 2.8f);
-
-        g.setColour (hub);
-        g.fillEllipse (cx - 3.0f, cy - 3.0f, 6.0f, 6.0f);
+        const float px = cx + (r - 2.0f) * std::sin (ang);
+        const float py = cy - (r - 2.0f) * std::cos (ang);
+        g.setColour (pointer);
+        g.drawLine (cx, cy, px, py, 2.0f);
     }
 
     void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
@@ -82,23 +90,17 @@ public:
             return;
         }
 
-        const juce::Colour accent (0xff8fb7ff);
-        const juce::Colour track  (0xff39424f);
-        const juce::Colour thumb  (0xffdfe6f2);
-        const juce::Colour edge   (0xff4a5462);
+        const juce::Colour accent (0xff4be08a);
+        const juce::Colour track  (0xff173a29);
 
         const float cyf = (float) y + (float) height * 0.5f;
         const float x0  = minSliderPos;
         const float x1  = maxSliderPos;
 
         g.setColour (track);
-        g.fillRoundedRectangle (x0, cyf - 2.0f, juce::jmax (1.0f, x1 - x0), 4.0f, 2.0f);
+        g.fillRect (x0, cyf - 1.5f, juce::jmax (1.0f, x1 - x0), 3.0f);
         g.setColour (accent);
-        g.fillRoundedRectangle (x0, cyf - 2.0f, juce::jmax (0.0f, sliderPos - x0), 4.0f, 2.0f);
-
-        g.setColour (thumb);
-        g.fillRoundedRectangle (sliderPos - 4.0f, cyf - 9.0f, 8.0f, 18.0f, 3.0f);
-        g.setColour (edge);
-        g.drawRoundedRectangle (sliderPos - 4.0f, cyf - 9.0f, 8.0f, 18.0f, 3.0f, 1.0f);
+        g.fillRect (x0, cyf - 1.5f, juce::jmax (0.0f, sliderPos - x0), 3.0f);
+        g.fillRect (sliderPos - 1.5f, cyf - 7.0f, 3.0f, 14.0f);
     }
 };

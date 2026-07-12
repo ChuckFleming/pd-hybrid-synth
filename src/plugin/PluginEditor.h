@@ -44,6 +44,7 @@ private:
         std::vector<LabeledKnob*> knobs;
         std::vector<juce::ComboBox*> combos;
         int cols = 4;
+        int stackId = 0;   // non-zero: stacks vertically with consecutive same-id sections
         juce::Rectangle<int> bounds;
     };
 

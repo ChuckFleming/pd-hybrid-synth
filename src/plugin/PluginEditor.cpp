@@ -116,30 +116,111 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
         const int cpr = juce::jmax (1, (cw - 2 * kCardPad) / comboMinW);
         return (static_cast<int> (s.combos.size()) + cpr - 1) / cpr;
     };
-
-    // Pass 1: pack cards into rows of numCols grid columns.
-    std::vector<int> rowOf (sections.size(), 0), colOf (sections.size(), 0), spanV (sections.size(), 1);
+    auto sectionHeight = [&] (const Section& s, int comboRowsCount)
     {
-        int col = 0, row = 0;
-        for (std::size_t i = 0; i < sections.size(); ++i)
+        return kHeaderH + 2 * kCardPad + comboRowsCount * kComboRowH + knobRows (s) * kCellH;
+    };
+
+    // Position one card's combos + knobs inside its bounds.
+    auto placeCard = [&] (Section& s, juce::Rectangle<int> bounds, int comboRowsCount)
+    {
+        s.bounds = bounds;
+        auto inner = bounds;
+        inner.removeFromTop (kHeaderH);
+        inner = inner.reduced (kCardPad);
+
+        auto comboZone = inner.removeFromTop (comboRowsCount * kComboRowH);
+        if (! s.combos.empty())
         {
-            const int sp = spanOf (sections[i]);
-            if (col > 0 && col + sp > numCols) { ++row; col = 0; }
-            rowOf[i] = row; colOf[i] = col; spanV[i] = sp;
-            col += sp;
+            const int cpr = juce::jmax (1, comboZone.getWidth() / comboMinW);
+            std::size_t ci = 0;
+            while (ci < s.combos.size())
+            {
+                auto crow = comboZone.removeFromTop (kComboRowH).reduced (0, 2);
+                const int inThis = juce::jmin (cpr, static_cast<int> (s.combos.size() - ci));
+                const int cwd = crow.getWidth() / inThis;
+                for (int k = 0; k < inThis; ++k, ++ci)
+                    s.combos[ci]->setBounds (crow.removeFromLeft (cwd).reduced (2, 0));
+            }
+        }
+
+        const int cellW = inner.getWidth() / juce::jmax (1, s.cols);
+        std::size_t k = 0;
+        while (k < s.knobs.size())
+        {
+            auto krow = inner.removeFromTop (kCellH);
+            for (int c = 0; c < s.cols && k < s.knobs.size(); ++c, ++k)
+            {
+                auto cell = krow.removeFromLeft (cellW);
+                s.knobs[k]->label.setBounds  (cell.removeFromTop (kLabelH));
+                s.knobs[k]->slider.setBounds (cell);
+            }
+        }
+    };
+
+    // Build units: a run of consecutive same-(nonzero)-stackId sections becomes a
+    // single unit whose members stack vertically inside one grid column.
+    struct Unit { std::vector<int> members; int span; bool stacked; };
+    std::vector<Unit> units;
+    for (std::size_t i = 0; i < sections.size(); )
+    {
+        if (sections[i].stackId != 0)
+        {
+            const int id = sections[i].stackId;
+            Unit u; u.stacked = true; u.span = 1;
+            while (i < sections.size() && sections[i].stackId == id)
+            {
+                u.members.push_back (static_cast<int> (i));
+                u.span = juce::jmax (u.span, spanOf (sections[i]));
+                ++i;
+            }
+            units.push_back (std::move (u));
+        }
+        else
+        {
+            Unit u; u.stacked = false; u.span = spanOf (sections[i]);
+            u.members.push_back (static_cast<int> (i));
+            units.push_back (std::move (u));
+            ++i;
         }
     }
-    const int numRows = sections.empty() ? 0 : (rowOf.back() + 1);
 
-    // Per-row uniform combo zone (so knob bands align) + shared row heights.
-    std::vector<int> rowComboRows (juce::jmax (1, numRows), 0), rowHeight (juce::jmax (1, numRows), 0);
-    for (std::size_t i = 0; i < sections.size(); ++i)
-        rowComboRows[rowOf[i]] = juce::jmax (rowComboRows[rowOf[i]], comboRowsFor (sections[i], cardW (spanV[i])));
-    for (std::size_t i = 0; i < sections.size(); ++i)
+    // Pack units into rows of numCols columns.
+    std::vector<int> unitRow (units.size(), 0), unitCol (units.size(), 0);
     {
-        const int r = rowOf[i];
-        const int h = kHeaderH + 2 * kCardPad + rowComboRows[r] * kComboRowH + knobRows (sections[i]) * kCellH;
-        rowHeight[r] = juce::jmax (rowHeight[r], h);
+        int col = 0, row = 0;
+        for (std::size_t u = 0; u < units.size(); ++u)
+        {
+            if (col > 0 && col + units[u].span > numCols) { ++row; col = 0; }
+            unitRow[u] = row; unitCol[u] = col; col += units[u].span;
+        }
+    }
+    const int numRows = units.empty() ? 0 : (unitRow.back() + 1);
+
+    // Per-row uniform combo zone from standalone units only (stacked mini-cards
+    // keep their own compact combo zones), then shared row heights.
+    std::vector<int> rowComboRows (juce::jmax (1, numRows), 0), rowHeight (juce::jmax (1, numRows), 0);
+    for (std::size_t u = 0; u < units.size(); ++u)
+        if (! units[u].stacked)
+            rowComboRows[unitRow[u]] = juce::jmax (rowComboRows[unitRow[u]],
+                comboRowsFor (sections[units[u].members[0]], cardW (units[u].span)));
+
+    for (std::size_t u = 0; u < units.size(); ++u)
+    {
+        int h;
+        if (units[u].stacked)
+        {
+            h = 0;
+            for (std::size_t m = 0; m < units[u].members.size(); ++m)
+            {
+                const Section& s = sections[units[u].members[m]];
+                h += sectionHeight (s, comboRowsFor (s, cardW (units[u].span)));
+                if (m + 1 < units[u].members.size()) h += kGap;
+            }
+        }
+        else
+            h = sectionHeight (sections[units[u].members[0]], rowComboRows[unitRow[u]]);
+        rowHeight[unitRow[u]] = juce::jmax (rowHeight[unitRow[u]], h);
     }
 
     std::vector<int> rowY (juce::jmax (1, numRows), kMargin);
@@ -147,47 +228,27 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
 
     if (apply)
     {
-        for (std::size_t i = 0; i < sections.size(); ++i)
+        for (std::size_t u = 0; u < units.size(); ++u)
         {
-            auto& s = sections[i];
-            const int r  = rowOf[i];
-            const int cx = kMargin + colOf[i] * colPitch;
-            const int cw = cardW (spanV[i]);
-            s.bounds = { cx, rowY[r], cw, rowHeight[r] };
+            const int r  = unitRow[u];
+            const int cx = kMargin + unitCol[u] * colPitch;
+            const int cw = cardW (units[u].span);
 
-            auto inner = s.bounds;
-            inner.removeFromTop (kHeaderH);
-            inner = inner.reduced (kCardPad);
-
-            // Reserved combo zone (same height for every card in the row).
-            auto comboZone = inner.removeFromTop (rowComboRows[r] * kComboRowH);
-            if (! s.combos.empty())
+            if (units[u].stacked)
             {
-                const int cpr = juce::jmax (1, comboZone.getWidth() / comboMinW);
-                std::size_t ci = 0;
-                while (ci < s.combos.size())
+                int yy = rowY[r];
+                for (int idx : units[u].members)
                 {
-                    auto crow = comboZone.removeFromTop (kComboRowH).reduced (0, 2);
-                    const int inThis = juce::jmin (cpr, static_cast<int> (s.combos.size() - ci));
-                    const int cwd = crow.getWidth() / inThis;
-                    for (int k = 0; k < inThis; ++k, ++ci)
-                        s.combos[ci]->setBounds (crow.removeFromLeft (cwd).reduced (2, 0));
+                    Section& s = sections[static_cast<std::size_t> (idx)];
+                    const int crc = comboRowsFor (s, cw);
+                    const int mh  = sectionHeight (s, crc);
+                    placeCard (s, { cx, yy, cw, mh }, crc);
+                    yy += mh + kGap;
                 }
             }
-
-            // Knobs: cells stretch to fill the card width so each card reads as a
-            // full, evenly-spaced block (rows already share a baseline).
-            const int cellW = inner.getWidth() / juce::jmax (1, s.cols);
-            std::size_t k = 0;
-            while (k < s.knobs.size())
+            else
             {
-                auto krow = inner.removeFromTop (kCellH);
-                for (int c = 0; c < s.cols && k < s.knobs.size(); ++c, ++k)
-                {
-                    auto cell = krow.removeFromLeft (cellW);
-                    s.knobs[k]->label.setBounds  (cell.removeFromTop (kLabelH));
-                    s.knobs[k]->slider.setBounds (cell);
-                }
+                placeCard (sections[units[u].members[0]], { cx, rowY[r], cw, rowHeight[r] }, rowComboRows[r]);
             }
         }
     }
@@ -365,6 +426,10 @@ void PDHybridEditor::buildSections()
     stereo.cols  = 3;
     stereo.knobs = { &addKnob ("pan", "Pan"), &addKnob ("panSpread", "Spread"),
                      &addKnob ("drift", "Drift") };
+
+    // These three compact sections stack vertically inside one grid column
+    // instead of each claiming a full (sparse) column.
+    unison.stackId = glideSec.stackId = stereo.stackId = 1;
 
     // --- Filter ---
     filter.title  = "Filter";
@@ -621,7 +686,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     const int matrixH = kHeaderH + (kNumModRows / 2) * kMatrixRowH + kCardPad * 2;
 
     std::vector<Page> layout {
-        { "Oscillators", { &oscA, &oscB, &mixer, &unison, &glideSec, &voiceSec, &stereo, &bassSec }, nullptr, {}, 0 },
+        { "Oscillators", { &oscA, &oscB, &mixer, &unison, &glideSec, &stereo, &voiceSec, &bassSec }, nullptr, {}, 0 },
         { "Filters",     { &filter, &filter2, &filterEnv, &filter2Env },        nullptr, {}, 0 },
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec, &pitchEnvSec, &dcwEnvSec }, nullptr, {}, 0 },
         { "Modulation",  { &lfo, &lfo2, &arpSec }, &matrixHolder,

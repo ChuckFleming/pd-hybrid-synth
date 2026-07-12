@@ -159,7 +159,7 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
     };
 
     // Build units: a run of consecutive same-(nonzero)-stackId sections becomes a
-    // single unit whose members stack vertically inside one grid column.
+    // single unit whose members sit side-by-side (narrow strips) in one grid column.
     struct Unit { std::vector<int> members; int span; bool stacked; };
     std::vector<Unit> units;
     for (std::size_t i = 0; i < sections.size(); )
@@ -210,12 +210,14 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
         int h;
         if (units[u].stacked)
         {
+            // Members sit side-by-side, so the group is as tall as its tallest strip.
+            const int n = static_cast<int> (units[u].members.size());
+            const int memberW = (cardW (units[u].span) - (n - 1) * kGap) / juce::jmax (1, n);
             h = 0;
-            for (std::size_t m = 0; m < units[u].members.size(); ++m)
+            for (int idx : units[u].members)
             {
-                const Section& s = sections[units[u].members[m]];
-                h += sectionHeight (s, comboRowsFor (s, cardW (units[u].span)));
-                if (m + 1 < units[u].members.size()) h += kGap;
+                const Section& s = sections[static_cast<std::size_t> (idx)];
+                h = juce::jmax (h, sectionHeight (s, comboRowsFor (s, memberW)));
             }
         }
         else
@@ -236,14 +238,17 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
 
             if (units[u].stacked)
             {
-                int yy = rowY[r];
+                // Place the grouped strips left-to-right, all at the shared row
+                // height so their bottoms line up with the neighbouring cards.
+                const int n = static_cast<int> (units[u].members.size());
+                const int memberW = (cw - (n - 1) * kGap) / juce::jmax (1, n);
+                int xx = cx;
                 for (int idx : units[u].members)
                 {
                     Section& s = sections[static_cast<std::size_t> (idx)];
-                    const int crc = comboRowsFor (s, cw);
-                    const int mh  = sectionHeight (s, crc);
-                    placeCard (s, { cx, yy, cw, mh }, crc);
-                    yy += mh + kGap;
+                    const int crc = comboRowsFor (s, memberW);
+                    placeCard (s, { xx, rowY[r], memberW, rowHeight[r] }, crc);
+                    xx += memberW + kGap;
                 }
             }
             else
@@ -386,14 +391,16 @@ void PDHybridEditor::buildSections()
                     &addKnob ("noiseMod", "N.Mod"), &addKnob ("crossModAmount", "X-Amt") };
 
     // --- Unison ---
+    // Unison / Glide / Stereo are narrow single-column strips grouped side-by-side
+    // (see stackId below), so their knobs stack vertically.
     unison.title = "Unison";
-    unison.cols  = 3;
+    unison.cols  = 1;
     unison.knobs = { &addKnob ("unisonVoices", "Voices", 0), &addKnob ("unisonDetune", "Detune"),
                      &addKnob ("unisonWidth", "Width") };
 
     // --- Glide ---
     glideSec.title  = "Glide";
-    glideSec.cols   = 2;
+    glideSec.cols   = 1;
     glideSec.combos = { &addCombo ("glideMode", { "Off", "Always", "Legato" }) };
     glideSec.knobs  = { &addKnob ("glideTime", "Time"), &addKnob ("glideCurve", "Curve") };
 
@@ -423,13 +430,13 @@ void PDHybridEditor::buildSections()
 
     // --- Stereo / Drift ---
     stereo.title = "Stereo / Drift";
-    stereo.cols  = 3;
+    stereo.cols  = 1;
     stereo.knobs = { &addKnob ("pan", "Pan"), &addKnob ("panSpread", "Spread"),
                      &addKnob ("drift", "Drift") };
 
-    // These three compact sections stack vertically inside one grid column
-    // instead of each claiming a full (sparse) column.
-    unison.stackId = glideSec.stackId = stereo.stackId = 1;
+    // These three narrow strips sit side-by-side inside one grid column instead
+    // of each claiming a full (sparse) column.
+    glideSec.stackId = unison.stackId = stereo.stackId = 1;
 
     // --- Filter ---
     filter.title  = "Filter";
@@ -686,7 +693,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     const int matrixH = kHeaderH + (kNumModRows / 2) * kMatrixRowH + kCardPad * 2;
 
     std::vector<Page> layout {
-        { "Oscillators", { &oscA, &oscB, &mixer, &unison, &glideSec, &stereo, &voiceSec, &bassSec }, nullptr, {}, 0 },
+        { "Oscillators", { &oscA, &oscB, &mixer, &glideSec, &unison, &stereo, &voiceSec, &bassSec }, nullptr, {}, 0 },
         { "Filters",     { &filter, &filter2, &filterEnv, &filter2Env },        nullptr, {}, 0 },
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec, &pitchEnvSec, &dcwEnvSec }, nullptr, {}, 0 },
         { "Modulation",  { &lfo, &lfo2, &arpSec }, &matrixHolder,

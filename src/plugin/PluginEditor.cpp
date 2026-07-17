@@ -31,7 +31,7 @@ juce::Font monoFont (float height, bool bold = false)
                        bold ? juce::Font::bold : juce::Font::plain);
 }
 
-const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM" };
+const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh" };
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                         "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
 
@@ -51,6 +51,7 @@ OscKnobRoles oscKnobRoles (int type)
         case pdhybrid::OscType::VPS:             return { "Vert",   true,  "Horiz", true  };  // 2D inflection point
         case pdhybrid::OscType::Scanned:         return { "Stiff",  true,  "Damp",  true  };  // string stiffness / damping
         case pdhybrid::OscType::Vosim:           return { "Formant", true, "Decay", true  };  // formant / burst decay
+        case pdhybrid::OscType::Walsh:           return { "Tilt",   true,  "Odd",   true  };  // sequency tilt / even-odd balance
         default:                                 return { "PD Amt", true,  "Width", true  };
     }
 }

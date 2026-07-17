@@ -61,7 +61,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::ParameterID { id, 1 }, name, range, def, attr));
     };
 
-    const juce::StringArray oscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM" };
+    const juce::StringArray oscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh" };
     const juce::StringArray pdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                            "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
 

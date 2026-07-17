@@ -149,6 +149,24 @@ TEST_CASE ("Engine renders a VOSIM oscillator, periodic at the note", "[synth][v
     REQUIRE (std::abs (ratio - std::round (ratio)) < 0.15);
 }
 
+TEST_CASE ("Engine renders a Walsh oscillator, periodic at the note", "[synth][walsh]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+    auto p = brightSustainParams();
+    p.oscAType = OscType::Walsh;      // amount -> tilt, pulse width -> oddness
+    e.setParams (p);
+    e.noteOn (69, 1.0f, 1);           // A4 = 440 Hz
+
+    auto buf  = renderEngine (e, 16384);
+    auto spec = computeSpectrum (buf, sr);
+    REQUIRE_FALSE (hasBadValues (buf));
+    REQUIRE (rms (buf) > 0.01f);
+    const double ratio = spec.peakFrequency() / 440.0;
+    REQUIRE (std::abs (ratio - std::round (ratio)) < 0.15);
+}
+
 TEST_CASE ("Engine is polyphonic and frees voices after release", "[synth][midi]")
 {
     const double sr = 48000.0;

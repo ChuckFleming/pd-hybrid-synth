@@ -22,7 +22,8 @@ enum class OscType
     Pulse,
     VPS,                   // vector phaseshaping (movable 2D inflection point)
     Scanned,               // scanned synthesis (a plucked mass-spring ring)
-    Vosim                  // VOSIM (bursts of decaying sin^2 pulses -> formants)
+    Vosim,                 // VOSIM (bursts of decaying sin^2 pulses -> formants)
+    Walsh                  // Walsh-function synthesis (sum of +/-1 sequency terms)
 };
 
 enum class GlideMode

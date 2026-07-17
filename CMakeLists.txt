@@ -29,6 +29,7 @@ add_library(pdhybrid_dsp STATIC
     src/dsp/VpsOscillator.cpp
     src/dsp/ScannedOscillator.cpp
     src/dsp/VosimOscillator.cpp
+    src/dsp/WalshOscillator.cpp
     src/dsp/OscillatorUnit.cpp
     src/dsp/OscEq.cpp
     src/dsp/GlobalEq.cpp

@@ -13,6 +13,8 @@ void OscillatorUnit::setSampleRate (double sampleRateHz) noexcept
     scanned_.setOversampling (4);
     vosim_.setSampleRate (sampleRateHz);
     vosim_.setOversampling (4);
+    walsh_.setSampleRate (sampleRateHz);
+    walsh_.setOversampling (4);
     analog_.setSampleRate (sampleRateHz);
     eq_.setSampleRate (sampleRateHz);
 }
@@ -23,6 +25,7 @@ void OscillatorUnit::reset() noexcept
     vps_.reset();
     scanned_.reset();
     vosim_.reset();
+    walsh_.reset();
     analog_.reset();
     eq_.reset();
 }
@@ -39,6 +42,7 @@ void OscillatorUnit::setType (OscType type) noexcept
         case OscType::VPS:                                                  break;   // configured via amount/pulseWidth
         case OscType::Scanned:                                              break;   // configured via amount/pulseWidth + excite()
         case OscType::Vosim:                                                break;   // configured via amount/pulseWidth
+        case OscType::Walsh:                                                break;   // configured via amount/pulseWidth
         case OscType::PhaseDistortion: default: break;
     }
 }
@@ -62,6 +66,7 @@ void OscillatorUnit::setBaseFrequency (double frequencyHz) noexcept
     vps_.setFrequency (f);
     scanned_.setFrequency (f);
     vosim_.setFrequency (f);
+    walsh_.setFrequency (f);
     analog_.setFrequency (f);
 }
 
@@ -76,6 +81,7 @@ float OscillatorUnit::processSample() noexcept
                     : (type_ == OscType::VPS)             ? vps_.processSample()
                     : (type_ == OscType::Scanned)         ? scanned_.processSample()
                     : (type_ == OscType::Vosim)           ? vosim_.processSample()
+                    : (type_ == OscType::Walsh)           ? walsh_.processSample()
                                                           : analog_.processSample();
     return eq_.processSample (raw);
 }

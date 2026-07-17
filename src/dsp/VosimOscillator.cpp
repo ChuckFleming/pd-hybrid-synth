@@ -17,11 +17,15 @@ void VosimOscillator::setSampleRate (double sampleRateHz) noexcept
     }
 }
 
+// The pulse-structure setters only stage their change: it is applied at the next
+// period boundary (see coreSample), where the burst has ended and the output is
+// zero, so a moving formant/pitch never repositions pulses mid-cycle (which
+// clicked). The fundamental phase increment updates immediately so pitch tracks.
 void VosimOscillator::setFrequency (double frequencyHz) noexcept
 {
     frequency_ = frequencyHz;
     phaseInc_ = frequency_ / sampleRate_;
-    recompute();
+    recomputePending_ = true;
 }
 
 void VosimOscillator::setFormant (double amount01) noexcept
@@ -29,14 +33,14 @@ void VosimOscillator::setFormant (double amount01) noexcept
     amount01 = std::clamp (amount01, 0.0, 1.0);
     // Log map across a vocal formant range: ~200 Hz .. ~4.5 kHz.
     formantHz_ = 200.0 * std::pow (2.0, amount01 * 4.5);
-    recompute();
+    recomputePending_ = true;
 }
 
 void VosimOscillator::setDecay (double pulseWidth01) noexcept
 {
     pulseWidth01 = std::clamp (pulseWidth01, 0.0, 1.0);
     decay_ = 0.5 + 0.49 * pulseWidth01;   // 0.5 (broad) .. ~0.99 (narrow formant)
-    recompute();
+    recomputePending_ = true;
 }
 
 void VosimOscillator::setOversampling (int factor) noexcept
@@ -54,6 +58,8 @@ void VosimOscillator::reset() noexcept
     dcPrevIn_ = 0.0;
     dcPrevOut_ = 0.0;
     wrapped_ = false;
+    recompute();                 // note-start: make the pulse structure current now
+    recomputePending_ = false;
     if (os_.factor() != osFactor_)
         os_.prepare (osFactor_);
     os_.reset();
@@ -93,6 +99,13 @@ double VosimOscillator::coreSample() noexcept
     {
         phase_ -= 1.0;
         wrapped_ = true;
+        // Boundary of a new burst (output is 0 here): apply any staged change so
+        // the pulse spacing/count only ever shifts between periods, never within.
+        if (recomputePending_)
+        {
+            recompute();
+            recomputePending_ = false;
+        }
     }
     return y;
 }

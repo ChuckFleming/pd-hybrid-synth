@@ -49,6 +49,41 @@ TEST_CASE ("VOSIM produces sound", "[oscillator][vosim]")
     REQUIRE (rms (buf) > 0.01f);
 }
 
+static float maxStep (const std::vector<float>& v)
+{
+    float m = 0.0f;
+    for (std::size_t i = 1; i < v.size(); ++i)
+        m = std::max (m, std::abs (v[i] - v[i - 1]));
+    return m;
+}
+
+TEST_CASE ("VOSIM stays click-free while the formant is modulated", "[oscillator][vosim]")
+{
+    const double sr = 48000.0, freq = 220.0;
+    const int    n = 48000, block = 64;
+
+    VosimOscillator osc;
+    osc.setSampleRate (sr); osc.setFrequency (freq); osc.setDecay (0.7);
+    osc.setFormant (0.35); osc.reset();
+
+    std::vector<float> held, moved;
+    for (int i = 0; i < n; ++i) held.push_back (osc.processSample());   // formant held
+
+    osc.setFormant (0.35); osc.reset();
+    for (int i = 0; i < n; i += block)                                  // formant wandered
+    {
+        const double f = 0.35 + 0.15 * std::sin (2.0 * 3.14159265 * 3.0 * i / n);
+        osc.setFormant (f);
+        for (int k = 0; k < block && i + k < n; ++k) moved.push_back (osc.processSample());
+    }
+
+    const float heldStep  = maxStep (held);
+    const float movedStep = maxStep (moved);
+    CAPTURE (heldStep, movedStep);
+    // Modulating the formant must not introduce jumps far larger than the held tone.
+    REQUIRE (movedStep < heldStep * 2.0f + 0.05f);
+}
+
 TEST_CASE ("VOSIM is periodic at the fundamental", "[oscillator][vosim]")
 {
     const double sr = 48000.0;

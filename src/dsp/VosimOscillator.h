@@ -66,6 +66,7 @@ private:
     double dcPrevIn_  = 0.0;   // one-pole DC blocker state
     double dcPrevOut_ = 0.0;
     bool   wrapped_   = false;
+    bool   recomputePending_ = false;   // apply pulse-structure changes at the next period boundary
 
     Oversampler os_;
     int         osFactor_ = 4;

@@ -18,7 +18,8 @@
     so the window stays small, is freely resizable, and never clips its contents.
 */
 class PDHybridEditor : public juce::AudioProcessorEditor,
-                       private juce::Value::Listener
+                       private juce::AudioProcessorValueTreeState::Listener,
+                       private juce::AsyncUpdater
 {
 public:
     explicit PDHybridEditor (PDHybridAudioProcessor&);
@@ -98,9 +99,12 @@ private:
 
     // Track each slot's engine type: grey out the PD-only wave controls, and
     // relabel / grey the two shared timbre knobs to match the active engine.
-    void valueChanged (juce::Value&) override;
+    // Driven off parameter listeners (not the state tree) so it survives the
+    // replaceState() a preset load / A-B compare does; the change may arrive off
+    // the message thread, so it's bounced through the AsyncUpdater.
+    void parameterChanged (const juce::String&, float) override;
+    void handleAsyncUpdate() override;
     void updateOscControls();
-    juce::Value oscATypeValue, oscBTypeValue;
 
     PDHybridAudioProcessor& proc;
     SynthLookAndFeel lnf;

@@ -691,14 +691,12 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
     buildSections();
 
-    // Keep the PD-only wave controls greyed out unless the slot is a PD engine.
-    // Driven off the type parameter (via a Value) so it also tracks presets and
-    // automation, not just user clicks -- and without stealing the combo's
-    // onChange, which the ComboBoxAttachment owns.
-    oscATypeValue = proc.apvts.getParameterAsValue ("oscAType");
-    oscBTypeValue = proc.apvts.getParameterAsValue ("oscBType");
-    oscATypeValue.addListener (this);
-    oscBTypeValue.addListener (this);
+    // Keep the shared timbre controls in sync with each slot's engine type.
+    // Listening to the parameters (rather than the state tree) means this keeps
+    // working after a preset load / A-B compare replaces the tree, and it doesn't
+    // steal the combo's onChange, which the ComboBoxAttachment owns.
+    proc.apvts.addParameterListener ("oscAType", this);
+    proc.apvts.addParameterListener ("oscBType", this);
     updateOscControls();
 
     // --- Modulation matrix widgets (hosted on the Modulation tab) ---
@@ -775,13 +773,21 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
 PDHybridEditor::~PDHybridEditor()
 {
-    oscATypeValue.removeListener (this);
-    oscBTypeValue.removeListener (this);
+    cancelPendingUpdate();
+    proc.apvts.removeParameterListener ("oscAType", this);
+    proc.apvts.removeParameterListener ("oscBType", this);
     tabs.clearTabs();     // release content components before members are destroyed
     setLookAndFeel (nullptr);
 }
 
-void PDHybridEditor::valueChanged (juce::Value&)
+void PDHybridEditor::parameterChanged (const juce::String&, float)
+{
+    // May be called on the audio thread (automation); update the UI on the
+    // message thread.
+    triggerAsyncUpdate();
+}
+
+void PDHybridEditor::handleAsyncUpdate()
 {
     updateOscControls();
 }

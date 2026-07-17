@@ -167,6 +167,28 @@ TEST_CASE ("Engine renders a Walsh oscillator, periodic at the note", "[synth][w
     REQUIRE (std::abs (ratio - std::round (ratio)) < 0.15);
 }
 
+TEST_CASE ("Engine renders a Karplus-Strong pluck at the note pitch", "[synth][pluck]")
+{
+    const double sr = 48000.0;
+    SynthEngine e;
+    e.setSampleRate (sr);
+    auto p = brightSustainParams();
+    p.pluckOn = true;          // the osc mix excites a string tuned to the note
+    p.pluckDecay = 0.9;
+    p.pluckDamp  = 0.2;
+    p.release = 2.0;           // let the ring sustain past the exciter burst
+    e.setParams (p);
+    e.noteOn (69, 1.0f, 1);    // A4 = 440 Hz
+
+    auto buf  = renderEngine (e, 24000);
+    REQUIRE_FALSE (hasBadValues (buf));
+    REQUIRE (rms (buf) > 0.01f);
+    // The ring locks to harmonics of the tuned note.
+    auto spec = computeSpectrum (buf, sr);
+    const double ratio = spec.peakFrequency() / 440.0;
+    REQUIRE (std::abs (ratio - std::round (ratio)) < 0.15);
+}
+
 TEST_CASE ("Engine is polyphonic and frees voices after release", "[synth][midi]")
 {
     const double sr = 48000.0;

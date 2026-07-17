@@ -25,6 +25,7 @@ void Voice::prepare (double sampleRate)
     unitB_.setSampleRate (sampleRate);
     filterA_.setSampleRate (sampleRate);
     filterB_.setSampleRate (sampleRate);
+    pluck_.setSampleRate (sampleRate);
     amp_.setSampleRate (sampleRate);
     amp_.setOversampling (4);
     env_.setSampleRate (sampleRate);
@@ -41,6 +42,7 @@ void Voice::prepare (double sampleRate)
     unitB_.reset();
     filterA_.reset();
     filterB_.reset();
+    pluck_.reset();
     amp_.reset();
     env_.reset();
     env2_.reset();
@@ -106,6 +108,11 @@ void Voice::setParams (const SynthParams& params)
 
     filterA_.setType (params.filterType);
     filterB_.setType (params.filter2Type);
+
+    pluck_.setDecay      (params.pluckDecay);
+    pluck_.setDamping    (params.pluckDamp);
+    pluck_.setDispersion (params.pluckDispersion);
+    pluck_.setBurstMs    (params.pluckBurstMs);
 
     // Oversampling changes rebuild the internal FIR state, so only apply on a
     // real change (setParams runs every block).
@@ -173,6 +180,7 @@ void Voice::applyModulation() noexcept
     const double freq  = baseFreq_ * std::pow (2.0, semis / 12.0);
     unitA_.setBaseFrequency (freq);
     unitB_.setBaseFrequency (freq);
+    pluck_.setFrequency (freq);   // tune the pluck string to the note
 
     // PD amount and pulse width are modulated equally on both slots. The CZ DCW
     // envelope adds a bipolar-around-0.5 deviation scaled by dcwEnvAmount.
@@ -279,6 +287,7 @@ void Voice::start (int note, float velocity, double glideFromHz, double glideSam
     lfo2_.trigger();
     unitA_.excite();   // re-pluck the scanned ring (no-op for the other engines)
     unitB_.excite();
+    if (params_.pluckOn) pluck_.trigger();   // fire the Karplus-Strong exciter burst
     env2_.noteOn();
     filterEnv_.noteOn();
     filter2Env_.noteOn();
@@ -363,6 +372,10 @@ float Voice::renderOneSample() noexcept
         s += (static_cast<double> (static_cast<std::int32_t> (rng_)) / 2147483648.0)
              * noiseLevelMod_;
     }
+
+    // Karplus-Strong pluck: the osc mix becomes the string's exciter.
+    if (params_.pluckOn)
+        s = pluck_.processSample (static_cast<float> (s));
 
     // Overdrive can sit before the filter (pre) or after it (post, default).
     if (params_.driveOn && params_.drivePos == 1)

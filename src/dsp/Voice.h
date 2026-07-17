@@ -2,6 +2,7 @@
 
 #include "OscillatorUnit.h"
 #include "FilterUnit.h"
+#include "PluckResonator.h"
 #include "OverdriveAmp.h"
 #include "MultiStageEnvelope.h"
 #include "Lfo.h"
@@ -64,6 +65,7 @@ private:
     OscillatorUnit            unitB_;   // oscillator slot B
     FilterUnit                filterA_; // filter slot A
     FilterUnit                filterB_; // filter slot B
+    PluckResonator            pluck_;   // optional Karplus-Strong pluck (osc mix -> string)
     OverdriveAmp              amp_;
     MultiStageEnvelope        env_;       // amplitude envelope
     MultiStageEnvelope        env2_;      // modulation envelope

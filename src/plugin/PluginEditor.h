@@ -143,7 +143,7 @@ private:
     Section filter, filter2, filterEnv, filter2Env;                      // Filters
     Section envelope, modEnv, multiEnvSec, pitchEnvSec, dcwEnvSec;       // Envelopes
     Section lfo, lfo2, arpSec;                                           // Modulation
-    Section drive, chorusSec, comp, delaySec, reverbSec, globalEqSec, masterSec;  // FX
+    Section pluckSec, drive, chorusSec, comp, delaySec, reverbSec, globalEqSec, masterSec;  // FX
 
     // Modulation matrix.
     static constexpr int kNumModRows = 10;

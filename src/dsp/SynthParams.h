@@ -114,6 +114,13 @@ struct SynthParams
     int     oscCrossMod  = 0;   // 0=Off, 1=Hard Sync (A masters B), 2=Phase Mod (B -> A)
     double  crossModAmount = 0.0;
 
+    // Karplus-Strong pluck: the osc mix excites a tuned string that then rings.
+    bool    pluckOn         = false;
+    double  pluckDecay      = 0.7;    // ring time
+    double  pluckDamp       = 0.3;    // tone (feedback lowpass)
+    double  pluckDispersion = 0.0;    // inharmonic stretch
+    double  pluckBurstMs    = 20.0;   // exciter injection window
+
     FilterType filterType   = FilterType::Ladder;
     double     cutoffHz     = 8000.0;
     double     resonance    = 0.20;

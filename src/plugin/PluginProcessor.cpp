@@ -37,6 +37,8 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
                    [] (const juce::String& t) { return t.getFloatValue(); });
     auto rate = sv ([] (float x) { return juce::String (x, 2) + " Hz"; },
                     [] (const juce::String& t) { return t.getFloatValue(); });
+    auto ms  = sv ([] (float x) { return juce::String (x, 1) + " ms"; },
+                   [] (const juce::String& t) { return t.getFloatValue(); });
     auto ratio = sv ([] (float x) { return juce::String (x, 1) + ":1"; },
                      [] (const juce::String& t) { return t.getFloatValue(); });
     auto mult = sv ([] (float x) { return juce::String (x, 1) + "x"; },
@@ -103,6 +105,14 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::ParameterID { "oscCrossMod", 1 }, "Osc Cross Mod",
         juce::StringArray { "Off", "Hard Sync", "Phase Mod" }, 0));
     pf ("crossModAmount", "Cross Mod Amount", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+
+    // Karplus-Strong pluck (osc mix excites a tuned string). Off by default.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "pluckOn", 1 }, "Pluck", false));
+    pf ("pluckDecay", "Pluck Decay", juce::NormalisableRange<float> (0.0f, 1.0f), 0.70f, pct);
+    pf ("pluckDamp",  "Pluck Damp",  juce::NormalisableRange<float> (0.0f, 1.0f), 0.30f, pct);
+    pf ("pluckDispersion", "Pluck Dispersion", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
+    pf ("pluckBurst", "Pluck Burst", juce::NormalisableRange<float> (0.5f, 50.0f, 0.0f, 0.5f), 20.0f, ms);
 
     pf ("cutoff", "Filter Cutoff",
         juce::NormalisableRange<float> (20.0f, 18000.0f, 0.0f, 0.3f), 8000.0f, hz);
@@ -536,6 +546,12 @@ void PDHybridAudioProcessor::pushParams()
     p.ringModLevel = apvts.getRawParameterValue ("ringMod")->load();
     p.oscCrossMod    = static_cast<int> (apvts.getRawParameterValue ("oscCrossMod")->load());
     p.crossModAmount = apvts.getRawParameterValue ("crossModAmount")->load();
+
+    p.pluckOn         = apvts.getRawParameterValue ("pluckOn")->load() > 0.5f;
+    p.pluckDecay      = apvts.getRawParameterValue ("pluckDecay")->load();
+    p.pluckDamp       = apvts.getRawParameterValue ("pluckDamp")->load();
+    p.pluckDispersion = apvts.getRawParameterValue ("pluckDispersion")->load();
+    p.pluckBurstMs    = apvts.getRawParameterValue ("pluckBurst")->load();
 
     p.cutoffHz    = apvts.getRawParameterValue ("cutoff")->load();
     p.resonance   = apvts.getRawParameterValue ("resonance")->load();

@@ -555,6 +555,14 @@ void PDHybridEditor::buildSections()
                       &addCombo ("arpLatch", { "Latch Off", "Latch On" }) };
     arpSec.knobs  = { &addKnob ("arpOctaves", "Oct", 0), &addKnob ("arpGate", "Gate") };
 
+    // --- Pluck (Karplus-Strong): a per-voice resonator that plucks a string with
+    // the oscillator mix. Lives on the FX tab as it is a resonant processor. ---
+    pluckSec.title  = "Pluck";
+    pluckSec.cols   = 4;
+    pluckSec.combos = { &addCombo ("pluckOn", { "Off", "On" }) };
+    pluckSec.knobs  = { &addKnob ("pluckDecay", "Decay"), &addKnob ("pluckDamp", "Damp"),
+                        &addKnob ("pluckDispersion", "Disp"), &addKnob ("pluckBurst", "Burst", 1) };
+
     // --- Overdrive ---
     drive.title  = "Overdrive";
     drive.cols   = 5;
@@ -742,7 +750,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec, &pitchEnvSec, &dcwEnvSec }, nullptr, {}, 0 },
         { "Modulation",  { &lfo, &lfo2, &arpSec }, &matrixHolder,
           "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
-        { "FX",          { &drive, &chorusSec, &comp, &delaySec, &reverbSec, &globalEqSec, &masterSec }, nullptr, {}, 0 },
+        { "FX",          { &pluckSec, &drive, &chorusSec, &comp, &delaySec, &reverbSec, &globalEqSec, &masterSec }, nullptr, {}, 0 },
     };
 
     for (auto& pg : layout)

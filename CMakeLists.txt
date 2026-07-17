@@ -46,6 +46,7 @@ add_library(pdhybrid_dsp STATIC
     src/dsp/PhaseDistortionResonator.cpp
     src/dsp/CombFilter.cpp
     src/dsp/AllpassDispersion.cpp
+    src/dsp/PluckResonator.cpp
     src/dsp/FilterUnit.cpp
     src/dsp/Compressor.cpp
     src/dsp/Delay.cpp

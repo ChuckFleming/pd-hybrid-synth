@@ -1,6 +1,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+#include <cmath>
+
 using APVTS = juce::AudioProcessorValueTreeState;
 
 APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
@@ -1049,6 +1051,18 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                     buffer.getWritePointer (1), numSamples);
         master.processStereo (buffer.getWritePointer (0),
                               buffer.getWritePointer (1), numSamples);
+
+        // Final safety net: never emit a non-finite sample. A feedback path
+        // (delay/reverb/comb) reacting to an abrupt patch change could in
+        // principle produce a NaN/Inf; scrub it here so it reaches neither the
+        // host nor the scope tap (whose Path rasteriser would otherwise crash).
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        {
+            float* d = buffer.getWritePointer (ch);
+            for (int i = 0; i < numSamples; ++i)
+                if (! std::isfinite (d[i])) d[i] = 0.0f;
+        }
+
         pushScope (buffer.getReadPointer (0), buffer.getReadPointer (1), numSamples);
     }
 }

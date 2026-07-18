@@ -10,6 +10,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <functional>
 
 using pdhybrid::SynthEngine;
 using pdhybrid::SynthParams;
@@ -128,6 +129,41 @@ TEST_CASE ("Engine renders a scanned-synthesis oscillator, plucked on note-on", 
     REQUIRE_FALSE (hasBadValues (buf));
     REQUIRE (rms (buf) > 0.01f);                                  // the pluck sounds
     REQUIRE (std::abs (computeSpectrum (buf, sr).peakFrequency() - 440.0) < 6.0);
+}
+
+TEST_CASE ("Switching patch params mid-note stays finite", "[synth][patchswitch]")
+{
+    const double sr = 48000.0;
+
+    // A few representative factory patches expressed as param sets.
+    auto robotVox = [] { SynthParams p; p.oscAType = OscType::Vosim; p.oscAAmount = 0.4;
+        p.oscAPulseWidth = 0.7; p.oscAEngine = 0.43; p.cutoffHz = 8000.0; p.sustain = 0.8; return p; };
+    auto livingPad = [] { SynthParams p; p.oscAType = OscType::Scanned; p.oscAAmount = 0.5;
+        p.oscAPulseWidth = 0.1; p.attack = 0.5; p.release = 1.5; p.sustain = 0.9; return p; };
+    auto pdPluck = [] { SynthParams p; p.oscAType = OscType::PhaseDistortion; p.pluckOn = true;
+        p.pluckDecay = 0.85; p.cutoffHz = 8000.0; p.sustain = 0.7; return p; };
+    auto walsh = [] { SynthParams p; p.oscAType = OscType::Walsh; p.oscAAmount = 0.8;
+        p.oscAEngine = 0.9; return p; };
+    auto acidBass = [] { SynthParams p; p.oscAType = OscType::Saw; p.cutoffHz = 1000.0;
+        p.resonance = 0.8; p.filterEnvAmount = 2.0; p.drive = 6.0; return p; };
+
+    std::vector<std::function<SynthParams()>> patches { robotVox, livingPad, pdPluck, walsh, acidBass };
+
+    // Hold a chord, then swap in each other patch's params mid-note (as a preset
+    // load does via pushParams) and keep rendering. Nothing may go non-finite.
+    for (auto& from : patches)
+        for (auto& to : patches)
+        {
+            SynthEngine e;
+            e.setSampleRate (sr);
+            e.setParams (from());
+            e.noteOn (48, 1.0f, 1); e.noteOn (55, 1.0f, 2); e.noteOn (60, 1.0f, 3);
+            auto a = renderEngine (e, 4096);
+            e.setParams (to());                 // "switch patch" while the notes sound
+            auto b = renderEngine (e, 8192);
+            REQUIRE_FALSE (hasBadValues (a));
+            REQUIRE_FALSE (hasBadValues (b));
+        }
 }
 
 TEST_CASE ("Engine renders a VOSIM oscillator, periodic at the note", "[synth][vosim]")

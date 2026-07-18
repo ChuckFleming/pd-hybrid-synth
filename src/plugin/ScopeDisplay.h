@@ -55,7 +55,8 @@ public:
         for (int i = 0; i < kDrawN; ++i)
         {
             const float x = inner.getX() + (float) i / (kDrawN - 1) * inner.getWidth();
-            const float y = cy - juce::jlimit (-1.2f, 1.2f, buf[trig + i]) * amp;
+            const float s = std::isfinite (buf[trig + i]) ? buf[trig + i] : 0.0f;
+            const float y = cy - juce::jlimit (-1.2f, 1.2f, s) * amp;
             if (i == 0) path.startNewSubPath (x, y);
             else        path.lineTo (x, y);
         }

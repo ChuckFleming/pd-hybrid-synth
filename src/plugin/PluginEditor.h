@@ -119,13 +119,14 @@ private:
     juce::TextButton nextButton { ">" };
     juce::TextButton abButton { "A/B: A" };
     juce::TextButton crtButton { "CRT" };
-    juce::ComboBox   presetBox;
+    juce::TextButton presetButton { "Presets" };   // opens the hierarchical preset menu
 
     juce::ValueTree  abState_[2];   // A/B compare snapshots
     int              abSlot_ = 0;
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
 
     void refreshPresetList();
+    void showPresetMenu();
     void showSavePresetDialog();
     void randomizePatch();
 

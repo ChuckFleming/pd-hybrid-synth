@@ -656,15 +656,10 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
             param->setValueNotifyingHost (param->getDefaultValue());
     };
 
-    // Preset browser: combo to pick, </> to step, Save to store the current state.
-    addAndMakeVisible (presetBox);
-    presetBox.setTextWhenNothingSelected ("Presets");
-    presetBox.onChange = [this]
-    {
-        const auto name = presetBox.getText();
-        if (name.isNotEmpty() && name != proc.getPresetManager().getCurrentPresetName())
-            proc.getPresetManager().loadPreset (name);
-    };
+    // Preset browser: a button that opens a hierarchical menu (top-level presets
+    // plus a submenu per category folder), </> to step, Save to store.
+    addAndMakeVisible (presetButton);
+    presetButton.onClick = [this] { showPresetMenu(); };
     addAndMakeVisible (prevButton);
     prevButton.onClick = [this] { proc.getPresetManager().loadByOffset (-1); refreshPresetList(); };
     addAndMakeVisible (nextButton);
@@ -879,13 +874,50 @@ void PDHybridEditor::layoutMatrix()
 
 void PDHybridEditor::refreshPresetList()
 {
-    presetBox.clear (juce::dontSendNotification);
-    const auto names = proc.getPresetManager().getPresetNames();
-    presetBox.addItemList (names, 1);
+    // The menu is built on demand; here we just reflect the current preset on the
+    // button, showing only the leaf name (the folder is implied by the menu).
+    const auto cur = proc.getPresetManager().getCurrentPresetName();
+    const auto leaf = cur.contains ("/") ? cur.fromLastOccurrenceOf ("/", false, false) : cur;
+    presetButton.setButtonText (leaf.isEmpty() ? "Presets" : leaf);
+}
+
+void PDHybridEditor::showPresetMenu()
+{
+    const auto tree = proc.getPresetManager().getPresetTree();
     const auto current = proc.getPresetManager().getCurrentPresetName();
-    const int idx = names.indexOf (current);
-    if (idx >= 0)
-        presetBox.setSelectedItemIndex (idx, juce::dontSendNotification);
+
+    juce::PopupMenu menu;
+    auto paths = std::make_shared<juce::StringArray>();   // menu id (1-based) -> path
+
+    auto addPreset = [&] (juce::PopupMenu& m, const juce::String& label, const juce::String& path)
+    {
+        paths->add (path);
+        m.addItem (paths->size(), label, true, path == current);
+    };
+
+    for (const auto& name : tree.root)
+        addPreset (menu, name, name);
+
+    if (! tree.root.isEmpty() && ! tree.folders.empty())
+        menu.addSeparator();
+
+    for (const auto& folder : tree.folders)
+    {
+        juce::PopupMenu sub;
+        for (const auto& p : folder.presets)
+            addPreset (sub, p, folder.name + "/" + p);
+        menu.addSubMenu (folder.name, sub);
+    }
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetButton),
+                        [this, paths] (int result)
+                        {
+                            if (result >= 1 && result <= paths->size())
+                            {
+                                proc.getPresetManager().loadPreset ((*paths)[result - 1]);
+                                refreshPresetList();
+                            }
+                        });
 }
 
 void PDHybridEditor::randomizePatch()
@@ -917,9 +949,12 @@ void PDHybridEditor::randomizePatch()
 
 void PDHybridEditor::showSavePresetDialog()
 {
-    auto* aw = new juce::AlertWindow ("Save Preset", "Preset name:",
+    auto* aw = new juce::AlertWindow ("Save Preset", "Preset name (use Folder/Name for a category):",
                                       juce::MessageBoxIconType::NoIcon);
-    aw->addTextEditor ("name", proc.getPresetManager().getCurrentPresetName());
+    // Pre-fill with the leaf name so re-saving a factory patch stores a user copy
+    // at the top level rather than overwriting the factory file in its folder.
+    const auto cur = proc.getPresetManager().getCurrentPresetName();
+    aw->addTextEditor ("name", cur.contains ("/") ? cur.fromLastOccurrenceOf ("/", false, false) : cur);
     aw->addButton ("Save",   1, juce::KeyPress (juce::KeyPress::returnKey));
     aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
@@ -953,7 +988,7 @@ void PDHybridEditor::resized()
     x -= 32;  prevButton.setBounds (x, y, 28, 26);
     x -= 52;  crtButton.setBounds  (x, y, 46, 26);
     x -= 58;  abButton.setBounds   (x, y, 52, 26);
-    x -= 190; presetBox.setBounds  (x, y, 184, 26);
+    x -= 190; presetButton.setBounds (x, y, 184, 26);
 
     tabs.setBounds (r);
     crtOverlay.setBounds (getLocalBounds());

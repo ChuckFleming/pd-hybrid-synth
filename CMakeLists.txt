@@ -66,6 +66,8 @@ juce_add_plugin(PDHybridSynth
     PRODUCT_NAME              "PD Hybrid Synth"
     COMPANY_NAME              "PDHybrid"
     FORMATS                   VST3 Standalone
+    ICON_BIG                  "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png"
+    ICON_SMALL                "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon_small.png"
     IS_SYNTH                  TRUE
     NEEDS_MIDI_INPUT          TRUE
     NEEDS_MIDI_OUTPUT         FALSE

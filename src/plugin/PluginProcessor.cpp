@@ -497,6 +497,10 @@ PDHybridAudioProcessor::PDHybridAudioProcessor()
           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMS", createLayout())
 {
+    // Fixed oscillator anti-alias FIR group delay (see prepareToPlay); reported
+    // here too so the host sees it before prepare. It is in host-rate samples and
+    // independent of sample rate, so the constant is valid everywhere.
+    setLatencySamples (8);
 }
 
 void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -524,6 +528,13 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     scratchBass.assign (n, 0.0f);
     fxScratchL_.assign (n, 0.0f);
     fxScratchR_.assign (n, 0.0f);
+
+    // The oscillator anti-alias decimation FIR (16 taps/phase, linear phase) adds
+    // a fixed ~8-sample group delay whenever oversampling is on (the default). We
+    // report that constant so the host aligns our output; the small extra delay
+    // when overdrive is engaged, and the 0 delay at 1x, are left uncompensated to
+    // avoid latency changes mid-session.
+    setLatencySamples (8);
 }
 
 void PDHybridAudioProcessor::pushParams()

@@ -119,6 +119,16 @@ void WalshOscillator::rebuildTable() noexcept
 {
     const auto& basis = walshBasis();
 
+    // ln(k) precomputed once so the per-term magnitude is exp(-exponent * ln k)
+    // instead of pow(k, -exponent) -- same value, cheaper, and this rebuild can
+    // run every control chunk while the tilt knob is modulated.
+    static const std::array<double, kNumFuncs> lnK = []
+    {
+        std::array<double, kNumFuncs> t {};
+        for (int k = 1; k < kNumFuncs; ++k) t[(std::size_t) k] = std::log ((double) k);
+        return t;
+    }();
+
     for (int n = 0; n < kTableLen; ++n) table_[n] = 0.0;
 
     // Spectral slope over the sequency basis; term 0 (the DC constant) is skipped.
@@ -128,7 +138,7 @@ void WalshOscillator::rebuildTable() noexcept
 
     for (int k = 1; k < kNumFuncs; ++k)
     {
-        const double mag = std::pow ((double) k, -exponent);
+        const double mag = std::exp (-exponent * lnK[(std::size_t) k]);
         const double coef = mag * ((k % 2 == 0) ? evenScale : oddScale);
         const signed char* r = basis.row[k];
         for (int n = 0; n < kTableLen; ++n)

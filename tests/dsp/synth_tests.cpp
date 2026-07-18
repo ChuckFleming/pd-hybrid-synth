@@ -167,6 +167,57 @@ TEST_CASE ("Engine renders a Walsh oscillator, periodic at the note", "[synth][w
     REQUIRE (std::abs (ratio - std::round (ratio)) < 0.15);
 }
 
+TEST_CASE ("CZ vibrato modulates the pitch", "[synth][vibrato]")
+{
+    const double sr = 48000.0;
+    const int    n  = 24000;
+    auto render = [&] (bool on)
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = brightSustainParams();
+        p.vibratoOn = on; p.vibratoRate = 6.0; p.vibratoDepth = 60.0; p.vibratoWave = 0;
+        e.setParams (p);
+        e.noteOn (69, 1.0f, 1);
+        return renderEngine (e, n);
+    };
+    auto off = render (false);
+    auto on  = render (true);
+    REQUIRE_FALSE (hasBadValues (on));
+    double diff = 0.0;
+    for (int i = 0; i < n; ++i) diff += std::abs (on[i] - off[i]);
+    REQUIRE (diff > 10.0);   // vibrato clearly wavers the pitch
+}
+
+TEST_CASE ("CZ vibrato delay postpones the onset", "[synth][vibrato]")
+{
+    const double sr = 48000.0;
+    const int    n  = 48000;
+    auto render = [&] (bool on)
+    {
+        SynthEngine e;
+        e.setSampleRate (sr);
+        auto p = brightSustainParams();
+        p.vibratoOn = on; p.vibratoRate = 6.0; p.vibratoDepth = 60.0;
+        p.vibratoDelay = 0.5;   // half a second before onset
+        e.setParams (p);
+        e.noteOn (69, 1.0f, 1);
+        return renderEngine (e, n);
+    };
+    auto off = render (false);
+    auto on  = render (true);
+
+    auto sumDiff = [&] (int start, int len)
+    {
+        double d = 0.0;
+        for (int i = start; i < start + len; ++i) d += std::abs (on[i] - off[i]);
+        return d;
+    };
+    // During the delay the two are identical; well past it they diverge.
+    REQUIRE (sumDiff (2000, 18000) < 1.0e-3);
+    REQUIRE (sumDiff (30000, 18000) > 10.0);
+}
+
 TEST_CASE ("Engine renders a Karplus-Strong pluck at the note pitch", "[synth][pluck]")
 {
     const double sr = 48000.0;

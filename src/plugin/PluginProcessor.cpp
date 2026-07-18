@@ -120,6 +120,16 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("pluckDispersion", "Pluck Dispersion", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
     pf ("pluckBurst", "Pluck Burst", juce::NormalisableRange<float> (0.5f, 50.0f, 0.0f, 0.5f), 20.0f, ms);
 
+    // Casio CZ-style vibrato (dedicated per-voice pitch LFO). Off by default.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "vibratoOn", 1 }, "Vibrato", false));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "vibratoWave", 1 }, "Vibrato Wave",
+        juce::StringArray { "Triangle", "Square", "Ramp Up", "Ramp Down" }, 0));
+    pf ("vibratoRate",  "Vibrato Rate",  juce::NormalisableRange<float> (0.1f, 12.0f, 0.0f, 0.5f), 5.0f, rate);
+    pf ("vibratoDepth", "Vibrato Depth", juce::NormalisableRange<float> (0.0f, 100.0f), 20.0f, cnt);
+    pf ("vibratoDelay", "Vibrato Delay", juce::NormalisableRange<float> (0.0f, 3.0f, 0.0f, 0.5f), 0.0f, sec);
+
     pf ("cutoff", "Filter Cutoff",
         juce::NormalisableRange<float> (20.0f, 18000.0f, 0.0f, 0.3f), 8000.0f, hz);
 
@@ -562,6 +572,12 @@ void PDHybridAudioProcessor::pushParams()
     p.pluckDamp       = apvts.getRawParameterValue ("pluckDamp")->load();
     p.pluckDispersion = apvts.getRawParameterValue ("pluckDispersion")->load();
     p.pluckBurstMs    = apvts.getRawParameterValue ("pluckBurst")->load();
+
+    p.vibratoOn    = apvts.getRawParameterValue ("vibratoOn")->load() > 0.5f;
+    p.vibratoWave  = static_cast<int> (apvts.getRawParameterValue ("vibratoWave")->load());
+    p.vibratoRate  = apvts.getRawParameterValue ("vibratoRate")->load();
+    p.vibratoDepth = apvts.getRawParameterValue ("vibratoDepth")->load();
+    p.vibratoDelay = apvts.getRawParameterValue ("vibratoDelay")->load();
 
     p.cutoffHz    = apvts.getRawParameterValue ("cutoff")->load();
     p.resonance   = apvts.getRawParameterValue ("resonance")->load();

@@ -142,7 +142,7 @@ private:
     Section oscA, oscB, mixer, unison, glideSec, stereo, voiceSec, bassSec;  // Oscillators
     Section filter, filter2, filterEnv, filter2Env;                      // Filters
     Section envelope, modEnv, multiEnvSec, pitchEnvSec, dcwEnvSec;       // Envelopes
-    Section lfo, lfo2, arpSec;                                           // Modulation
+    Section lfo, lfo2, vibratoSec, arpSec;                               // Modulation
     Section pluckSec, drive, chorusSec, comp, delaySec, reverbSec, globalEqSec, masterSec;  // FX
 
     // Modulation matrix.

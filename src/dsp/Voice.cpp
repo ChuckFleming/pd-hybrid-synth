@@ -37,6 +37,7 @@ void Voice::prepare (double sampleRate)
     dcwEnv_.setSampleRate (sampleRate);
     lfo_.setSampleRate (sampleRate);
     lfo2_.setSampleRate (sampleRate);
+    vibratoLfo_.setSampleRate (sampleRate);
 
     unitA_.reset();
     unitB_.reset();
@@ -53,6 +54,7 @@ void Voice::prepare (double sampleRate)
     dcwEnv_.reset();
     lfo_.reset();
     lfo2_.reset();
+    vibratoLfo_.reset();
 }
 
 void Voice::setParams (const SynthParams& params)
@@ -91,6 +93,12 @@ void Voice::setParams (const SynthParams& params)
     lfo2_.setWaveform (static_cast<LfoWave> (params.lfo2Wave));
     lfo2_.setFadeIn (params.lfo2Fade);
     lfo2_.setPhaseOffset (params.lfo2Phase);
+
+    // CZ vibrato: map the four CZ waves onto the LFO's equivalents.
+    static const LfoWave kVibWave[] = { LfoWave::Triangle, LfoWave::Square,
+                                        LfoWave::Saw, LfoWave::RampDown };
+    vibratoLfo_.setFrequency (params.vibratoRate);
+    vibratoLfo_.setWaveform (kVibWave[std::clamp (params.vibratoWave, 0, 3)]);
 
     unitA_.setType   (params.oscAType);
     unitA_.setPdWave (static_cast<PdWave> (params.oscAWave));
@@ -175,10 +183,26 @@ void Voice::applyModulation() noexcept
         noiseSemis = params_.noiseModDepth * nz * 12.0;   // +/- 12 semitones at full
     }
 
+    // CZ vibrato: a dedicated pitch LFO, faded in after the delay time.
+    double vibratoSemis = 0.0;
+    if (params_.vibratoOn)
+    {
+        double delayGain = 1.0;
+        const double delaySamp = params_.vibratoDelay * sampleRate_;
+        if (vibratoAge_ < delaySamp)
+            delayGain = 0.0;
+        else
+        {
+            const double fadeSamp = 0.08 * sampleRate_;   // 80 ms onset ramp
+            delayGain = std::min (1.0, (vibratoAge_ - delaySamp) / fadeSamp);
+        }
+        vibratoSemis = vibratoLfo_.value() * (params_.vibratoDepth / 100.0) * delayGain;
+    }
+
     // Pitch (matrix in semitones, +/-24 at full depth). Each unit applies its
     // own octave/semi/fine tuning on top of this note pitch.
     const double semis = pitchBend_ + md (ModDest::Pitch) * 24.0 + driftSemis
-                       + pitchEnvSemis + noiseSemis
+                       + pitchEnvSemis + noiseSemis + vibratoSemis
                        + unisonDetuneCents_ / 100.0
                        + md (ModDest::Detune) * 0.5;   // +/- 50 cents at full depth
     const double freq  = baseFreq_ * std::pow (2.0, semis / 12.0);
@@ -289,6 +313,8 @@ void Voice::start (int note, float velocity, double glideFromHz, double glideSam
     if (params_.lfo2Retrig) lfo2_.reset();
     lfo_.trigger();
     lfo2_.trigger();
+    vibratoLfo_.reset();   // CZ vibrato retriggers per note (polyphonic LFOs)
+    vibratoAge_ = 0.0;
     unitA_.excite();   // re-pluck the scanned ring (no-op for the other engines)
     unitB_.excite();
     if (params_.pluckOn) pluck_.trigger();   // fire the Karplus-Strong exciter burst
@@ -452,6 +478,8 @@ void Voice::renderBlock (float* left, float* right, int numSamples)
         // is exactly equivalent to per-sample stepping (see modulation tests).
         lfo_.advance (chunk);
         lfo2_.advance (chunk);
+        vibratoLfo_.advance (chunk);
+        vibratoAge_ += chunk;
 
         done += chunk;
     }

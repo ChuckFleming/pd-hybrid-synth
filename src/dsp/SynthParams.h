@@ -191,6 +191,14 @@ struct SynthParams
     double    glideTime  = 0.10;   // seconds to slide to the new note
     double    glideCurve = 1.0;    // ramp exponent (1 = linear, <1 fast-in, >1 slow-in)
 
+    // Casio CZ-style vibrato: a dedicated per-voice pitch LFO (retriggered per
+    // note, with a delay before it fades in). Waveforms mirror the CZ's four.
+    bool   vibratoOn    = false;
+    int    vibratoWave  = 0;      // 0=Triangle 1=Square 2=Ramp Up 3=Ramp Down
+    double vibratoRate  = 5.0;    // Hz
+    double vibratoDepth = 20.0;   // cents of pitch deviation
+    double vibratoDelay = 0.0;    // seconds after note-on before vibrato onset
+
     // Modulation
     double    modEnvA = 0.01, modEnvD = 0.20, modEnvS = 0.0, modEnvR = 0.30;
     double    lfoRate = 5.0;

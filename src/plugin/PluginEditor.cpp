@@ -556,6 +556,14 @@ void PDHybridEditor::buildSections()
     lfo2.knobs  = { &addKnob ("lfo2Rate", "Rate"), &addKnob ("lfo2Fade", "Fade"),
                     &addKnob ("lfo2Phase", "Phase") };
 
+    // --- Vibrato (Casio CZ-style) ---
+    vibratoSec.title  = "Vibrato";
+    vibratoSec.cols   = 3;
+    vibratoSec.combos = { &addCombo ("vibratoOn", { "Off", "On" }),
+                          &addCombo ("vibratoWave", { "Triangle", "Square", "Ramp Up", "Ramp Down" }) };
+    vibratoSec.knobs  = { &addKnob ("vibratoRate", "Rate"), &addKnob ("vibratoDepth", "Depth", 0),
+                          &addKnob ("vibratoDelay", "Delay") };
+
     // --- Arpeggiator ---
     arpSec.title  = "Arpeggiator";
     arpSec.cols   = 3;
@@ -758,7 +766,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         { "Oscillators", { &oscA, &oscB, &mixer, &glideSec, &unison, &stereo, &voiceSec, &bassSec }, nullptr, {}, 0 },
         { "Filters",     { &filter, &filter2, &filterEnv, &filter2Env },        nullptr, {}, 0 },
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec, &pitchEnvSec, &dcwEnvSec }, nullptr, {}, 0 },
-        { "Modulation",  { &lfo, &lfo2, &arpSec }, &matrixHolder,
+        { "Modulation",  { &lfo, &lfo2, &vibratoSec, &arpSec }, &matrixHolder,
           "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
         { "FX",          { &pluckSec, &drive, &chorusSec, &comp, &delaySec, &reverbSec, &globalEqSec, &masterSec }, nullptr, {}, 0 },
     };

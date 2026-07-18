@@ -76,6 +76,7 @@ private:
     MultiStageEnvelope        dcwEnv_;     // CZ-style 8-stage DCW (wave-depth) envelope
     Lfo                       lfo_;
     Lfo                       lfo2_;
+    Lfo                       vibratoLfo_;   // CZ-style dedicated pitch vibrato
 
     SynthParams params_;
     std::array<EnvStage, 8> czStages_ { };    // scratch for the CZ envelope (no per-block alloc)
@@ -85,6 +86,7 @@ private:
 
     int    note_      = -1;
     double baseFreq_  = 440.0;
+    double vibratoAge_ = 0.0;   // samples since note-on (for the vibrato delay)
     int    oversampling_ = 4;   // current osc/amp oversampling factor
 
     // Glide state (log-domain ramp from start to target frequency).

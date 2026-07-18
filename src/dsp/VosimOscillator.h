@@ -32,6 +32,7 @@ public:
     void  setFrequency   (double frequencyHz) noexcept;
     void  setFormant     (double amount01) noexcept;   // 0..1 -> formant Hz (log)
     void  setDecay       (double pulseWidth01) noexcept;
+    void  setPulseCount  (int pulses) noexcept;        // 1..kMaxPulses per burst
     void  setPhaseMod    (double offset) noexcept { phaseMod_ = offset; }
     void  setOversampling (int factor) noexcept;
     void  reset          () noexcept;
@@ -42,9 +43,9 @@ public:
     float processSample () noexcept;
     void  processBlock  (float* out, int numSamples) noexcept;
 
+    static constexpr int kMaxPulses = 8;
+
 private:
-    static constexpr int kTargetPulses = 4;    // pulses per burst (clamped to fit)
-    static constexpr int kMaxPulses    = 8;
 
     void   recompute      () noexcept;   // derive pulse duration / count / amps
     double coreSample     () noexcept;
@@ -58,9 +59,10 @@ private:
     double formantHz_  = 800.0;   // formant centre (pitch-independent)
     double decay_      = 0.75;    // geometric amplitude decay between pulses
 
+    int    targetPulses_ = 4;      // requested pulses per burst (clamped to fit)
     double periodSec_  = 1.0 / 440.0;
     double pulseDur_   = 1.0 / 800.0;   // T
-    int    numPulses_  = kTargetPulses;
+    int    numPulses_  = 4;
     double ampTable_[kMaxPulses] = { 0.0 };
 
     double dcPrevIn_  = 0.0;   // one-pole DC blocker state

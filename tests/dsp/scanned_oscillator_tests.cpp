@@ -153,6 +153,50 @@ TEST_CASE ("Scanned phase-mod input is a no-op at zero offset", "[oscillator][sc
         REQUIRE (a[i] == b[i]);
 }
 
+TEST_CASE ("Scanned excite shape changes the attack timbre", "[oscillator][scanned]")
+{
+    const double sr = 48000.0, freq = 220.0;
+    const int    n  = 16384;
+    auto renderShape = [&] (int shape)
+    {
+        ScannedOscillator osc;
+        osc.setSampleRate (sr); osc.setFrequency (freq);
+        osc.setStiffness (0.5); osc.setDamping (0.1); osc.setExciteShape (shape);
+        osc.reset(); osc.excite();
+        std::vector<float> b (n);
+        osc.processBlock (b.data(), n);
+        return b;
+    };
+    auto pluck  = renderShape (0);
+    auto noise  = renderShape (2);
+    REQUIRE_FALSE (hasBadValues (noise));
+    double diff = 0.0;
+    for (int i = 0; i < n; ++i) diff += std::abs (pluck[i] - noise[i]);
+    REQUIRE (diff > 1.0);
+}
+
+TEST_CASE ("Scanned morph rate changes the evolution", "[oscillator][scanned]")
+{
+    const double sr = 48000.0, freq = 220.0;
+    const int    n  = 24000;
+    auto renderRate = [&] (double rate)
+    {
+        ScannedOscillator osc;
+        osc.setSampleRate (sr); osc.setFrequency (freq);
+        osc.setStiffness (0.5); osc.setDamping (0.03); osc.setMorphRate (rate);
+        osc.reset(); osc.excite();
+        return renderInBlocks ([&] (float* o, int m) { osc.processBlock (o, m); }, n, 256);
+    };
+    // The physics update rate is a real, audible parameter: slow vs fast morph
+    // drive the ring to different states, so the output differs.
+    auto slow = renderRate (0.05);
+    auto fast = renderRate (0.95);
+    REQUIRE_FALSE (hasBadValues (fast));
+    double diff = 0.0;
+    for (int i = 0; i < n; ++i) diff += std::abs (slow[i] - fast[i]);
+    REQUIRE (diff > 1.0);
+}
+
 TEST_CASE ("Scanned oscillator is block-size invariant", "[oscillator][scanned][invariance]")
 {
     const double sr = 48000.0, freq = 220.0;

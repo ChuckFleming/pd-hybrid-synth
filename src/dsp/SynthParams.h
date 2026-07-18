@@ -89,6 +89,8 @@ struct SynthParams
     bool    oscACombine    = false;  // alternate oscAWave/oscAWave2 per cycle
     double  oscAAmount     = 0.30;   // PD DCW amount
     double  oscAPulseWidth = 0.5;
+    double  oscAEngine     = 0.4;    // per-engine extra (VOSIM pulses / Scanned morph / Walsh fold)
+    int     oscAExcite     = 0;      // Scanned excite shape
     int     oscAOctave     = 0;
     int     oscASemi       = 0;
     double  oscAFine       = 0.0;    // cents
@@ -101,6 +103,8 @@ struct SynthParams
     bool    oscBCombine    = false;
     double  oscBAmount     = 0.30;
     double  oscBPulseWidth = 0.5;
+    double  oscBEngine     = 0.4;
+    int     oscBExcite     = 0;
     int     oscBOctave     = 0;
     int     oscBSemi       = 0;
     double  oscBFine       = 0.0;

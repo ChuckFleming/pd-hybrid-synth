@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Oversampler.h"
+#include <cstdint>
 
 namespace pdhybrid {
 
@@ -37,6 +38,8 @@ public:
     void  setFrequency   (double frequencyHz) noexcept;
     void  setStiffness   (double stiffness01) noexcept;   // neighbour coupling
     void  setDamping     (double damping01) noexcept;     // energy bleed
+    void  setMorphRate   (double rate01) noexcept;        // physics/haptic update rate
+    void  setExciteShape (int shape) noexcept { exciteShape_ = shape; }  // 0=pluck 1=impulse 2=noise 3=triangle
     void  setPhaseMod    (double offset) noexcept { phaseMod_ = offset; }
     void  setOversampling (int factor) noexcept;
     void  reset          () noexcept;                     // zero the ring + scan
@@ -64,6 +67,10 @@ private:
 
     double stiffness_ = 0.15;   // neighbour spring constant (scaled from the knob)
     double damping_   = 0.01;   // velocity damping
+    double updateHz_  = 1500.0; // physics updates per second (morph speed)
+    int    exciteShape_ = 0;    // 0=pluck 1=impulse 2=noise 3=triangle
+
+    std::uint32_t rng_ = 0x853c49e6u;   // noise excitation
 
     int    updatePeriod_  = 32;   // audio samples between physics steps (~haptic rate)
     int    updateCounter_ = 0;

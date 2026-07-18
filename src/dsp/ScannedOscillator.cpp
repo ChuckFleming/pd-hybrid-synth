@@ -7,7 +7,6 @@ namespace pdhybrid {
 static constexpr double kPi        = 3.14159265358979323846;
 static constexpr double kCentering = 0.002;   // light spring pulling each mass to rest
 static constexpr double kDtStep    = 0.15;    // integration timestep (slows the morph)
-static constexpr double kUpdateHz  = 1500.0;  // physics updates per second (haptic rate)
 
 void ScannedOscillator::setSampleRate (double sampleRateHz) noexcept
 {
@@ -17,8 +16,15 @@ void ScannedOscillator::setSampleRate (double sampleRateHz) noexcept
         updateIncrement();
         // Keep the physics step rate ~constant in Hz regardless of sample rate so
         // the morph speed is the same everywhere.
-        updatePeriod_ = std::max (1, (int) std::lround (sampleRate_ / kUpdateHz));
+        updatePeriod_ = std::max (1, (int) std::lround (sampleRate_ / updateHz_));
     }
+}
+
+void ScannedOscillator::setMorphRate (double rate01) noexcept
+{
+    rate01 = std::clamp (rate01, 0.0, 1.0);
+    updateHz_ = 400.0 + rate01 * 3600.0;   // ~400 Hz (slow swirl) .. 4 kHz (fast)
+    updatePeriod_ = std::max (1, (int) std::lround (sampleRate_ / updateHz_));
 }
 
 void ScannedOscillator::setFrequency (double frequencyHz) noexcept
@@ -62,16 +68,38 @@ void ScannedOscillator::reset() noexcept
 
 void ScannedOscillator::excite() noexcept
 {
-    // Raised-cosine "pluck" spanning half the ring: wide enough that the
-    // fundamental dominates (so the pitch matches the note rather than its
-    // octave), yet still exciting several modes so the shape morphs. Placed away
-    // from the ring seam so no wrap-around is needed.
+    // Initial displacement (the "pluck"). The shape sets the attack character by
+    // choosing which spatial modes are excited. Placed away from the ring seam so
+    // no wrap-around handling is needed.
     const int center = kNumMasses / 4;
-    const int half   = kNumMasses / 4;
     for (int i = 0; i < kNumMasses; ++i)
     {
         const int d = std::abs (i - center);
-        y_[i] = (d < half) ? 0.5 * (1.0 + std::cos (kPi * d / half)) : 0.0;
+        double val = 0.0;
+        switch (exciteShape_)
+        {
+            case 1:   // impulse: a narrow spike -> broadband, bright/metallic
+                val = (d < kNumMasses / 16)
+                          ? 0.5 * (1.0 + std::cos (kPi * d / (kNumMasses / 16))) : 0.0;
+                break;
+            case 2:   // noise: random per mass -> complex, evolving
+                rng_ = rng_ * 1664525u + 1013904223u;
+                val = static_cast<double> (static_cast<std::int32_t> (rng_)) / 2147483648.0;
+                break;
+            case 3:   // triangle: a linear tent across half the ring
+            {
+                const int half = kNumMasses / 4;
+                val = (d < half) ? (1.0 - (double) d / half) : 0.0;
+                break;
+            }
+            default:  // 0 = pluck: raised cosine spanning half the ring
+            {
+                const int half = kNumMasses / 4;
+                val = (d < half) ? 0.5 * (1.0 + std::cos (kPi * d / half)) : 0.0;
+                break;
+            }
+        }
+        y_[i] = val;
         v_[i] = 0.0;
     }
 

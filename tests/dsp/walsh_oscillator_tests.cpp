@@ -109,6 +109,29 @@ TEST_CASE ("Walsh phase-mod input is a no-op at zero offset", "[oscillator][wals
         REQUIRE (a[i] == b[i]);
 }
 
+TEST_CASE ("Walsh fold changes the tone", "[oscillator][walsh]")
+{
+    const double sr = 48000.0, freq = 220.0;
+    const int    n  = 16384;
+    auto renderFold = [&] (double fold)
+    {
+        WalshOscillator osc;
+        osc.setSampleRate (sr); osc.setFrequency (freq);
+        osc.setTilt (0.5); osc.setOddness (0.5); osc.setFold (fold);
+        osc.reset();
+        std::vector<float> b (n);
+        osc.processBlock (b.data(), n);
+        return b;
+    };
+    auto flat   = renderFold (0.0);
+    auto folded = renderFold (0.9);
+    REQUIRE_FALSE (hasBadValues (folded));
+    REQUIRE (peakAbs (folded) <= 1.1f);
+    double diff = 0.0;
+    for (int i = 0; i < n; ++i) diff += std::abs (flat[i] - folded[i]);
+    REQUIRE (diff > 1.0);
+}
+
 TEST_CASE ("Walsh oscillator is block-size invariant", "[oscillator][walsh][invariance]")
 {
     const double sr = 48000.0, freq = 220.0;

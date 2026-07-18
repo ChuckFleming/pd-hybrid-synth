@@ -83,6 +83,12 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::NormalisableRange<float> (0.0f, 1.0f), 0.30f, pct);
         pf (id + "PulseWidth", label + " Pulse Width",
             juce::NormalisableRange<float> (0.05f, 0.95f), 0.50f, pct);
+        // Per-engine extra: VOSIM pulse count / Scanned morph rate / Walsh fold.
+        pf (id + "Engine", label + " Engine Param",
+            juce::NormalisableRange<float> (0.0f, 1.0f), 0.40f, pct);
+        params.push_back (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { id + "Excite", 1 }, label + " Excite Shape",
+            juce::StringArray { "Pluck", "Impulse", "Noise", "Triangle" }, 0));
         params.push_back (std::make_unique<juce::AudioParameterInt> (
             juce::ParameterID { id + "Octave", 1 }, label + " Octave", -3, 3, 0));
         params.push_back (std::make_unique<juce::AudioParameterInt> (
@@ -312,7 +318,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::ParameterID { "masterLimiter", 1 }, "Master Limiter", true));
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "osQuality", 1 }, "Oversampling",
-        juce::StringArray { "1x", "2x", "4x" }, 2));   // default 4x
+        juce::StringArray { "1x", "2x", "4x", "8x" }, 2));   // default 4x
 
     // --- v6.0: Voice allocation ---
     params.push_back (std::make_unique<juce::AudioParameterInt> (
@@ -542,6 +548,10 @@ void PDHybridAudioProcessor::pushParams()
     p.oscACombine = apvts.getRawParameterValue ("oscACombine")->load() > 0.5f;
     p.oscBWave2   = static_cast<int> (apvts.getRawParameterValue ("oscBWave2")->load());
     p.oscBCombine = apvts.getRawParameterValue ("oscBCombine")->load() > 0.5f;
+    p.oscAEngine  = apvts.getRawParameterValue ("oscAEngine")->load();
+    p.oscBEngine  = apvts.getRawParameterValue ("oscBEngine")->load();
+    p.oscAExcite  = static_cast<int> (apvts.getRawParameterValue ("oscAExcite")->load());
+    p.oscBExcite  = static_cast<int> (apvts.getRawParameterValue ("oscBExcite")->load());
     p.noiseLevel  = apvts.getRawParameterValue ("noiseLevel")->load();
     p.ringModLevel = apvts.getRawParameterValue ("ringMod")->load();
     p.oscCrossMod    = static_cast<int> (apvts.getRawParameterValue ("oscCrossMod")->load());
@@ -592,8 +602,8 @@ void PDHybridAudioProcessor::pushParams()
     p.release   = apvts.getRawParameterValue ("release")->load();
     p.gain      = apvts.getRawParameterValue ("gain")->load();
     const int osIdx = static_cast<int> (apvts.getRawParameterValue ("osQuality")->load());
-    const int osFactor[] = { 1, 2, 4 };
-    p.oscOversampling = osFactor[juce::jlimit (0, 2, osIdx)];
+    const int osFactor[] = { 1, 2, 4, 8 };
+    p.oscOversampling = osFactor[juce::jlimit (0, 3, osIdx)];
     p.pan       = apvts.getRawParameterValue ("pan")->load();
     p.panSpread = apvts.getRawParameterValue ("panSpread")->load();
     p.drift     = apvts.getRawParameterValue ("drift")->load();

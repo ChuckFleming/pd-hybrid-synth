@@ -62,6 +62,13 @@ public:
     void setPulseWidth (double pulseWidth01) noexcept
     { analog_.setPulseWidth (pulseWidth01); vps_.setHorizontal (pulseWidth01); scanned_.setDamping (pulseWidth01); vosim_.setDecay (pulseWidth01); walsh_.setOddness (pulseWidth01); }
 
+    // A third per-engine "extra" control, meaning VOSIM pulse count / Scanned
+    // morph rate / Walsh fold depending on the active engine (unused by others).
+    void setEngineParam (double value01) noexcept
+    { vosim_.setPulseCount (1 + (int) (value01 * 7.0 + 0.5)); scanned_.setMorphRate (value01); walsh_.setFold (value01); }
+    // Scanned excitation shape (0=pluck 1=impulse 2=noise 3=triangle).
+    void setExcite (int shape) noexcept { scanned_.setExciteShape (shape); }
+
     // Octave (whole octaves), semitone offset, and fine detune in cents.
     void setTuning        (int octave, int semitone, double fineCents) noexcept;
     // The note pitch; the unit's own tuning is applied on top of this.

@@ -78,14 +78,21 @@ void WalshOscillator::setFrequency (double frequencyHz) noexcept
 void WalshOscillator::setTilt (double amount01) noexcept
 {
     tilt_ = std::clamp (amount01, 0.0, 1.0);
-    if (tilt_ != tiltBuilt_ || oddness_ != oddnessBuilt_)
+    if (tilt_ != tiltBuilt_ || oddness_ != oddnessBuilt_ || fold_ != foldBuilt_)
         rebuildTable();
 }
 
 void WalshOscillator::setOddness (double pulseWidth01) noexcept
 {
     oddness_ = std::clamp (pulseWidth01, 0.0, 1.0);
-    if (tilt_ != tiltBuilt_ || oddness_ != oddnessBuilt_)
+    if (tilt_ != tiltBuilt_ || oddness_ != oddnessBuilt_ || fold_ != foldBuilt_)
+        rebuildTable();
+}
+
+void WalshOscillator::setFold (double fold01) noexcept
+{
+    fold_ = std::clamp (fold01, 0.0, 1.0);
+    if (tilt_ != tiltBuilt_ || oddness_ != oddnessBuilt_ || fold_ != foldBuilt_)
         rebuildTable();
 }
 
@@ -128,17 +135,32 @@ void WalshOscillator::rebuildTable() noexcept
             table_[n] += coef * r[n];
     }
 
-    // Normalise to a fixed headroom (the Walsh terms are already zero-mean).
+    // Normalise to unit-ish level before folding.
     double peak = 0.0;
     for (int n = 0; n < kTableLen; ++n) peak = std::max (peak, std::abs (table_[n]));
     if (peak > 1.0e-9)
     {
-        const double g = 0.9 / peak;
+        const double g = 1.0 / peak;
         for (int n = 0; n < kTableLen; ++n) table_[n] *= g;
+    }
+
+    // Wavefold: drive the table past +/-1 and reflect it back. Identity at
+    // fold_ = 0 (the table is within +/-1), progressively gritty as it rises.
+    const double drive = 1.0 + fold_ * 4.0;
+    for (int n = 0; n < kTableLen; ++n)
+    {
+        double x = table_[n] * drive;
+        for (int it = 0; it < 4 && (x > 1.0 || x < -1.0); ++it)
+        {
+            if (x >  1.0) x =  2.0 - x;
+            if (x < -1.0) x = -2.0 - x;
+        }
+        table_[n] = std::clamp (x, -1.0, 1.0) * 0.9;
     }
 
     tiltBuilt_ = tilt_;
     oddnessBuilt_ = oddness_;
+    foldBuilt_ = fold_;
 }
 
 double WalshOscillator::coreSample() noexcept

@@ -43,6 +43,12 @@ void VosimOscillator::setDecay (double pulseWidth01) noexcept
     recomputePending_ = true;
 }
 
+void VosimOscillator::setPulseCount (int pulses) noexcept
+{
+    targetPulses_ = std::clamp (pulses, 1, kMaxPulses);
+    recomputePending_ = true;
+}
+
 void VosimOscillator::setOversampling (int factor) noexcept
 {
     if (factor != 1 && factor != 2 && factor != 4 && factor != 8)
@@ -73,7 +79,7 @@ void VosimOscillator::recompute() noexcept
     if (pulseDur_ > periodSec_) pulseDur_ = periodSec_;
 
     const int maxFit = std::max (1, (int) std::floor (periodSec_ / pulseDur_));
-    numPulses_ = std::clamp (kTargetPulses, 1, std::min (maxFit, kMaxPulses));
+    numPulses_ = std::clamp (targetPulses_, 1, std::min (maxFit, kMaxPulses));
 
     double a = 1.0;
     for (int i = 0; i < numPulses_; ++i) { ampTable_[i] = a; a *= decay_; }

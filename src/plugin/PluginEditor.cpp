@@ -38,21 +38,27 @@ const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double S
 // Per-type role of the two shared timbre knobs (the "amount" and "pulse width"
 // knobs). Each engine reads them differently, and some ignore one or both, so
 // the editor relabels them and greys out the ones an engine doesn't use.
-struct OscKnobRoles { juce::String amountLabel; bool amountActive; juce::String pwLabel; bool pwActive; };
+struct OscKnobRoles
+{
+    juce::String amountLabel; bool amountActive;
+    juce::String pwLabel;     bool pwActive;
+    juce::String engineLabel; bool engineActive;   // the third "engine extra" knob
+    bool         exciteActive;                      // the Scanned excite-shape combo
+};
 OscKnobRoles oscKnobRoles (int type)
 {
     switch (static_cast<pdhybrid::OscType> (type))
     {
-        case pdhybrid::OscType::PhaseDistortion: return { "PD Amt", true,  "Width", false };  // DCW; PD ignores pulse width
-        case pdhybrid::OscType::Saw:             return { "PD Amt", false, "Width", false };
-        case pdhybrid::OscType::Square:          return { "PD Amt", false, "Width", true  };
-        case pdhybrid::OscType::Triangle:        return { "PD Amt", false, "Width", false };
-        case pdhybrid::OscType::Pulse:           return { "PD Amt", false, "Width", true  };
-        case pdhybrid::OscType::VPS:             return { "Vert",   true,  "Horiz", true  };  // 2D inflection point
-        case pdhybrid::OscType::Scanned:         return { "Stiff",  true,  "Damp",  true  };  // string stiffness / damping
-        case pdhybrid::OscType::Vosim:           return { "Formant", true, "Decay", true  };  // formant / burst decay
-        case pdhybrid::OscType::Walsh:           return { "Tilt",   true,  "Odd",   true  };  // sequency tilt / even-odd balance
-        default:                                 return { "PD Amt", true,  "Width", true  };
+        case pdhybrid::OscType::PhaseDistortion: return { "PD Amt", true,  "Width", false, "Engine",  false, false };  // DCW; PD ignores pulse width
+        case pdhybrid::OscType::Saw:             return { "PD Amt", false, "Width", false, "Engine",  false, false };
+        case pdhybrid::OscType::Square:          return { "PD Amt", false, "Width", true,  "Engine",  false, false };
+        case pdhybrid::OscType::Triangle:        return { "PD Amt", false, "Width", false, "Engine",  false, false };
+        case pdhybrid::OscType::Pulse:           return { "PD Amt", false, "Width", true,  "Engine",  false, false };
+        case pdhybrid::OscType::VPS:             return { "Vert",   true,  "Horiz", true,  "Engine",  false, false };  // 2D inflection point
+        case pdhybrid::OscType::Scanned:         return { "Stiff",  true,  "Damp",  true,  "Morph",   true,  true  };  // + excite shape
+        case pdhybrid::OscType::Vosim:           return { "Formant", true, "Decay", true,  "Pulses",  true,  false };  // engine = pulse count
+        case pdhybrid::OscType::Walsh:           return { "Tilt",   true,  "Odd",   true,  "Fold",    true,  false };  // engine = wavefold
+        default:                                 return { "PD Amt", true,  "Width", true,  "Engine",  true,  false };
     }
 }
 // Must match the "modXSource" choice parameter exactly: ComboBoxParameterAttachment
@@ -387,8 +393,10 @@ void PDHybridEditor::buildSections()
     oscA.title  = "Osc A";
     oscA.cols   = 4;
     oscA.combos = { &addCombo ("oscAType", kOscTypeNames), &addCombo ("oscAWave", kPdWaveNames),
-                    &addCombo ("oscAWave2", kPdWaveNames), &addCombo ("oscACombine", { "Combine Off", "Combine On" }) };
+                    &addCombo ("oscAWave2", kPdWaveNames), &addCombo ("oscACombine", { "Combine Off", "Combine On" }),
+                    &addCombo ("oscAExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
     oscA.knobs  = { &addKnob ("oscAAmount", "PD Amt"), &addKnob ("oscAPulseWidth", "Width"),
+                    &addKnob ("oscAEngine", "Engine"),
                     &addKnob ("oscAOctave", "Oct", 0), &addKnob ("oscASemi", "Semi", 0),
                     &addKnob ("oscAFine", "Fine"), &addKnob ("oscAEqLow", "EQ Lo"),
                     &addKnob ("oscAEqMid", "EQ Mid"), &addKnob ("oscAEqHigh", "EQ Hi") };
@@ -397,8 +405,10 @@ void PDHybridEditor::buildSections()
     oscB.title  = "Osc B";
     oscB.cols   = 4;
     oscB.combos = { &addCombo ("oscBType", kOscTypeNames), &addCombo ("oscBWave", kPdWaveNames),
-                    &addCombo ("oscBWave2", kPdWaveNames), &addCombo ("oscBCombine", { "Combine Off", "Combine On" }) };
+                    &addCombo ("oscBWave2", kPdWaveNames), &addCombo ("oscBCombine", { "Combine Off", "Combine On" }),
+                    &addCombo ("oscBExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
     oscB.knobs  = { &addKnob ("oscBAmount", "PD Amt"), &addKnob ("oscBPulseWidth", "Width"),
+                    &addKnob ("oscBEngine", "Engine"),
                     &addKnob ("oscBOctave", "Oct", 0), &addKnob ("oscBSemi", "Semi", 0),
                     &addKnob ("oscBFine", "Fine"), &addKnob ("oscBEqLow", "EQ Lo"),
                     &addKnob ("oscBEqMid", "EQ Mid"), &addKnob ("oscBEqHigh", "EQ Hi") };
@@ -622,7 +632,7 @@ void PDHybridEditor::buildSections()
     masterSec.title  = "Master";
     masterSec.cols   = 3;
     masterSec.combos = { &addCombo ("masterLimiter", { "Limiter Off", "Limiter On" }),
-                         &addCombo ("osQuality", { "OS 1x", "OS 2x", "OS 4x" }) };
+                         &addCombo ("osQuality", { "OS 1x", "OS 2x", "OS 4x", "OS 8x" }) };
     masterSec.knobs  = { &addKnob ("masterLevel", "Level", 1) };
 }
 
@@ -818,14 +828,16 @@ void PDHybridEditor::updateOscControls()
     auto apply = [&] (Section& sec, const char* typeParam)
     {
         const int type = juce::roundToInt (proc.apvts.getRawParameterValue (typeParam)->load());
-        // PD Wave / PD Wave 2 / Combine (section combos 1..3) feed only the PD
-        // engine, so dim them for any other type.
-        for (int i = 1; i <= 3; ++i) comboActive (sec.combos[(size_t) i], type == 0);
-        // The amount (knob 0) and pulse-width (knob 1) knobs are relabelled to
-        // the active engine's role and greyed when it doesn't use them.
         const auto roles = oscKnobRoles (type);
+        // PD Wave / PD Wave 2 / Combine (section combos 1..3) feed only the PD
+        // engine; the Excite combo (4) only the Scanned engine.
+        for (int i = 1; i <= 3; ++i) comboActive (sec.combos[(size_t) i], type == 0);
+        comboActive (sec.combos[4], roles.exciteActive);
+        // The three shared timbre knobs relabel to the active engine's role and
+        // grey out when it doesn't use them.
         knobRole (sec.knobs[0], roles.amountLabel, roles.amountActive);
         knobRole (sec.knobs[1], roles.pwLabel,     roles.pwActive);
+        knobRole (sec.knobs[2], roles.engineLabel, roles.engineActive);
     };
     apply (oscA, "oscAType");
     apply (oscB, "oscBType");

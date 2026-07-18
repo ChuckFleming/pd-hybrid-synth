@@ -154,6 +154,28 @@ TEST_CASE ("VOSIM phase-mod input is a no-op at zero offset", "[oscillator][vosi
         REQUIRE (a[i] == b[i]);
 }
 
+TEST_CASE ("VOSIM pulse count changes the tone", "[oscillator][vosim]")
+{
+    const double sr = 48000.0, freq = 150.0;
+    const int    n  = 16384;
+    auto renderN = [&] (int pulses)
+    {
+        VosimOscillator osc;
+        osc.setSampleRate (sr); osc.setFrequency (freq);
+        osc.setFormant (0.5); osc.setDecay (0.85); osc.setPulseCount (pulses);
+        osc.reset();
+        std::vector<float> b (n);
+        osc.processBlock (b.data(), n);
+        return b;
+    };
+    auto few  = renderN (1);
+    auto many = renderN (6);
+    REQUIRE_FALSE (hasBadValues (many));
+    double diff = 0.0;
+    for (int i = 0; i < n; ++i) diff += std::abs (few[i] - many[i]);
+    REQUIRE (diff > 1.0);   // pulse count audibly reshapes the burst
+}
+
 TEST_CASE ("VOSIM oscillator is block-size invariant", "[oscillator][vosim][invariance]")
 {
     const double sr = 48000.0, freq = 220.0;

@@ -34,6 +34,7 @@ public:
     void  setFrequency   (double frequencyHz) noexcept;
     void  setTilt        (double amount01) noexcept;      // spectral slope
     void  setOddness     (double pulseWidth01) noexcept;  // even/odd balance
+    void  setFold        (double fold01) noexcept;        // wavefold the summed table
     void  setPhaseMod    (double offset) noexcept { phaseMod_ = offset; }
     void  setOversampling (int factor) noexcept;
     void  reset          () noexcept;
@@ -56,8 +57,10 @@ private:
 
     double tilt_    = 0.3;
     double oddness_ = 0.5;
+    double fold_    = 0.0;
     double tiltBuilt_    = -1.0;   // last values the table was built for (rebuild guard)
     double oddnessBuilt_ = -1.0;
+    double foldBuilt_    = -1.0;
 
     double table_[kTableLen] = { 0.0 };
     bool   wrapped_ = false;

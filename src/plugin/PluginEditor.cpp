@@ -14,6 +14,7 @@ constexpr int kGap      = 8;    // gap between cards
 constexpr int kMargin   = 16;   // panel outer margin
 constexpr int kMatrixRowH = 26;
 constexpr int kTopBar   = 48;   // title bar above the tabs
+constexpr int kScopeH   = 84;   // master-output scope strip below the title bar
 
 // Palette — "CZ Terminal": black with green phosphor, outlined boxes.
 const juce::Colour kBg       (0xff000000);
@@ -758,10 +759,11 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     const int matrixH = kHeaderH + (kNumModRows / 2) * kMatrixRowH + kCardPad * 2;
 
     std::vector<Page> layout {
-        { "Oscillators", { &oscA, &oscB, &mixer, &glideSec, &unison, &stereo, &voiceSec, &bassSec }, nullptr, {}, 0 },
+        { "Oscillators", { &oscA, &oscB, &mixer }, nullptr, {}, 0 },
+        { "Voice",       { &voiceSec, &glideSec, &unison, &stereo, &bassSec, &arpSec }, nullptr, {}, 0 },
         { "Filters",     { &filter, &filter2, &filterEnv, &filter2Env },        nullptr, {}, 0 },
         { "Envelopes",   { &envelope, &modEnv, &multiEnvSec, &pitchEnvSec, &dcwEnvSec }, nullptr, {}, 0 },
-        { "Modulation",  { &lfo, &lfo2, &vibratoSec, &arpSec }, &matrixHolder,
+        { "Modulation",  { &lfo, &lfo2, &vibratoSec }, &matrixHolder,
           "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
         { "FX",          { &pluckSec, &drive, &chorusSec, &comp, &delaySec, &reverbSec, &globalEqSec, &masterSec }, nullptr, {}, 0 },
     };
@@ -784,6 +786,8 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         pages.push_back (std::move (panel));
         scrollers.push_back (std::move (scroller));
     }
+
+    addAndMakeVisible (scope_);   // under the CRT overlay so the scanlines fall over it
 
     // Added last so it sits on top of the tabs; it never intercepts the mouse.
     addAndMakeVisible (crtOverlay);
@@ -990,6 +994,8 @@ void PDHybridEditor::resized()
     x -= 58;  abButton.setBounds   (x, y, 52, 26);
     x -= 190; presetButton.setBounds (x, y, 184, 26);
 
+    auto scopeArea = r.removeFromTop (kScopeH);
+    scope_.setBounds (scopeArea.reduced (kMargin, 6));
     tabs.setBounds (r);
     crtOverlay.setBounds (getLocalBounds());
 }

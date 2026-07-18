@@ -57,7 +57,16 @@ public:
     // All-notes-off "panic", triggered from the editor (thread-safe).
     void triggerPanic() noexcept { panic_.store (true); }
 
+    // Lock-free scope tap: the audio thread pushes the (mono) output into a small
+    // ring; the editor copies the most recent `num` samples for its display.
+    static constexpr int kScopeSize = 2048;   // power of two
+    void readScope (float* dest, int num) const noexcept;
+
 private:
+    void pushScope (const float* left, const float* right, int n) noexcept;
+    float scopeBuf_[kScopeSize] = { 0.0f };
+    std::atomic<int> scopeWrite_ { 0 };
+
     std::atomic<bool> panic_ { false };
     PresetManager presets { apvts };   // constructed after apvts (declaration order)
 

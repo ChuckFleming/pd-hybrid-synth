@@ -1049,7 +1049,28 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                     buffer.getWritePointer (1), numSamples);
         master.processStereo (buffer.getWritePointer (0),
                               buffer.getWritePointer (1), numSamples);
+        pushScope (buffer.getReadPointer (0), buffer.getReadPointer (1), numSamples);
     }
+}
+
+void PDHybridAudioProcessor::pushScope (const float* left, const float* right, int n) noexcept
+{
+    int w = scopeWrite_.load (std::memory_order_relaxed);
+    for (int i = 0; i < n; ++i)
+    {
+        scopeBuf_[w & (kScopeSize - 1)] = 0.5f * (left[i] + right[i]);
+        ++w;
+    }
+    scopeWrite_.store (w, std::memory_order_release);
+}
+
+void PDHybridAudioProcessor::readScope (float* dest, int num) const noexcept
+{
+    if (num > kScopeSize) num = kScopeSize;
+    const int w = scopeWrite_.load (std::memory_order_acquire);
+    // Copy the `num` most recent samples in chronological order.
+    for (int i = 0; i < num; ++i)
+        dest[i] = scopeBuf_[(w - num + i) & (kScopeSize - 1)];
 }
 
 juce::AudioProcessorEditor* PDHybridAudioProcessor::createEditor()

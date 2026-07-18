@@ -5,6 +5,7 @@
 #include "PluginProcessor.h"
 #include "SynthLookAndFeel.h"
 #include "CrtOverlay.h"
+#include "ScopeDisplay.h"
 #include <functional>
 #include <memory>
 #include <vector>
@@ -137,13 +138,15 @@ private:
     std::vector<std::unique_ptr<SectionPanel>> pages;
     std::vector<std::unique_ptr<ScrollPanel>>  scrollers;
 
+    ScopeDisplay scope_ { [this] (float* d, int n) { proc.readScope (d, n); } };  // master output scope
     CrtOverlay crtOverlay;   // click-through CRT effect layered over everything
 
     // Named sections (built once, then handed to pages).
-    Section oscA, oscB, mixer, unison, glideSec, stereo, voiceSec, bassSec;  // Oscillators
+    Section oscA, oscB, mixer;                                   // Oscillators
+    Section voiceSec, glideSec, unison, stereo, bassSec, arpSec; // Voice / performance
     Section filter, filter2, filterEnv, filter2Env;                      // Filters
     Section envelope, modEnv, multiEnvSec, pitchEnvSec, dcwEnvSec;       // Envelopes
-    Section lfo, lfo2, vibratoSec, arpSec;                               // Modulation
+    Section lfo, lfo2, vibratoSec;                                       // Modulation
     Section pluckSec, drive, chorusSec, comp, delaySec, reverbSec, globalEqSec, masterSec;  // FX
 
     // Modulation matrix.

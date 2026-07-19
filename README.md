@@ -39,14 +39,22 @@ ctest --test-dir build -C Release --output-on-failure
 The VST3 and Standalone builds land under
 `build/PDHybridSynth_artefacts/Release/`.
 
-## Roadmap (vertical slice first)
+## Status & roadmap
 
-1. [x] Shared test harness (offline render + FFT/spectral toolkit + invariance)
-2. [x] Phase-distortion oscillator + tests
-3. [ ] Analog-modeled ladder filter (ZDF/TPT) + frequency-response tests
-4. [ ] Overdrive amp (oversampled waveshaper) + transfer-curve/aliasing tests
-5. [ ] Multi-stage envelope engine (ADSR as a 4-stage preset) + timing tests
-6. [ ] Polyphony / MIDI / MPE voice allocation + tests
-7. [ ] Modulation matrix
-8. [ ] Non-traditional filters (phase-distortion resonator, morphing SVF, ...)
-9. [ ] Hand-built GUI
+The synth is feature-complete: phase-distortion + analog + several non-traditional
+oscillator engines, analog/non-traditional filters, oversampled overdrive amp,
+ADSR + CZ-style multi-stage envelopes, full polyphony/MIDI/voice modes, a
+modulation matrix, chorus/reverb/arpeggiator, and a hand-built GUI with a CRT
+output scope. See [`FEATURE_ROADMAP.md`](FEATURE_ROADMAP.md) for the detailed
+feature list and history.
+
+## License
+
+Released under the **GNU General Public License v3.0** — see [`LICENSE`](LICENSE).
+
+This project builds on [JUCE](https://juce.com) and Steinberg's VST3 SDK, both of
+which are available under the GPLv3 for free/open-source use. Because of that,
+GPLv3 is the license under which this plugin is distributed: you are free to use,
+study, modify, and redistribute it, provided derivative works remain GPLv3.
+
+VST® is a trademark of Steinberg Media Technologies GmbH.

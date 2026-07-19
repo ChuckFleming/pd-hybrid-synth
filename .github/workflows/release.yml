@@ -1,0 +1,116 @@
+name: Release
+
+# Build the VST3 + Standalone on all three desktop platforms and attach the
+# packaged binaries to a GitHub Release whenever a version tag (e.g. v1.0.0) is
+# pushed. Also runnable manually (workflow_dispatch) to smoke-test the build
+# without publishing a release.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+          - os: macos-latest
+            name: macOS
+          - os: ubuntu-latest
+            name: Linux
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev libjack-jackd2-dev libx11-dev libxext-dev \
+            libxrandr-dev libxinerama-dev libxcursor-dev libfreetype6-dev \
+            libglu1-mesa-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev \
+            pkg-config ninja-build
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      # ---- Packaging: artefact layout differs between the multi-config
+      # Visual Studio generator (Windows, adds a Release/ subfolder) and the
+      # single-config Makefile generator (macOS/Linux, no config subfolder). ----
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stage = "pd-hybrid-synth-windows"
+          $art   = "build/PDHybridSynth_artefacts/Release"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item -Recurse "$art/VST3/PD Hybrid Synth.vst3" $stage
+          Copy-Item "$art/Standalone/PD Hybrid Synth.exe" $stage
+          Copy-Item LICENSE, README.md $stage
+          Compress-Archive -Path "$stage/*" -DestinationPath "pd-hybrid-synth-windows.zip" -Force
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          stage="pd-hybrid-synth-macos"
+          art="build/PDHybridSynth_artefacts"
+          mkdir -p "$stage"
+          cp -R "$art/VST3/PD Hybrid Synth.vst3" "$stage/"
+          cp -R "$art/Standalone/PD Hybrid Synth.app" "$stage/"
+          cp LICENSE README.md "$stage/"
+          ( cd "$stage" && zip -qr "../pd-hybrid-synth-macos.zip" . )
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          stage="pd-hybrid-synth-linux"
+          art="build/PDHybridSynth_artefacts"
+          mkdir -p "$stage"
+          cp -R "$art/VST3/PD Hybrid Synth.vst3" "$stage/"
+          cp "$art/Standalone/PD Hybrid Synth" "$stage/"
+          cp LICENSE README.md "$stage/"
+          ( cd "$stage" && zip -qr "../pd-hybrid-synth-linux.zip" . )
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pd-hybrid-synth-${{ matrix.name }}
+          path: pd-hybrid-synth-*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    # Only publish a Release for real tag pushes, not manual test runs.
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all packaged binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/*.zip \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes

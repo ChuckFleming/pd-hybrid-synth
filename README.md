@@ -1,5 +1,8 @@
 # PD Hybrid Synth
 
+[![CI](https://github.com/ChuckFleming/pd-hybrid-synth/actions/workflows/ci.yml/badge.svg)](https://github.com/ChuckFleming/pd-hybrid-synth/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
 A hybrid VST synthesizer combining Casio CZ-style **phase-distortion** synthesis,
 traditional analog-modeled subtractive oscillators, analog + non-traditional
 filters, a musical overdrive amp, and both ADSR and CZ-style multi-stage
@@ -16,6 +19,14 @@ src/plugin/   JUCE AudioProcessor wrapper (VST3 + Standalone)
 tests/harness Shared harness: FFT, spectral toolkit, signal stats, invariance
 tests/dsp/    Per-module test suites
 ```
+
+## Download
+
+Prebuilt **VST3 + Standalone** binaries for Windows, macOS, and Linux are
+attached to each [GitHub Release](https://github.com/ChuckFleming/pd-hybrid-synth/releases).
+Unzip and drop the `.vst3` into your host's VST3 folder, or run the standalone
+app directly. (macOS builds are unsigned — right-click → Open the first time to
+get past Gatekeeper.) Prefer to build it yourself? See below.
 
 ## Prerequisites (Windows)
 

@@ -58,6 +58,9 @@ add_library(pdhybrid_dsp STATIC
 )
 target_include_directories(pdhybrid_dsp PUBLIC src)
 target_compile_features(pdhybrid_dsp PUBLIC cxx_std_17)
+# This static lib is linked into the plugin's shared object (VST3 .so on Linux),
+# so its objects must be position-independent.
+set_target_properties(pdhybrid_dsp PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---------------------------------------------------------------------------
 # Plugin: JUCE wrapper around the DSP core. Ships VST3 + Standalone.

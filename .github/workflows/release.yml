@@ -49,9 +49,9 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
-      # ---- Packaging: artefact layout differs between the multi-config
-      # Visual Studio generator (Windows, adds a Release/ subfolder) and the
-      # single-config Makefile generator (macOS/Linux, no config subfolder). ----
+      # ---- Packaging: JUCE emits artefacts under a Release/ config subfolder on
+      # every generator. Steps differ only by standalone form (.exe / .app / bare
+      # executable) and per-OS zip tooling. ----
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -68,7 +68,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           stage="pd-hybrid-synth-macos"
-          art="build/PDHybridSynth_artefacts"
+          art="build/PDHybridSynth_artefacts/Release"
           mkdir -p "$stage"
           cp -R "$art/VST3/PD Hybrid Synth.vst3" "$stage/"
           cp -R "$art/Standalone/PD Hybrid Synth.app" "$stage/"
@@ -79,7 +79,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           stage="pd-hybrid-synth-linux"
-          art="build/PDHybridSynth_artefacts"
+          art="build/PDHybridSynth_artefacts/Release"
           mkdir -p "$stage"
           cp -R "$art/VST3/PD Hybrid Synth.vst3" "$stage/"
           cp "$art/Standalone/PD Hybrid Synth" "$stage/"

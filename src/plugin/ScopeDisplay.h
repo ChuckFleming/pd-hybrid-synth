@@ -1,14 +1,17 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_dsp/juce_dsp.h>
+#include <array>
 #include <functional>
 #include <cmath>
 
 /**
-    A small green-phosphor oscilloscope for the master output. It pulls the most
-    recent samples from a lock-free tap (via the supplied reader), zero-crossing
-    triggers them so the trace stays put, and draws it as a glowing waveform. It
-    lives under the CRT overlay, so the scanlines fall over it for free.
+    A small green-phosphor oscilloscope + spectrum analyser for the master
+    output. It pulls the most recent samples from a lock-free tap (via the
+    supplied reader), zero-crossing triggers them so the trace stays put, and
+    draws the waveform over a log-frequency magnitude spectrum. It lives under
+    the CRT overlay, so the scanlines fall over it for free.
 */
 class ScopeDisplay : public juce::Component,
                      private juce::Timer
@@ -44,6 +47,45 @@ public:
         float buf[kBufN];
         read_ (buf, kBufN);
 
+        // --- spectrum, drawn behind the trace -----------------------------
+        {
+            std::array<float, 2 * kFftN> fft {};
+            for (int i = 0; i < kFftN; ++i)
+            {
+                const float s = std::isfinite (buf[i]) ? buf[i] : 0.0f;
+                // Hann window, so the bins are not smeared by the block edges.
+                fft[(size_t) i] = s * 0.5f * (1.0f - std::cos (juce::MathConstants<float>::twoPi
+                                                               * (float) i / (float) (kFftN - 1)));
+            }
+            fft_.performFrequencyOnlyForwardTransform (fft.data());
+
+            const int    bins   = kFftN / 2;
+            const float  loBin  = 2.0f;                       // skip DC / near-DC
+            const float  ratio  = std::log ((float) bins / loBin);
+            const int    cols   = juce::jmax (1, (int) inner.getWidth() / 4);
+
+            g.setColour (trace.withAlpha (0.20f));
+            for (int c = 0; c < cols; ++c)
+            {
+                // Log frequency axis: each column covers a constant ratio of bins.
+                const float f0 = loBin * std::exp (ratio * (float) c       / (float) cols);
+                const float f1 = loBin * std::exp (ratio * (float) (c + 1) / (float) cols);
+                float peak = 0.0f;
+                for (int b = (int) f0; b <= juce::jmin (bins - 1, (int) f1); ++b)
+                    peak = juce::jmax (peak, fft[(size_t) b]);
+
+                const float dB = juce::Decibels::gainToDecibels (peak / (float) bins + 1.0e-9f);
+                const float mag = juce::jlimit (0.0f, 1.0f, (dB + 84.0f) / 84.0f);
+                // Slew the columns so the display settles instead of flickering.
+                spec_[(size_t) juce::jmin (c, kMaxCols - 1)] =
+                    juce::jmax (mag, spec_[(size_t) juce::jmin (c, kMaxCols - 1)] * 0.82f);
+
+                const float h = spec_[(size_t) juce::jmin (c, kMaxCols - 1)] * inner.getHeight();
+                const float x = inner.getX() + (float) c / (float) cols * inner.getWidth();
+                g.fillRect (x, inner.getBottom() - h, inner.getWidth() / (float) cols - 1.0f, h);
+            }
+        }
+
         // Rising zero-crossing trigger in the first half so the trace is stable.
         int trig = 0;
         for (int i = 1; i < kBufN - kDrawN; ++i)
@@ -75,6 +117,12 @@ private:
     void timerCallback() override { repaint(); }
 
     std::function<void (float*, int)> read_;
-    static constexpr int kBufN  = 2048;   // samples pulled per frame
-    static constexpr int kDrawN = 1024;   // samples actually drawn (after trigger)
+    static constexpr int kBufN    = 2048;   // samples pulled per frame
+    static constexpr int kDrawN   = 1024;   // samples actually drawn (after trigger)
+    static constexpr int kFftOrder = 10;
+    static constexpr int kFftN     = 1 << kFftOrder;
+    static constexpr int kMaxCols  = 512;
+
+    juce::dsp::FFT fft_ { kFftOrder };
+    std::array<float, kMaxCols> spec_ {};   // decayed column peaks
 };

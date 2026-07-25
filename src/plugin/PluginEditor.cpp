@@ -15,7 +15,8 @@ constexpr int kMargin   = 16;   // panel outer margin
 constexpr int kMatrixRowH = 26;
 constexpr int kTopBar   = 48;   // title bar above the tabs
 constexpr int kGridCols = 6;    // every tab page uses this fixed column count
-constexpr int kStripH    = 116;  // fixed performance strip between title bar and tabs
+constexpr int kStripH    = 142;  // fixed performance strip between title bar and tabs
+constexpr int kStripCurveH = 38; // amp-envelope curve above its knobs in the strip
 constexpr int kStripCapH = 13;   // caption band along the strip's top edge
 
 // Palette — "CZ Terminal": black with green phosphor, outlined boxes.
@@ -300,7 +301,7 @@ void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
 //  StageEnvelopePanel — the three CZ 8-stage envelopes as one draggable curve
 //==============================================================================
 namespace {
-constexpr int kEnvSelH   = 22;    // stage-selector row
+constexpr int kEnvSelH   = 34;    // stage-selector row (button + destination caption)
 constexpr int kEnvGraphH = 132;   // curve area
 constexpr float kNodeR   = 4.5f;  // breakpoint handle radius
 }
@@ -495,7 +496,7 @@ void PDHybridEditor::StageEnvelopePanel::resized()
 
     auto sel = r.removeFromTop (kEnvSelH);
     for (auto& b : bankButtons)
-        b->setBounds (sel.removeFromLeft (86).reduced (1, 2));
+        b->setBounds (sel.removeFromLeft (96).withTrimmedBottom (12).reduced (1, 2));
 
     r.removeFromTop (kEnvGraphH + kCardPad);
 
@@ -520,6 +521,22 @@ void PDHybridEditor::StageEnvelopePanel::resized()
 void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
 {
     if (banks.empty()) return;
+
+    // Destination caption under each stage button, so the selector doubles as
+    // documentation of what each envelope actually drives.
+    g.setFont (monoFont (8.0f));
+    for (std::size_t i = 0; i < banks.size(); ++i)
+    {
+        auto b = bankButtons[i]->getBounds();
+        g.setColour (static_cast<int> (i) == active ? banks[i].colour : kLabelCol.withAlpha (0.55f));
+        g.drawText (banks[i].dest, b.getX(), b.getBottom(), b.getWidth(), 12,
+                    juce::Justification::centred);
+    }
+    g.setColour (kLabelCol.withAlpha (0.5f));
+    g.drawText ("8 STAGES  -  DRAG A NODE: UP/DOWN = LEVEL, LEFT/RIGHT = RATE",
+                juce::Rectangle<int> (static_cast<int> (banks.size()) * 96 + 12, 0,
+                                      getWidth(), kEnvSelH),
+                juce::Justification::centredLeft);
 
     const auto& bank  = banks[(std::size_t) active];
     const auto  frame = graphArea();
@@ -755,12 +772,17 @@ void PDHybridEditor::buildSections()
 
     // ---------------------------------------------------------------- SHAPE --
     // Signal topology gets its own card instead of hiding in three unrelated ones.
-    routingSec.title  = "Routing";
-    routingSec.cols   = 1;
-    routingSec.span   = 2;
-    routingSec.combos = { &addCombo ("filterRouting", { "Single Filter", "Filters Series", "Filters Parallel" }),
-                          &addCombo ("drivePos", { "Drive Post Filter", "Drive Pre Filter" }),
-                          &addCombo ("fxRouting", { "Delay -> Reverb", "Reverb -> Delay", "Reverb, Dry Delay" }) };
+    routingSec.title   = "Routing";
+    routingSec.cols    = 1;
+    routingSec.span    = 2;
+    routingSec.combos  = { &addCombo ("filterRouting", { "Single Filter", "Filters Series", "Filters Parallel" }),
+                           &addCombo ("drivePos", { "Drive Post Filter", "Drive Pre Filter" }),
+                           &addCombo ("fxRouting", { "Delay -> Reverb", "Reverb -> Delay", "Reverb, Dry Delay" }) };
+    // The diagram redraws whenever one of those three choices changes, which is
+    // the whole point of collecting them here.
+    routingDiagram.attach (proc.apvts);
+    routingSec.custom  = &routingDiagram;
+    routingSec.customH = 78;
 
     pluckSec.title   = "Pluck";
     pluckSec.cols    = 4;
@@ -799,17 +821,24 @@ void PDHybridEditor::buildSections()
                        &addKnob ("filter2Res", "Reso", 2, KnobSize::Large),
                        &addKnob ("filter2Morph", "Morph"), &addKnob ("filter2EnvAmount", "Env Amt") };
 
-    // Each filter envelope sits directly beneath the filter it drives.
-    filterEnv.title = "Filter 1 Env";
-    filterEnv.cols  = 5;
-    filterEnv.span  = 3;
+    // Each filter envelope sits directly beneath the filter it drives, and shows
+    // its shape rather than only four numbers.
+    filt1Curve.attach (proc.apvts, "filterEnvA", "filterEnvD", "filterEnvS", "filterEnvR");
+    filterEnv.title   = "Filter 1 Env";
+    filterEnv.cols    = 5;
+    filterEnv.span    = 3;
+    filterEnv.custom  = &filt1Curve;
+    filterEnv.customH = 62;
     filterEnv.knobs = { &addKnob ("filterEnvA", "Atk"), &addKnob ("filterEnvD", "Dec"),
                         &addKnob ("filterEnvS", "Sus"), &addKnob ("filterEnvR", "Rel"),
                         &addKnob ("filterVelSens", "Vel") };
 
-    filter2Env.title = "Filter 2 Env";
-    filter2Env.cols  = 5;
-    filter2Env.span  = 3;
+    filt2Curve.attach (proc.apvts, "filter2EnvA", "filter2EnvD", "filter2EnvS", "filter2EnvR");
+    filter2Env.title   = "Filter 2 Env";
+    filter2Env.cols    = 5;
+    filter2Env.span    = 3;
+    filter2Env.custom  = &filt2Curve;
+    filter2Env.customH = 62;
     filter2Env.knobs = { &addKnob ("filter2EnvA", "Atk"), &addKnob ("filter2EnvD", "Dec"),
                          &addKnob ("filter2EnvS", "Sus"), &addKnob ("filter2EnvR", "Rel") };
 
@@ -821,9 +850,12 @@ void PDHybridEditor::buildSections()
                        &addKnob ("release", "Rel", 2, KnobSize::Small),
                        &addKnob ("ampVelSens", "Vel", 2, KnobSize::Small) };
 
-    modEnv.title = "Mod Env";
-    modEnv.cols  = 4;
-    modEnv.span  = 2;
+    modCurve.attach (proc.apvts, "modEnvA", "modEnvD", "modEnvS", "modEnvR");
+    modEnv.title   = "Mod Env";
+    modEnv.cols    = 4;
+    modEnv.span    = 2;
+    modEnv.custom  = &modCurve;
+    modEnv.customH = 62;
     modEnv.knobs = { &addKnob ("modEnvA", "Atk"), &addKnob ("modEnvD", "Dec"),
                      &addKnob ("modEnvS", "Sus"), &addKnob ("modEnvR", "Rel") };
 
@@ -834,22 +866,28 @@ void PDHybridEditor::buildSections()
     stageEnvSec.custom  = &stageEnv;
     stageEnvSec.customH = StageEnvelopePanel::preferredHeight();
 
-    // --- LFOs ---
-    lfo.title  = "LFO 1";
-    lfo.cols   = 3;
-    lfo.span   = 2;
+    // --- LFOs: each card shows its own waveform, with a playhead at its rate ---
+    lfo1Curve.attach (proc.apvts, "lfoWave", "lfoRate");
+    lfo.title   = "LFO 1";
+    lfo.cols    = 3;
+    lfo.span    = 2;
     lfo.toggles = { &addToggle ("lfoRetrig", "RTRG") };
-    lfo.combos = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames) };
-    lfo.knobs  = { &addKnob ("lfoRate", "Rate"), &addKnob ("lfoFade", "Fade"),
-                   &addKnob ("lfoPhase", "Phase") };
+    lfo.combos  = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames) };
+    lfo.custom  = &lfo1Curve;
+    lfo.customH = 62;
+    lfo.knobs   = { &addKnob ("lfoRate", "Rate"), &addKnob ("lfoFade", "Fade"),
+                    &addKnob ("lfoPhase", "Phase") };
 
-    lfo2.title  = "LFO 2";
-    lfo2.cols   = 3;
-    lfo2.span   = 2;
+    lfo2Curve.attach (proc.apvts, "lfo2Wave", "lfo2Rate");
+    lfo2.title   = "LFO 2";
+    lfo2.cols    = 3;
+    lfo2.span    = 2;
     lfo2.toggles = { &addToggle ("lfo2Retrig", "RTRG") };
-    lfo2.combos = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames) };
-    lfo2.knobs  = { &addKnob ("lfo2Rate", "Rate"), &addKnob ("lfo2Fade", "Fade"),
-                    &addKnob ("lfo2Phase", "Phase") };
+    lfo2.combos  = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames) };
+    lfo2.custom  = &lfo2Curve;
+    lfo2.customH = 62;
+    lfo2.knobs   = { &addKnob ("lfo2Rate", "Rate"), &addKnob ("lfo2Fade", "Fade"),
+                     &addKnob ("lfo2Phase", "Phase") };
 
     // --- Vibrato (Casio CZ-style) ---
     vibratoSec.title   = "Vibrato";
@@ -1002,7 +1040,10 @@ void PDHybridEditor::mouseDown (const juce::MouseEvent& e)
     for (auto& k : knobs)
         if (e.eventComponent == &k->slider)
         {
+            showDestinations = false;
             selectParameter (k->paramId);
+            layoutInspector();
+            inspector.repaint();
             return;
         }
 }
@@ -1088,26 +1129,98 @@ void PDHybridEditor::layoutInspector()
 {
     auto r = inspector.getLocalBounds().reduced (8, 6);
     r.removeFromTop (16);                       // "INSPECTOR" heading
-    r.removeFromTop (kInspRowH + 6);            // selected-parameter name + value
 
-    inspRouteBars.clear();
+    // Direction toggle: routes *into* the selected knob, or routes *out of* the
+    // selected modulator.
+    auto seg = r.removeFromTop (18);
+    inspSourcesBtn.setBounds (seg.removeFromLeft (seg.getWidth() / 2));
+    inspDestsBtn.setBounds (seg);
+    inspSourcesBtn.setToggleState (! showDestinations, juce::dontSendNotification);
+    inspDestsBtn.setToggleState   (showDestinations,   juce::dontSendNotification);
+    r.removeFromTop (4);
+
+    r.removeFromTop (kInspRowH + 6);            // selected name + value
+
+    routeRows_.clear();
     const int dest = destForParam (selectedParam);
-    int shown = 0;
-    for (const auto& rt : routes_)
-        if (dest != 0 && rt.dest == dest && shown < 6)
-        {
-            r.removeFromTop (kInspRowH);        // "source   curve" line
-            inspRouteBars.push_back (r.removeFromTop (5));
-            r.removeFromTop (4);
-            ++shown;
-        }
+    for (std::size_t i = 0; i < routes_.size() && routeRows_.size() < 6; ++i)
+    {
+        const auto& rt = routes_[i];
+        const bool match = showDestinations ? (rt.source == selectedSource)
+                                            : (dest != 0 && rt.dest == dest);
+        if (! match) continue;
+
+        RouteRow row;
+        row.routeIndex = static_cast<int> (i);
+        row.text = r.removeFromTop (kInspRowH);
+        row.bar  = r.removeFromTop (5);
+        r.removeFromTop (4);
+        routeRows_.push_back (row);
+    }
 
     r.removeFromTop (4);
     inspAddRoute.setBounds (r.removeFromTop (20));
-    inspAddRoute.setEnabled (dest != 0 && firstFreeMatrixSlot() != 0);
+    inspAddRoute.setEnabled (! showDestinations && dest != 0 && firstFreeMatrixSlot() != 0);
+    inspAddRoute.setVisible (! showDestinations);
 
-    inspFullMatrix.setBounds (inspector.getLocalBounds()
-                                  .reduced (8, 6).removeFromBottom (20));
+    // --- bottom block: the modulation sources ---------------------------
+    auto bottom = inspector.getLocalBounds().reduced (8, 6);
+    inspFullMatrix.setBounds (bottom.removeFromBottom (20));
+    bottom.removeFromBottom (16);               // MATRIX count line
+
+    static const struct { int src; const char* paramId; bool curve; } kSources[] = {
+        { 2,  "lfoRate",       true  },   // "LFO"
+        { 9,  "lfo2Rate",      true  },   // "LFO 2"
+        { 15, "globalLfoRate", true  },   // "Global LFO"
+        { 16, "macro1",        false },   // "Macro 1"
+        { 17, "macro2",        false },   // "Macro 2"
+    };
+
+    int needed = 0;
+    for (const auto& s : kSources) needed += s.curve ? 30 : kInspRowH;
+    auto zone = bottom.removeFromBottom (juce::jmin (bottom.getHeight(), needed + 16));
+    zone.removeFromTop (16);                    // "SOURCES" heading
+
+    srcRows_.clear();
+    pdui::LfoCurve* curves[3] { &inspLfo1, &inspLfo2, &inspLfoG };
+    int curveIndex = 0;
+
+    for (const auto& s : kSources)
+    {
+        SrcRow row;
+        row.srcIndex = s.src;
+        row.paramId  = s.paramId;
+        row.row      = zone.removeFromTop (s.curve ? 30 : kInspRowH);
+
+        auto meter = row.row;
+        meter.removeFromLeft (58);              // name column
+        if (s.curve && curveIndex < 3)
+        {
+            curves[curveIndex]->setBounds (meter.reduced (2, 3));
+            row.meter = {};                     // the curve component draws it
+            ++curveIndex;
+        }
+        else
+        {
+            meter.removeFromRight (46);         // value text column
+            row.meter = meter.reduced (3, 5);
+        }
+        srcRows_.push_back (row);
+    }
+}
+
+void PDHybridEditor::inspectorClicked (const juce::MouseEvent& e)
+{
+    // Clicking a source row selects that modulator and shows what it reaches.
+    for (const auto& s : srcRows_)
+        if (s.row.contains (e.getPosition()))
+        {
+            selectedSource   = s.srcIndex;
+            showDestinations = true;
+            layoutInspector();
+            inspector.repaint();
+            return;
+        }
 }
 
 void PDHybridEditor::paintInspector (juce::Graphics& g)
@@ -1121,120 +1234,114 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
     g.setFont (monoFont (9.0f));
     g.setColour (kLabelCol);
     g.drawText ("INSPECTOR", r.removeFromTop (16), juce::Justification::centredLeft);
+    r.removeFromTop (18 + 4);                 // the direction toggle (buttons paint themselves)
 
     const int dest = destForParam (selectedParam);
 
-    // --- selected control -----------------------------------------------
-    g.setFont (monoFont (10.5f));
-    g.setColour (dest != 0 ? kModCol : kAccent);
+    // --- what is selected ------------------------------------------------
     auto nameRow = r.removeFromTop (kInspRowH);
-    g.drawText (selectedParam.isEmpty() ? "Click a knob" : selectedName,
-                nameRow, juce::Justification::centredLeft);
-
-    if (auto* p = proc.apvts.getParameter (selectedParam))
+    g.setFont (monoFont (10.5f));
+    if (showDestinations)
     {
-        g.setFont (monoFont (9.0f));
+        g.setColour (kModCol);
+        g.drawText (kSrcNames[selectedSource], nameRow, juce::Justification::centredLeft);
+        g.setFont (monoFont (8.5f));
         g.setColour (kLabelCol);
-        g.drawText (p->getCurrentValueAsText(), nameRow, juce::Justification::centredRight);
+        g.drawText ("modulator", nameRow, juce::Justification::centredRight);
     }
-    r.removeFromTop (6);
-
-    // --- routes that land on it -----------------------------------------
-    int shown = 0;
-    std::size_t barIndex = 0;
-    for (const auto& rt : routes_)
+    else
     {
-        if (dest == 0 || rt.dest != dest || shown >= 6) continue;
+        g.setColour (dest != 0 ? kModCol : kAccent);
+        g.drawText (selectedParam.isEmpty() ? "Click a knob" : selectedName,
+                    nameRow, juce::Justification::centredLeft);
+        if (auto* p = proc.apvts.getParameter (selectedParam))
+        {
+            g.setFont (monoFont (9.0f));
+            g.setColour (kLabelCol);
+            g.drawText (p->getCurrentValueAsText(), nameRow, juce::Justification::centredRight);
+        }
+    }
 
-        auto row = r.removeFromTop (kInspRowH);
+    // --- the routes, in whichever direction is selected -------------------
+    for (const auto& row : routeRows_)
+    {
+        const auto& rt = routes_[(std::size_t) row.routeIndex];
+
         g.setFont (monoFont (9.0f));
         g.setColour (kAccent);
-        g.drawText (kSrcNames[rt.source], row, juce::Justification::centredLeft);
+        g.drawText (showDestinations ? kDstNames[rt.dest] : kSrcNames[rt.source],
+                    row.text, juce::Justification::centredLeft);
         g.setColour (kLabelCol);
-        g.drawText (juce::String (rt.depth, 2), row, juce::Justification::centredRight);
+        g.drawText (juce::String (rt.depth, 2), row.text, juce::Justification::centredRight);
 
-        if (barIndex < inspRouteBars.size())
+        // Bipolar bar: depth grows left or right of centre.
+        g.setColour (juce::Colour (0xff0e2116));
+        g.fillRect (row.bar);
+        const float d = juce::jlimit (-1.0f, 1.0f, rt.depth);
+        const int mid = row.bar.getCentreX();
+        const int w   = juce::roundToInt (std::abs (d) * row.bar.getWidth() * 0.5f);
+        g.setColour (kModCol);
+        g.fillRect (d >= 0.0f ? mid : mid - w, row.bar.getY(), juce::jmax (1, w), row.bar.getHeight());
+    }
+
+    if (routeRows_.empty())
+    {
+        g.setFont (monoFont (9.0f));
+        g.setColour (kLabelCol.withAlpha (0.65f));
+        const juce::String msg = showDestinations
+            ? "Goes nowhere yet."
+            : (dest == 0 && selectedParam.isNotEmpty() ? "Not a modulation destination."
+                                                       : "Nothing modulates this.");
+        g.drawFittedText (msg, r.removeFromTop (26), juce::Justification::topLeft, 2);
+    }
+
+    // --- the modulation sources ------------------------------------------
+    if (! srcRows_.empty())
+    {
+        g.setFont (monoFont (9.0f));
+        g.setColour (kLabelCol);
+        g.drawText ("SOURCES  (click to follow)",
+                    srcRows_.front().row.withY (srcRows_.front().row.getY() - 15).withHeight (14),
+                    juce::Justification::centredLeft);
+    }
+
+    for (const auto& s : srcRows_)
+    {
+        auto* p = proc.apvts.getParameter (s.paramId);
+        bool used = false;
+        for (const auto& rt : routes_)
+            if (rt.source == s.srcIndex) { used = true; break; }
+
+        const bool isSel = showDestinations && s.srcIndex == selectedSource;
+        if (isSel)
         {
-            // Bipolar bar: depth grows left or right of centre.
-            auto bar = inspRouteBars[barIndex++];
-            g.setColour (juce::Colour (0xff0e2116));
-            g.fillRect (bar);
-            const float d = juce::jlimit (-1.0f, 1.0f, rt.depth);
-            const int mid = bar.getCentreX();
-            const int w   = juce::roundToInt (std::abs (d) * bar.getWidth() * 0.5f);
-            g.setColour (kModCol);
-            g.fillRect (d >= 0.0f ? mid : mid - w, bar.getY(), juce::jmax (1, w), bar.getHeight());
+            g.setColour (kModCol.withAlpha (0.10f));
+            g.fillRect (s.row);
         }
-        r.removeFromTop (kInspRowH == 0 ? 0 : 9);
-        ++shown;
-    }
-
-    if (dest == 0 && selectedParam.isNotEmpty())
-    {
-        g.setFont (monoFont (9.0f));
-        g.setColour (kLabelCol.withAlpha (0.65f));
-        g.drawFittedText ("Not a modulation destination.", r.removeFromTop (28),
-                          juce::Justification::topLeft, 2);
-    }
-    else if (shown == 0 && selectedParam.isNotEmpty())
-    {
-        g.setFont (monoFont (9.0f));
-        g.setColour (kLabelCol.withAlpha (0.65f));
-        g.drawText ("No routes.", r.removeFromTop (kInspRowH), juce::Justification::centredLeft);
-    }
-
-    // --- live modulator sources -----------------------------------------
-    auto lower = full.reduced (8, 6).withTrimmedBottom (26);
-    auto modZone = lower.removeFromBottom (juce::jmin (lower.getHeight(), 7 * kInspRowH + 18));
-
-    g.setFont (monoFont (9.0f));
-    g.setColour (kLabelCol);
-    g.drawText ("SOURCES", modZone.removeFromTop (14), juce::Justification::centredLeft);
-
-    // Each row shows the source's own setting (an LFO's rate, a macro's
-    // position) with its value text, so the bar is never ambiguous.
-    // Names must match kSrcNames exactly so a source can be marked "in use".
-    struct Meter { const char* name; const char* paramId; };
-    static const Meter meters[] = {
-        { "LFO",        "lfoRate"       },
-        { "LFO 2",      "lfo2Rate"      },
-        { "Global LFO", "globalLfoRate" },
-        { "Macro 1",    "macro1"        },
-        { "Macro 2",    "macro2"        },
-    };
-    for (const auto& m : meters)
-    {
-        auto row  = modZone.removeFromTop (kInspRowH);
-        auto* p   = proc.apvts.getParameter (m.paramId);
-        const bool used = [&]
-        {
-            for (const auto& rt : routes_)
-                if (kSrcNames[rt.source] == m.name)
-                    return true;
-            return false;
-        }();
 
         g.setFont (monoFont (8.5f));
         g.setColour (used ? kModCol : kLabelCol.withAlpha (0.7f));
-        g.drawText (juce::String (m.name).toUpperCase(), row.removeFromLeft (58),
-                    juce::Justification::centredLeft);
+        g.drawText (kSrcNames[s.srcIndex].toUpperCase(),
+                    s.row.withWidth (58).reduced (2, 0), juce::Justification::centredLeft);
 
-        if (p != nullptr)
+        if (! s.meter.isEmpty())
         {
-            g.setColour (kLabelCol);
-            g.drawText (p->getCurrentValueAsText(), row.removeFromRight (52),
-                        juce::Justification::centredRight);
-        }
-
-        auto bar = row.reduced (3, 5);
-        g.setColour (juce::Colour (0xff0e2116));
-        g.fillRect (bar);
-        if (p != nullptr)
-        {
-            g.setColour (used ? kAccent : kAccent.withAlpha (0.45f));
-            g.fillRect (bar.getX(), bar.getY(),
-                        juce::jmax (1, juce::roundToInt (p->getValue() * bar.getWidth())),
-                        bar.getHeight());
+            g.setColour (juce::Colour (0xff0e2116));
+            g.fillRect (s.meter);
+            if (p != nullptr)
+            {
+                g.setColour (used ? kAccent : kAccent.withAlpha (0.45f));
+                g.fillRect (s.meter.getX(), s.meter.getY(),
+                            juce::jmax (1, juce::roundToInt (p->getValue() * s.meter.getWidth())),
+                            s.meter.getHeight());
+            }
+            if (p != nullptr)
+            {
+                g.setColour (kLabelCol);
+                g.drawText (p->getCurrentValueAsText(),
+                            s.row.withTrimmedLeft (s.row.getWidth() - 46),
+                            juce::Justification::centredRight);
+            }
         }
     }
 
@@ -1243,7 +1350,8 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
     g.setColour (kLabelCol);
     g.drawText ("MATRIX  " + juce::String ((int) routes_.size()) + " / "
                     + juce::String (kNumModRows),
-                modZone.removeFromTop (14), juce::Justification::centredLeft);
+                inspFullMatrix.getBounds().withY (inspFullMatrix.getY() - 16).withHeight (14),
+                juce::Justification::centredLeft);
 }
 
 //==============================================================================
@@ -1317,6 +1425,11 @@ void PDHybridEditor::buildStrip()
         strip.addAndMakeVisible (k->label);
     }
 
+    // The amp envelope's shape sits above its four knobs, exactly as on the page
+    // cards, so the strip is not just a row of numbers.
+    ampCurve.attach (proc.apvts, "attack", "decay", "sustain", "release");
+    strip.addAndMakeVisible (ampCurve);
+
     stripPoly = &addCombo ("voiceMode", { "Poly", "Mono", "Legato", "Unison Legato" });
     strip.addAndMakeVisible (*stripPoly);
     stripLimiter = &addToggle ("masterLimiter", "LIMITER");
@@ -1359,34 +1472,41 @@ void PDHybridEditor::layoutStrip()
     r = r.reduced (10, 0).withTrimmedBottom (8);
 
     // One knob cell: label above, rotary below (sized by its own size tag).
+    // Cells keep the same height as on the pages and are centred in the strip,
+    // so a taller strip does not inflate the rotaries.
     auto placeKnob = [&] (LabeledKnob* k, juce::Rectangle<int> cell)
     {
+        cell = cell.withSizeKeepingCentre (cell.getWidth(), juce::jmin (cell.getHeight(), kCellH));
         k->label.setBounds  (cell.removeFromTop (kLabelH));
         k->slider.setBounds (cell);
     };
-    auto group = [&] (const juce::String& name, int width)
+    // Every cluster is vertically centred on the same band, so the strip reads as
+    // one row whether or not a cluster carries a curve above its knobs.
+    auto group = [&] (const juce::String& name, int width, int contentH)
     {
         auto zone = r.removeFromLeft (width);
         stripGroups_.emplace_back (name, zone);
-        return zone;
+        return zone.withSizeKeepingCentre (zone.getWidth(), juce::jmin (zone.getHeight(), contentH));
     };
     auto divider = [&] { r.removeFromLeft (5); stripDividers_.push_back (r.removeFromLeft (1).getX()); r.removeFromLeft (5); };
 
     {   // Filter — duplicated from the Shape page on purpose: these two are
         // reached constantly, so they are the one thing worth showing twice.
-        auto z = group ("FILTER", 176);
+        auto z = group ("FILTER", 176, kCellH);
         placeKnob (stripKnobs[0], z.removeFromLeft (88));
         placeKnob (stripKnobs[1], z.removeFromLeft (88));
     }
     divider();
     {
-        auto z = group ("MACROS", 176);
+        auto z = group ("MACROS", 176, kCellH);
         placeKnob (stripKnobs[2], z.removeFromLeft (88));
         placeKnob (stripKnobs[3], z.removeFromLeft (88));
     }
     divider();
-    {
-        auto z = group ("AMP ENV", 320);
+    {   // Curve on top, the five knobs that shape it underneath.
+        auto z = group ("AMP ENV", 320, kStripCurveH + 4 + kCellH);
+        ampCurve.setBounds (z.removeFromTop (kStripCurveH));
+        z.removeFromTop (4);
         const int cw = z.getWidth() / 5;
         for (int i = 0; i < 5; ++i)
             placeKnob (stripKnobs[4 + i], z.removeFromLeft (cw));
@@ -1398,14 +1518,14 @@ void PDHybridEditor::layoutStrip()
         stripGroups_.emplace_back ("MASTER", z);
         placeKnob (stripKnobs[9], z);
 
-        auto ctl = r.removeFromRight (112);
+        auto ctl = r.removeFromRight (112).withSizeKeepingCentre (112, kCellH);
         r.removeFromRight (6);
         stripPoly->setBounds    (ctl.removeFromTop (kComboRowH).reduced (0, 2));
-        ctl.removeFromTop (4);
+        ctl.removeFromTop (6);
         stripLimiter->setBounds (ctl.removeFromTop (20));
 
         r.removeFromRight (6);
-        scope_.setBounds (r);
+        scope_.setBounds (r.reduced (0, 2));
     }
 }
 
@@ -1559,10 +1679,23 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     }
 
     // --- Modulation Inspector ---
-    inspector.onPaint   = [this] (juce::Graphics& g) { paintInspector (g); };
-    inspector.onResized = [this] { layoutInspector(); };
+    inspector.onPaint     = [this] (juce::Graphics& g) { paintInspector (g); };
+    inspector.onResized   = [this] { layoutInspector(); };
+    inspector.onMouseDown = [this] (const juce::MouseEvent& e) { inspectorClicked (e); };
     inspector.addAndMakeVisible (inspAddRoute);
     inspector.addAndMakeVisible (inspFullMatrix);
+    inspector.addAndMakeVisible (inspSourcesBtn);
+    inspector.addAndMakeVisible (inspDestsBtn);
+    inspector.addAndMakeVisible (inspLfo1);
+    inspector.addAndMakeVisible (inspLfo2);
+    inspector.addAndMakeVisible (inspLfoG);
+    inspLfo1.attach (proc.apvts, "lfoWave",       "lfoRate");
+    inspLfo2.attach (proc.apvts, "lfo2Wave",      "lfo2Rate");
+    inspLfoG.attach (proc.apvts, "globalLfoWave", "globalLfoRate");
+    inspSourcesBtn.setClickingTogglesState (false);
+    inspDestsBtn.setClickingTogglesState (false);
+    inspSourcesBtn.onClick = [this] { showDestinations = false; layoutInspector(); inspector.repaint(); };
+    inspDestsBtn.onClick   = [this] { showDestinations = true;  layoutInspector(); inspector.repaint(); };
     inspAddRoute.onClick   = [this] { addRouteToSelected(); };
     inspFullMatrix.onClick = [this] { tabs.setCurrentTabIndex (2); };
     addAndMakeVisible (inspector);

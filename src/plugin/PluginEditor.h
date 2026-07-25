@@ -6,6 +6,7 @@
 #include "SynthLookAndFeel.h"
 #include "CrtOverlay.h"
 #include "ScopeDisplay.h"
+#include "Displays.h"
 #include <functional>
 #include <memory>
 #include <utility>
@@ -171,8 +172,10 @@ private:
     {
         std::function<void()> onResized;
         std::function<void (juce::Graphics&)> onPaint;
+        std::function<void (const juce::MouseEvent&)> onMouseDown;
         void resized() override { if (onResized) onResized(); }
         void paint (juce::Graphics& g) override { if (onPaint) onPaint (g); }
+        void mouseDown (const juce::MouseEvent& e) override { if (onMouseDown) onMouseDown (e); }
     };
 
     LabeledKnob& addKnob (const juce::String& paramId, const juce::String& text,
@@ -247,6 +250,16 @@ private:
     StageEnvelopePanel stageEnv;
     void buildStageEnvelopes();
 
+    // Waveform / curve readouts embedded in the cards that own the parameters.
+    // No captions: the card title already names them.
+    pdui::EnvelopeCurve ampCurve   { {} };
+    pdui::EnvelopeCurve modCurve   { {} };
+    pdui::EnvelopeCurve filt1Curve { {} };
+    pdui::EnvelopeCurve filt2Curve { {} };
+    pdui::LfoCurve      lfo1Curve;
+    pdui::LfoCurve      lfo2Curve;
+    pdui::RoutingDiagram routingDiagram;
+
     //--------------------------------------------------------------------------
     // Modulation Inspector: a permanent right-hand column that makes the matrix
     // readable from the outside. Click any knob and it lists every route
@@ -255,14 +268,27 @@ private:
     CallbackComponent inspector;
     juce::TextButton inspAddRoute { "+ ADD ROUTE" };
     juce::TextButton inspFullMatrix { "FULL MATRIX" };
+    juce::TextButton inspSourcesBtn { "SOURCES" };
+    juce::TextButton inspDestsBtn { "DESTINATIONS" };
 
-    juce::String selectedParam;              // parameter the Inspector is showing
+    juce::String selectedParam;              // knob the Inspector is showing
     juce::String selectedName;
-    std::vector<juce::Rectangle<int>> inspRouteBars;   // depth bars, filled on layout
+    int  selectedSource = 2;                 // modulator shown in DESTINATIONS mode (LFO)
+    bool showDestinations = false;           // which direction the Inspector reads
+
+    // Geometry is computed once in layoutInspector() and reused when painting,
+    // so the child curves and the painted rows can never drift apart.
+    struct RouteRow { juce::Rectangle<int> text, bar; int routeIndex; };
+    std::vector<RouteRow> routeRows_;
+    struct SrcRow { juce::Rectangle<int> row, meter; int srcIndex; const char* paramId; };
+    std::vector<SrcRow> srcRows_;
+
+    pdui::LfoCurve inspLfo1, inspLfo2, inspLfoG;   // live shapes in the source list
 
     void selectParameter (const juce::String& paramId);
     void layoutInspector();
     void paintInspector (juce::Graphics&);
+    void inspectorClicked (const juce::MouseEvent&);
     void refreshModRings();                  // tag destination knobs for the ring
     int  firstFreeMatrixSlot() const;
     void addRouteToSelected();

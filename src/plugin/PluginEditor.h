@@ -205,20 +205,42 @@ private:
     SynthLookAndFeel lnf;
     juce::TooltipWindow tooltips { this, 600 };
 
-    juce::TextButton initButton { "Init" };
-    juce::TextButton randButton { "Rand" };
-    juce::TextButton panicButton { "Panic" };
-    juce::TextButton saveButton { "Save" };
-    juce::TextButton deleteButton { "Del" };
+    juce::TextButton initButton { "INIT" };
+    juce::TextButton saveButton { "SAVE" };
     juce::TextButton prevButton { "<" };
     juce::TextButton nextButton { ">" };
     juce::TextButton abButton { "A/B: A" };
     juce::TextButton crtButton { "CRT" };
     juce::TextButton presetButton { "Presets" };   // opens the hierarchical preset menu
 
+    // Footer strip: where you are, how much modulation is live, and the two
+    // actions that are not part of editing a patch.
+    CallbackComponent footer;
+    juce::TextButton randButton { "RAND" };
+    juce::TextButton panicButton { "PANIC" };
+    void paintFooter (juce::Graphics&);
+    void layoutFooter();
+
     juce::ValueTree  abState_[2];   // A/B compare snapshots
     int              abSlot_ = 0;
-    juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
+
+    /** Pushes the last tab (GLOBAL) to the right-hand end of the bar, so the
+        settings page reads as off to one side rather than as the fifth stage of
+        the signal path. Re-applied after every re-layout the bar performs. */
+    struct SignalPathTabs : public juce::TabbedComponent
+    {
+        using juce::TabbedComponent::TabbedComponent;
+        void resized() override            { juce::TabbedComponent::resized(); pinLast(); }
+        void currentTabChanged (int, const juce::String&) override { pinLast(); }
+        void pinLast()
+        {
+            auto& bar = getTabbedButtonBar();
+            if (bar.getNumTabs() < 2) return;
+            if (auto* last = bar.getTabButton (bar.getNumTabs() - 1))
+                last->setBounds (last->getBounds().withX (bar.getWidth() - last->getWidth() - 6));
+        }
+    };
+    SignalPathTabs tabs { juce::TabbedButtonBar::TabsAtTop };
 
     void refreshPresetList();
     void showPresetMenu();
@@ -257,13 +279,15 @@ private:
 
     // Waveform / curve readouts embedded in the cards that own the parameters.
     // No captions: the card title already names them.
-    pdui::EnvelopeCurve ampCurve   { {} };
+    pdui::EnvelopeCurve ampCurve   { "AMP" };
     pdui::EnvelopeCurve modCurve   { {} };
     pdui::EnvelopeCurve filt1Curve { {} };
     pdui::EnvelopeCurve filt2Curve { {} };
+    pdui::EnvelopeCurve bassCurve  { {} };
     pdui::LfoCurve      lfo1Curve;
     pdui::LfoCurve      lfo2Curve;
     pdui::RoutingDiagram routingDiagram;
+    pdui::WaveCyclePreview oscACycle, oscBCycle;
 
     //--------------------------------------------------------------------------
     // Modulation Inspector: a permanent right-hand column that makes the matrix
@@ -302,7 +326,7 @@ private:
     struct RouteView { int slot; int source; int dest; float depth; int curve; };
     std::vector<RouteView> routes_;
     Section chorusSec, delaySec, reverbSec, comp, globalEqSec, stereo;   // Out page
-    Section voiceSec, globalLfoSec;                                      // Global page
+    Section voiceSec, tuningSec, globalLfoSec, qualitySec;               // Global page
     Section envelope;                                                    // amp env (lives in the strip)
 
     // Modulation matrix.

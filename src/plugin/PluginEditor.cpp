@@ -16,7 +16,9 @@ constexpr int kMatrixRowH = 26;
 constexpr int kTopBar   = 48;   // title bar above the tabs
 constexpr int kGridCols = 6;    // every tab page uses this fixed column count
 constexpr int kStripH    = 142;  // fixed performance strip between title bar and tabs
-constexpr int kStripCurveH = 38; // amp-envelope curve above its knobs in the strip
+constexpr int kFooterH   = 24;   // page indicator / route count / panic + rand
+constexpr int kDeletePresetId = 9000;   // menu id, kept clear of the preset ids
+constexpr int kStripCurveH = 56; // amp-envelope curve, inline beside its knobs
 constexpr int kStripCapH = 13;   // caption band along the strip's top edge
 
 // Palette — "CZ Terminal": black with green phosphor, outlined boxes.
@@ -767,9 +769,12 @@ void PDHybridEditor::buildSections()
     // ---------------------------------------------------------------- VOICE --
     // Osc A/B carry their own Level knob (promoted, alongside the timbre knob)
     // so the two decisions that define a layer sit together.
+    oscACycle.attach (proc.apvts, "oscA");
     oscA.title  = "Osc A";
-    oscA.cols   = 4;
-    oscA.span   = 2;
+    oscA.cols   = 6;
+    oscA.span   = 3;
+    oscA.custom = &oscACycle;
+    oscA.customH = 56;
     oscA.combos = { &addCombo ("oscAType", kOscTypeNames), &addCombo ("oscAWave", kPdWaveNames),
                     &addCombo ("oscAWave2", kPdWaveNames),
                     &addCombo ("oscAExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
@@ -783,9 +788,12 @@ void PDHybridEditor::buildSections()
                     &addKnob ("oscAFine", "Fine"), &addKnob ("oscAEqLow", "EQ Lo"),
                     &addKnob ("oscAEqMid", "EQ Mid"), &addKnob ("oscAEqHigh", "EQ Hi") };
 
+    oscBCycle.attach (proc.apvts, "oscB");
     oscB.title  = "Osc B";
-    oscB.cols   = 4;
-    oscB.span   = 2;
+    oscB.cols   = 6;
+    oscB.span   = 3;
+    oscB.custom = &oscBCycle;
+    oscB.customH = 56;
     oscB.combos = { &addCombo ("oscBType", kOscTypeNames), &addCombo ("oscBWave", kPdWaveNames),
                     &addCombo ("oscBWave2", kPdWaveNames),
                     &addCombo ("oscBExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
@@ -805,9 +813,12 @@ void PDHybridEditor::buildSections()
     mixer.knobs  = { &addKnob ("noiseLevel", "Noise"), &addKnob ("ringMod", "Ring"),
                      &addKnob ("noiseMod", "N.Mod"), &addKnob ("crossModAmount", "X-Amt") };
 
+    bassCurve.attach (proc.apvts, "bassAttack", "bassDecay", "bassSustain", "bassRelease");
     bassSec.title   = "Mono Bass";
     bassSec.cols    = 5;
-    bassSec.span    = 3;
+    bassSec.span    = 4;
+    bassSec.custom  = &bassCurve;
+    bassSec.customH = 46;
     bassSec.toggles = { &addToggle ("bassOn", "ON") };
     bassSec.combos  = { &addCombo ("bassWave", { "Saw", "Square", "Triangle", "Pulse" }),
                         &addCombo ("bassPriority", { "Last", "Top", "Bottom" }) };
@@ -903,11 +914,10 @@ void PDHybridEditor::buildSections()
 
     // ------------------------------------------------------------------ MOD --
     // The amp envelope lives in the performance strip, not on a page.
-    envelope.knobs = { &addKnob ("attack", "Atk", 2, KnobSize::Small),
-                       &addKnob ("decay", "Dec", 2, KnobSize::Small),
-                       &addKnob ("sustain", "Sus", 2, KnobSize::Small),
-                       &addKnob ("release", "Rel", 2, KnobSize::Small),
-                       &addKnob ("ampVelSens", "Vel", 2, KnobSize::Small) };
+    envelope.knobs = { &addKnob ("attack", "A", 2, KnobSize::Small),
+                       &addKnob ("decay", "D", 2, KnobSize::Small),
+                       &addKnob ("sustain", "S", 2, KnobSize::Small),
+                       &addKnob ("release", "R", 2, KnobSize::Small) };
 
     modCurve.attach (proc.apvts, "modEnvA", "modEnvD", "modEnvS", "modEnvR");
     modEnv.title   = "Mod Env";
@@ -1032,25 +1042,36 @@ void PDHybridEditor::buildSections()
     // Voice allocation and tuning are not part of the audio path, so they sit
     // off it entirely rather than interrupting the chain the way the old
     // "Voice" tab did. (voiceMode lives in the performance strip.)
-    voiceSec.title = "Voice Allocation & Tuning";
-    voiceSec.cols  = 4;
-    voiceSec.span  = 4;
+    voiceSec.title = "Voice Allocation";
+    voiceSec.cols  = 3;
+    voiceSec.span  = 3;
     voiceSec.toggles = { &addToggle ("monoRetrigger", "RETRIG") };
     voiceSec.combos = { &addCombo ("notePriority", { "Priority: Last", "Priority: Top", "Priority: Bottom" }),
                         &addCombo ("stealPolicy", { "Steal Oldest", "Steal Quietest" }),
-                        &addCombo ("velCurve", { "Vel Linear", "Vel Soft", "Vel Hard", "Vel Fixed" }),
-                        &addCombo ("tuningScale", { "Equal Temp.", "Just Intonation", "Pythagorean" }) };
-    voiceSec.knobs = { &addKnob ("polyphony", "Poly", 0), &addKnob ("pitchBendRange", "Bend", 0),
-                       &addKnob ("masterTune", "Tune", 1), &addKnob ("transpose", "Transp", 0) };
+                        &addCombo ("velCurve", { "Vel Linear", "Vel Soft", "Vel Hard", "Vel Fixed" }) };
+    voiceSec.knobs = { &addKnob ("polyphony", "Poly", 0, KnobSize::Large),
+                       &addKnob ("ampVelSens", "Vel Sens"),
+                       &addKnob ("pitchBendRange", "Bend", 0) };
 
-    // Global LFO + oversampling. The global LFO is a modulation-matrix source
-    // ("Global LFO") that previously had no control at all in the editor.
-    globalLfoSec.title  = "Global LFO / Quality";
+    tuningSec.title  = "Tuning";
+    tuningSec.cols   = 3;
+    tuningSec.span   = 3;
+    tuningSec.combos = { &addCombo ("tuningScale", { "Equal Temperament", "Just Intonation", "Pythagorean" }) };
+    tuningSec.knobs  = { &addKnob ("masterTune", "Tune", 1), &addKnob ("transpose", "Transpose", 0) };
+
+    // The global LFO is a modulation-matrix source ("Global LFO") that had no
+    // control at all in the editor before this rebuild.
+    globalLfoSec.title  = "Global LFO";
     globalLfoSec.cols   = 1;
-    globalLfoSec.span   = 2;
-    globalLfoSec.combos = { &addCombo ("globalLfoWave", kLfoWaveNames),
-                            &addCombo ("osQuality", { "OS 1x", "OS 2x", "OS 4x", "OS 8x" }) };
-    globalLfoSec.knobs  = { &addKnob ("globalLfoRate", "Rate") };
+    globalLfoSec.span   = 4;
+    globalLfoSec.combos = { &addCombo ("globalLfoWave", kLfoWaveNames) };
+    globalLfoSec.knobs  = { &addKnob ("globalLfoRate", "Rate", 2, KnobSize::Large) };
+
+    qualitySec.title  = "Quality";
+    qualitySec.cols   = 1;
+    qualitySec.span   = 2;
+    qualitySec.combos = { &addCombo ("osQuality", { "Oversampling 1x", "Oversampling 2x",
+                                                    "Oversampling 4x", "Oversampling 8x" }) };
 }
 
 //==============================================================================
@@ -1214,6 +1235,7 @@ void PDHybridEditor::timerCallback()
     refreshModRings();
     layoutInspector();   // the route list grows and shrinks, so re-place the buttons
     inspector.repaint();
+    footer.repaint();    // page indicator and route count both change under us
 }
 
 void PDHybridEditor::layoutInspector()
@@ -1427,12 +1449,14 @@ void PDHybridEditor::buildStageEnvelopes()
 //==============================================================================
 void PDHybridEditor::buildStrip()
 {
+    // Amp envelope contributes only A D S R here; its velocity sensitivity is a
+    // playing-response setting and lives with the velocity curve on Global.
     stripKnobs = { &addKnob ("cutoff", "Cutoff", 2, KnobSize::Large),
                    &addKnob ("resonance", "Reso", 2, KnobSize::Large),
                    &addKnob ("macro1", "Macro 1", 2, KnobSize::Large),
                    &addKnob ("macro2", "Macro 2", 2, KnobSize::Large),
-                   envelope.knobs[0], envelope.knobs[1], envelope.knobs[2],
-                   envelope.knobs[3], envelope.knobs[4],
+                   envelope.knobs[0], envelope.knobs[1],
+                   envelope.knobs[2], envelope.knobs[3],
                    &addKnob ("masterLevel", "Master", 1, KnobSize::Large) };
 
     for (auto* k : stripKnobs)
@@ -1461,21 +1485,33 @@ void PDHybridEditor::buildStrip()
         g.setColour (kCardEdge);
         g.drawRect (b, 1);
 
-        // Group captions sit in the reserved band along the top edge, each in a
-        // black notch that breaks the frame the way the card titles do.
-        g.setFont (monoFont (9.0f));
-        for (const auto& grp : stripGroups_)
+        // One card title in a notch, exactly like a page card — no per-cluster
+        // captions; the dividers already group the clusters.
+        g.setFont (monoFont (9.5f));
         {
-            const int tw = g.getCurrentFont().getStringWidth (grp.first) + 10;
+            const juce::String title = "PERFORMANCE - ALWAYS VISIBLE";
+            const int tw = g.getCurrentFont().getStringWidth (title) + 14;
             g.setColour (kCardBg);
-            g.fillRect (grp.second.getX() + 2, b.getY() - 1, tw, kStripCapH);
+            g.fillRect (b.getX() + 12, b.getY() - 1, tw, kStripCapH);
             g.setColour (kTitleCol);
-            g.drawText (grp.first, grp.second.getX() + 6, b.getY() - 1, tw, kStripCapH,
+            g.drawText (title, b.getX() + 17, b.getY() - 1, tw, kStripCapH,
                         juce::Justification::centredLeft);
         }
         g.setColour (kCardEdge);
         for (int x : stripDividers_)
             g.fillRect (x, b.getY() + kStripCapH, 1, b.getHeight() - kStripCapH - 8);
+
+        // Voice count beside the voice-mode combo, so the combo reads as
+        // "POLY / 16" the way a hardware display would show it.
+        if (stripPoly != nullptr)
+            if (auto* p = proc.apvts.getParameter ("polyphony"))
+            {
+                g.setFont (monoFont (9.0f));
+                g.setColour (kLabelCol);
+                g.drawText (p->getCurrentValueAsText() + " VOICES",
+                            stripPoly->getBounds().translated (0, -12).withHeight (11),
+                            juce::Justification::centredLeft);
+            }
     };
     addAndMakeVisible (strip);
 }
@@ -1486,7 +1522,7 @@ void PDHybridEditor::layoutStrip()
     stripGroups_.clear();
 
     auto r = strip.getLocalBounds();
-    r.removeFromTop (kStripCapH);          // band reserved for the group captions
+    r.removeFromTop (kStripCapH);          // band reserved for the card title
     r = r.reduced (10, 0).withTrimmedBottom (8);
 
     // One knob cell: label above, rotary below (sized by its own size tag).
@@ -1510,31 +1546,29 @@ void PDHybridEditor::layoutStrip()
 
     {   // Filter — duplicated from the Shape page on purpose: these two are
         // reached constantly, so they are the one thing worth showing twice.
-        auto z = group ("FILTER", 176, kCellH);
+        auto z = group ("", 176, kCellH);
         placeKnob (stripKnobs[0], z.removeFromLeft (88));
         placeKnob (stripKnobs[1], z.removeFromLeft (88));
     }
     divider();
     {
-        auto z = group ("MACROS", 176, kCellH);
+        auto z = group ("", 176, kCellH);
         placeKnob (stripKnobs[2], z.removeFromLeft (88));
         placeKnob (stripKnobs[3], z.removeFromLeft (88));
     }
     divider();
-    {   // Curve on top, the five knobs that shape it underneath.
-        auto z = group ("AMP ENV", 320, kStripCurveH + 4 + kCellH);
-        ampCurve.setBounds (z.removeFromTop (kStripCurveH));
-        z.removeFromTop (4);
-        const int cw = z.getWidth() / 5;
-        for (int i = 0; i < 5; ++i)
-            placeKnob (stripKnobs[4 + i], z.removeFromLeft (cw));
+    {   // Curve and its four knobs on one line — the strip is a single row.
+        auto z = group ("", 352, kCellH);
+        for (int i = 3; i >= 0; --i)
+            placeKnob (stripKnobs[4 + i], z.removeFromRight (54));
+        z.removeFromRight (8);
+        ampCurve.setBounds (z.withSizeKeepingCentre (z.getWidth(), kStripCurveH));
     }
     divider();
 
     {   // Master cluster: one column pinned right - voice mode, the two state
         // lamps, then the master knob. The scope takes whatever is left.
         auto z = r.removeFromRight (124);
-        stripGroups_.emplace_back ("MASTER", z);
         auto col = z.withSizeKeepingCentre (z.getWidth(), juce::jmin (z.getHeight(),
                                             kComboRowH + 4 + 18 + 4 + kCellH));
         stripPoly->setBounds (col.removeFromTop (kComboRowH).reduced (2, 1));
@@ -1544,7 +1578,7 @@ void PDHybridEditor::layoutStrip()
         lamps.removeFromLeft (4);
         stripArp->setBounds (lamps);
         col.removeFromTop (4);
-        placeKnob (stripKnobs[9], col);
+        placeKnob (stripKnobs[8], col);
 
         r.removeFromRight (8);
         scope_.setBounds (r.reduced (0, 2));
@@ -1573,20 +1607,15 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     nextButton.onClick = [this] { proc.getPresetManager().loadByOffset (1); refreshPresetList(); };
     addAndMakeVisible (saveButton);
     saveButton.onClick = [this] { showSavePresetDialog(); };
-    addAndMakeVisible (deleteButton);
-    deleteButton.onClick = [this]
-    {
-        const auto name = proc.getPresetManager().getCurrentPresetName();
-        if (name.isNotEmpty())
-        {
-            proc.getPresetManager().deletePreset (name);
-            refreshPresetList();
-        }
-    };
-    addAndMakeVisible (panicButton);
+    // Footer: page indicator + live route count on the left, the two non-editing
+    // actions on the right.
+    footer.onPaint   = [this] (juce::Graphics& g) { paintFooter (g); };
+    footer.onResized = [this] { layoutFooter(); };
+    footer.addAndMakeVisible (panicButton);
+    footer.addAndMakeVisible (randButton);
     panicButton.onClick = [this] { proc.triggerPanic(); };
-    addAndMakeVisible (randButton);
-    randButton.onClick = [this] { randomizePatch(); };
+    randButton.onClick  = [this] { randomizePatch(); };
+    addAndMakeVisible (footer);
 
     // A/B compare: two snapshots; the button stashes the current state into the
     // active slot and loads the other.
@@ -1670,15 +1699,20 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // where a control sits now tells you when it happens. Global settings sit
     // off the path entirely.
     std::vector<Page> layout {
-        { "1 - Voice",  { &oscA, &oscB, &mixer, &bassSec, &unison, &glideSec }, nullptr, {}, 0 },
-        { "2 - Shape",  { &pluckSec, &drive, &routingSec,
-                          &filter, &filter2, &filterEnv, &filter2Env },         nullptr, {}, 0 },
-        { "3 - Mod",    { &stageEnvSec, &lfo, &lfo2,
-                          &modEnv, &vibratoSec, &arpSec }, &matrixHolder,
-          "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
-        { "4 - Out",    { &chorusSec, &delaySec, &reverbSec,
-                          &comp, &globalEqSec, &stereo },                       nullptr, {}, 0 },
-        { "Global",     { &voiceSec, &globalLfoSec },                           nullptr, {}, 0 },
+        { "1 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " VOICE",
+                        { &oscA, &oscB, &mixer, &bassSec, &pluckSec, &unison, &glideSec },
+                                                                                nullptr, {}, 0 },
+        { "2 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " SHAPE",
+                        { &filter, &filter2, &filterEnv, &filter2Env,
+                          &routingSec, &drive },                                nullptr, {}, 0 },
+        { "3 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " MOD",
+                        { &stageEnvSec, &lfo, &lfo2,
+                          &modEnv, &vibratoSec, &arpSec },                      nullptr, {}, 0 },
+        { "4 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " OUT",
+                        { &chorusSec, &delaySec, &reverbSec,
+                          &globalEqSec, &comp, &stereo },                       nullptr, {}, 0 },
+        { juce::String (juce::CharPointer_UTF8 ("\xe2\x9a\x99")) + " GLOBAL",
+                        { &voiceSec, &tuningSec, &globalLfoSec, &qualitySec },  nullptr, {}, 0 },
     };
 
     for (auto& pg : layout)
@@ -1739,8 +1773,8 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     addAndMakeVisible (crtOverlay);
 
     setResizable (true, true);
-    setResizeLimits (980, 560, 2400, 1600);
-    setSize (1280, 900);
+    setResizeLimits (1040, 620, 2400, 1700);
+    setSize (1320, 980);
 }
 
 PDHybridEditor::~PDHybridEditor()
@@ -1831,6 +1865,33 @@ void PDHybridEditor::layoutMatrix()
     }
 }
 
+void PDHybridEditor::layoutFooter()
+{
+    auto r = footer.getLocalBounds().reduced (2, 3);
+    randButton.setBounds  (r.removeFromRight (58));
+    r.removeFromRight (5);
+    panicButton.setBounds (r.removeFromRight (62));
+}
+
+void PDHybridEditor::paintFooter (juce::Graphics& g)
+{
+    auto r = footer.getLocalBounds();
+    g.setColour (kCardEdge);
+    g.fillRect (0, 0, r.getWidth(), 1);
+
+    static const char* names[] = { "VOICE 1/4", "SHAPE 2/4", "MOD 3/4", "OUT 4/4", "GLOBAL" };
+    const int page = juce::jlimit (0, 4, tabs.getCurrentTabIndex());
+
+    g.setFont (monoFont (9.0f));
+    g.setColour (kLabelCol);
+    g.drawText (names[page], r.withTrimmedLeft (6), juce::Justification::centredLeft);
+
+    const int active = static_cast<int> (routes_.size());
+    g.setColour (active > 0 ? kModCol : kLabelCol.withAlpha (0.6f));
+    g.drawText (juce::String (active) + " MOD ROUTE" + (active == 1 ? "" : "S") + " ACTIVE",
+                r.withTrimmedRight (140), juce::Justification::centredRight);
+}
+
 void PDHybridEditor::refreshPresetList()
 {
     // The menu is built on demand; here we just reflect the current preset on the
@@ -1868,10 +1929,23 @@ void PDHybridEditor::showPresetMenu()
         menu.addSubMenu (folder.name, sub);
     }
 
+    // Deleting lives here rather than as a top-bar button, so the preset being
+    // deleted is named in the item itself.
+    if (current.isNotEmpty())
+    {
+        menu.addSeparator();
+        menu.addItem (kDeletePresetId, "Delete \"" + current.fromLastOccurrenceOf ("/", false, false) + "\"");
+    }
+
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetButton),
-                        [this, paths] (int result)
+                        [this, paths, current] (int result)
                         {
-                            if (result >= 1 && result <= paths->size())
+                            if (result == kDeletePresetId)
+                            {
+                                proc.getPresetManager().deletePreset (current);
+                                refreshPresetList();
+                            }
+                            else if (result >= 1 && result <= paths->size())
                             {
                                 proc.getPresetManager().loadPreset ((*paths)[result - 1]);
                                 refreshPresetList();
@@ -1937,19 +2011,19 @@ void PDHybridEditor::resized()
     auto top = r.removeFromTop (kTopBar);
     const int y = (kTopBar - 26) / 2;
 
+    // Seven controls only. Panic and Rand live in the footer; deleting a preset
+    // is an item inside the preset menu, where the preset it deletes is named.
     int x = top.getRight() - 76;
     initButton.setBounds (x, y, 64, 26);
-    x -= 58;  randButton.setBounds (x, y, 52, 26);
-    x -= 62;  panicButton.setBounds (x, y, 56, 26);
+    x -= 52;  crtButton.setBounds  (x, y, 46, 26);
     x -= 70;  saveButton.setBounds (x, y, 64, 26);
-    x -= 46;  deleteButton.setBounds (x, y, 40, 26);
+    x -= 58;  abButton.setBounds   (x, y, 52, 26);
     x -= 32;  nextButton.setBounds (x, y, 28, 26);
     x -= 32;  prevButton.setBounds (x, y, 28, 26);
-    x -= 52;  crtButton.setBounds  (x, y, 46, 26);
-    x -= 58;  abButton.setBounds   (x, y, 52, 26);
-    x -= 190; presetButton.setBounds (x, y, 184, 26);
+    x -= 226; presetButton.setBounds (x, y, 220, 26);
 
     strip.setBounds (r.removeFromTop (kStripH).reduced (kMargin, 4));
+    footer.setBounds (r.removeFromBottom (kFooterH).reduced (kMargin, 0));
     // The Inspector is a column, not a page: it spans the tab area's full height
     // so nothing in it competes with the strip for the same row.
     inspector.setBounds (r.removeFromRight (kInspW).reduced (6, 6));

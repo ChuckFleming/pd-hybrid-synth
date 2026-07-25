@@ -111,6 +111,11 @@ public:
 
         g.setColour (edge);
         g.drawRect (r, 1.0f);
+
+        g.setFont (juce::Font (juce::Font::getDefaultMonospacedFontName(), 8.0f, juce::Font::plain));
+        g.setColour (juce::Colour (0xff37b06e).withAlpha (0.75f));
+        g.drawText ("OUT " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " SPECTRUM",
+                    r.reduced (5.0f, 3.0f), juce::Justification::topLeft);
     }
 
 private:

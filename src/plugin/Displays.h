@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
+#include "dsp/OscillatorUnit.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -277,6 +278,113 @@ private:
     std::function<float()> live_;
     std::vector<float> history_ { std::vector<float> (kHist, 0.0f) };
     float phase_ = 0.0f;
+};
+
+//==============================================================================
+/** One cycle of an oscillator's real output.
+
+    Runs an actual `OscillatorUnit` on the message thread, configured from the
+    same parameters the voices use, and plots a single settled period. For a
+    phase-distortion synth this is the display that matters most: the waveform
+    genuinely cannot be predicted from the control values. */
+class WaveCyclePreview : public juce::Component,
+                         private juce::Timer
+{
+public:
+    WaveCyclePreview() { setInterceptsMouseClicks (false, false); }
+    ~WaveCyclePreview() override { stopTimer(); }
+
+    void attach (juce::AudioProcessorValueTreeState& s, const juce::String& prefix)
+    {
+        apvts_ = &s;
+        prefix_ = prefix;
+        osc_.setSampleRate (kSr);
+        startTimerHz (8);
+        rebuild();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "CYCLE");
+        const float cy = in.getCentreY(), amp = in.getHeight() * 0.44f;
+
+        g.setColour (kGrid);
+        g.fillRect (in.getX(), cy, in.getWidth(), 1.0f);
+
+        juce::Path p;
+        for (int i = 0; i < kN; ++i)
+        {
+            const float x = in.getX() + (float) i / (float) (kN - 1) * in.getWidth();
+            const float y = cy - juce::jlimit (-1.0f, 1.0f, cycle_[(size_t) i]) * amp;
+            if (i == 0) p.startNewSubPath (x, y);
+            else        p.lineTo (x, y);
+        }
+        g.setColour (kTrace.withAlpha (0.25f));
+        g.strokePath (p, juce::PathStrokeType (3.0f));
+        g.setColour (kTrace);
+        g.strokePath (p, juce::PathStrokeType (1.4f));
+    }
+
+private:
+    float raw (const juce::String& id) const
+    {
+        auto* p = apvts_->getParameter (prefix_ + id);
+        return p != nullptr ? p->convertFrom0to1 (p->getValue()) : 0.0f;
+    }
+
+    void rebuild()
+    {
+        using namespace pdhybrid;
+        osc_.setType (static_cast<OscType> (juce::roundToInt (raw ("Type"))));
+        osc_.setPdWave  (static_cast<PdWave> (juce::roundToInt (raw ("Wave"))));
+        osc_.setPdWaveB (static_cast<PdWave> (juce::roundToInt (raw ("Wave2"))));
+        osc_.setPdCombine (raw ("Combine") > 0.5f);
+        osc_.setAmount      (raw ("Amount"));
+        osc_.setPulseWidth  (raw ("PulseWidth"));
+        osc_.setEngineParam (raw ("Engine"));
+        osc_.setExcite (juce::roundToInt (raw ("Excite")));
+        osc_.setEq (0.0, 0.0, 0.0);
+        osc_.setTuning (0, 0, 0.0);
+        osc_.setBaseFrequency (kSr / (double) kN);   // exactly one cycle in kN samples
+        osc_.reset();
+        osc_.excite();
+
+        // Discard two periods so anything with internal state has settled.
+        for (int i = 0; i < kN * 2; ++i)
+            osc_.processSample();
+
+        float peak = 1.0e-6f;
+        for (int i = 0; i < kN; ++i)
+        {
+            const float s = osc_.processSample();
+            cycle_[(size_t) i] = std::isfinite (s) ? s : 0.0f;
+            peak = juce::jmax (peak, std::abs (cycle_[(size_t) i]));
+        }
+        for (auto& s : cycle_) s /= peak;   // normalise: this shows shape, not level
+        repaint();
+    }
+
+    void timerCallback() override
+    {
+        static const char* ids[] = { "Type", "Wave", "Wave2", "Combine",
+                                     "Amount", "PulseWidth", "Engine", "Excite" };
+        bool changed = false;
+        for (int i = 0; i < 8; ++i)
+        {
+            const float v = raw (ids[i]);
+            if (! juce::approximatelyEqual (v, last_[i])) { last_[i] = v; changed = true; }
+        }
+        if (changed) rebuild();
+    }
+
+    static constexpr int    kN  = 256;      // samples per displayed cycle
+    static constexpr double kSr = 48000.0;
+
+    juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    juce::String prefix_;
+    pdhybrid::OscillatorUnit osc_;
+    std::vector<float> cycle_ { std::vector<float> (kN, 0.0f) };
+    float last_[8] { -1e9f, -1e9f, -1e9f, -1e9f, -1e9f, -1e9f, -1e9f, -1e9f };
 };
 
 //==============================================================================

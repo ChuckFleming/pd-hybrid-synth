@@ -1462,9 +1462,12 @@ void PDHybridEditor::buildStrip()
     for (auto* k : stripKnobs)
     {
         // The strip reads as one instrument face, so its readouts are bare text
-        // rather than boxed fields.
+        // rather than boxed fields. The text colour has to be set explicitly
+        // here: dropping the box makes the label fall back to its own default
+        // rather than inheriting the look-and-feel's phosphor green.
         k->slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
         k->slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+        k->slider.setColour (juce::Slider::textBoxTextColourId, kValueCol);
         strip.addAndMakeVisible (k->slider);
         strip.addAndMakeVisible (k->label);
     }

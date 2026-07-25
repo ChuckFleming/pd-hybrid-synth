@@ -1410,7 +1410,7 @@ void PDHybridEditor::addRouteToSelected()
         if (std::abs (d->convertFrom0to1 (d->getValue())) < 1.0e-4f)
             d->setValueNotifyingHost (d->convertTo0to1 (0.30f));
 
-    tabs.setCurrentTabIndex (2);   // "3 - Mod", where the matrix lives
+    showMatrix (true);             // show the route that was just created
     refreshModRings();
     inspector.repaint();
 }
@@ -1928,8 +1928,13 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         modDestAtt[i] = std::make_unique<ComboBoxAttachment> (proc.apvts, "mod" + s + "Dest",   modDestBox[i]);
 
         modDepthSlider[i].setSliderStyle (juce::Slider::LinearHorizontal);
-        modDepthSlider[i].setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 16);
+        modDepthSlider[i].setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18);
         modDepthSlider[i].setNumDecimalPlacesToDisplay (2);
+        // Set explicitly rather than relying on inheritance: these live on an
+        // overlay rather than inside a page, and rendered with default colours.
+        modDepthSlider[i].setColour (juce::Slider::textBoxTextColourId, kValueCol);
+        modDepthSlider[i].setColour (juce::Slider::textBoxBackgroundColourId, kCardBg);
+        modDepthSlider[i].setColour (juce::Slider::textBoxOutlineColourId, kCardEdge);
         matrixHolder.addAndMakeVisible (modDepthSlider[i]);
         modDepthAtt[i] = std::make_unique<SliderAttachment> (proc.apvts, "mod" + s + "Depth", modDepthSlider[i]);
 
@@ -1938,6 +1943,22 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         modCurveAtt[i] = std::make_unique<ComboBoxAttachment> (proc.apvts, "mod" + s + "Curve", modCurveBox[i]);
     }
     matrixHolder.onResized = [this] { layoutMatrix(); };
+    matrixHolder.onPaint   = [this] (juce::Graphics& g) { paintMatrix (g); };
+    // Clicking the dimmed area outside the card dismisses it.
+    matrixHolder.onMouseDown = [this] (const juce::MouseEvent& e)
+    {
+        if (! matrixPanel_.contains (e.getPosition()))
+            showMatrix (false);
+    };
+    matrixHolder.onKeyPress = [this] (const juce::KeyPress& k)
+    {
+        if (k == juce::KeyPress::escapeKey) { showMatrix (false); return true; }
+        return false;
+    };
+    matrixHolder.setWantsKeyboardFocus (true);
+    matrixHolder.addAndMakeVisible (matrixCloseButton);
+    matrixCloseButton.onClick = [this] { showMatrix (false); };
+    addChildComponent (matrixHolder);   // hidden until FULL MATRIX is pressed
 
     // --- Assemble tabs ---
     tabs.setTabBarDepth (30);
@@ -1948,7 +1969,6 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     addAndMakeVisible (tabs);
 
     struct Page { juce::String name; std::vector<Section*> secs; juce::Component* trailing; juce::String trailingTitle; int trailingH; };
-    const int matrixH = kHeaderH + (kNumModRows / 2) * kMatrixRowH + kCardPad * 2;
 
     // Tabs follow the signal path rather than naming categories of component:
     // where a control sits now tells you when it happens. Global settings sit
@@ -2017,7 +2037,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     inspSourcesBtn.onClick = [this] { showDestinations = false; layoutInspector(); inspector.repaint(); };
     inspDestsBtn.onClick   = [this] { showDestinations = true;  layoutInspector(); inspector.repaint(); };
     inspAddRoute.onClick   = [this] { addRouteToSelected(); };
-    inspFullMatrix.onClick = [this] { tabs.setCurrentTabIndex (2); };
+    inspFullMatrix.onClick = [this] { showMatrix (true); };
     addAndMakeVisible (inspector);
     selectParameter ("cutoff");
     refreshModRings();
@@ -2105,29 +2125,92 @@ void PDHybridEditor::updateOscControls()
     apply (oscB, "oscBType");
 }
 
+void PDHybridEditor::showMatrix (bool shouldShow)
+{
+    matrixHolder.setVisible (shouldShow);
+    if (shouldShow)
+    {
+        matrixHolder.toFront (true);
+        matrixHolder.grabKeyboardFocus();   // so Escape closes it
+        layoutMatrix();
+    }
+}
+
 void PDHybridEditor::layoutMatrix()
 {
-    const int matRows = kNumModRows / 2;
-    auto marea = matrixHolder.getLocalBounds();
-    marea.removeFromTop (kHeaderH);
-    marea = marea.reduced (kCardPad, kCardPad);
+    // One row per slot, in a centred card. All ten are visible at once — that is
+    // the whole point of the view.
+    const int cardW = juce::jmin (matrixHolder.getWidth() - 40, 700);
+    const int cardH = kHeaderH + 18 + kNumModRows * kMatrixRowH + 34 + 2 * kCardPad;
+    matrixPanel_ = juce::Rectangle<int> (0, 0, cardW, cardH)
+                       .withCentre (matrixHolder.getLocalBounds().getCentre());
 
-    for (int rowI = 0; rowI < matRows; ++rowI)
+    auto inner = matrixPanel_.reduced (kCardPad + 4, kCardPad);
+    inner.removeFromTop (kHeaderH);
+    inner.removeFromTop (18);                    // column headings
+
+    for (int i = 0; i < kNumModRows; ++i)
     {
-        auto row = marea.removeFromTop (kMatrixRowH).reduced (2, 2);
-        const int half = row.getWidth() / 2;
-        for (int colI = 0; colI < 2; ++colI)
-        {
-            const int idx = rowI * 2 + colI;
-            auto cell = row.removeFromLeft (half).reduced (3, 0);
-            modSrcBox[idx].setBounds  (cell.removeFromLeft (92));
-            cell.removeFromLeft (4);
-            modDestBox[idx].setBounds (cell.removeFromLeft (92));
-            cell.removeFromLeft (4);
-            modCurveBox[idx].setBounds (cell.removeFromLeft (64));
-            cell.removeFromLeft (6);
-            modDepthSlider[idx].setBounds (cell);
-        }
+        auto row = inner.removeFromTop (kMatrixRowH).reduced (0, 2);
+        row.removeFromLeft (22);                 // slot number, painted
+        modSrcBox[i].setBounds   (row.removeFromLeft (128));
+        row.removeFromLeft (6);
+        modDestBox[i].setBounds  (row.removeFromLeft (128));
+        row.removeFromLeft (6);
+        modCurveBox[i].setBounds (row.removeFromLeft (56));
+        row.removeFromLeft (8);
+        modDepthSlider[i].setBounds (row);
+    }
+
+    inner.removeFromTop (6);
+    matrixCloseButton.setBounds (inner.removeFromTop (22).removeFromRight (72));
+}
+
+void PDHybridEditor::paintMatrix (juce::Graphics& g)
+{
+    // Dim everything behind, then the card itself.
+    g.fillAll (juce::Colour (0xcc000000));
+
+    g.setColour (kCardBg);
+    g.fillRect (matrixPanel_);
+    g.setColour (kAccent);
+    g.drawRect (matrixPanel_, 1);
+
+    auto head = matrixPanel_.reduced (kCardPad + 4, kCardPad).removeFromTop (kHeaderH);
+    g.setFont (monoFont (11.0f));
+    g.setColour (kTitleCol);
+    g.drawText ("MODULATION MATRIX", head, juce::Justification::centredLeft);
+    g.setFont (monoFont (9.0f));
+    g.setColour (kLabelCol);
+    g.drawText (juce::String ((int) routes_.size()) + " / " + juce::String (kNumModRows)
+                    + " SLOTS IN USE",
+                head, juce::Justification::centredRight);
+
+    // Column headings, aligned to the widgets beneath them.
+    g.setFont (monoFont (8.0f));
+    g.setColour (kLabelCol.withAlpha (0.7f));
+    if (kNumModRows > 0)
+    {
+        const int y = modSrcBox[0].getY() - 15;
+        g.drawText ("SOURCE",      modSrcBox[0].getX(),   y, 128, 12, juce::Justification::centredLeft);
+        g.drawText ("DESTINATION", modDestBox[0].getX(),  y, 128, 12, juce::Justification::centredLeft);
+        g.drawText ("CURVE",       modCurveBox[0].getX(), y, 56,  12, juce::Justification::centredLeft);
+        g.drawText ("DEPTH",       modDepthSlider[0].getX(), y,
+                    modDepthSlider[0].getWidth(), 12, juce::Justification::centredLeft);
+    }
+
+    // Slot numbers; an in-use slot is amber, matching the rings on the panel.
+    for (int i = 0; i < kNumModRows; ++i)
+    {
+        bool used = false;
+        for (const auto& rt : routes_)
+            if (rt.slot == i + 1) { used = true; break; }
+
+        g.setFont (monoFont (9.0f));
+        g.setColour (used ? kModCol : kLabelCol.withAlpha (0.45f));
+        g.drawText (juce::String (i + 1),
+                    modSrcBox[i].getX() - 22, modSrcBox[i].getY(), 18, modSrcBox[i].getHeight(),
+                    juce::Justification::centredRight);
     }
 }
 
@@ -2294,6 +2377,9 @@ void PDHybridEditor::resized()
     // so nothing in it competes with the strip for the same row.
     inspector.setBounds (r.removeFromRight (kInspW).reduced (6, 6));
     tabs.setBounds (r);
+    // The overlay covers everything below the title bar, so the dimmed backdrop
+    // reads as "the rest of the editor is inactive".
+    matrixHolder.setBounds (getLocalBounds().withTrimmedTop (kTopBar));
     crtOverlay.setBounds (getLocalBounds());
 }
 

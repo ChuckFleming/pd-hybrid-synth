@@ -191,9 +191,12 @@ private:
         std::function<void()> onResized;
         std::function<void (juce::Graphics&)> onPaint;
         std::function<void (const juce::MouseEvent&)> onMouseDown;
+        std::function<bool (const juce::KeyPress&)> onKeyPress;
         void resized() override { if (onResized) onResized(); }
         void paint (juce::Graphics& g) override { if (onPaint) onPaint (g); }
         void mouseDown (const juce::MouseEvent& e) override { if (onMouseDown) onMouseDown (e); }
+        bool keyPressed (const juce::KeyPress& k) override
+        { return onKeyPress ? onKeyPress (k) : false; }
     };
 
     LabeledKnob& addKnob (const juce::String& paramId, const juce::String& text,
@@ -357,9 +360,14 @@ private:
     Section voiceSec, tuningSec, globalLfoSec, qualitySec;               // Global page
     Section envelope;                                                    // amp env (lives in the strip)
 
-    // Modulation matrix.
+    // Modulation matrix. Lives as an overlay over the whole editor rather than
+    // on a page: it is the "show me everything" view, opened from the Inspector.
     static constexpr int kNumModRows = 10;
     CallbackComponent matrixHolder;
+    juce::TextButton matrixCloseButton { "CLOSE" };
+    juce::Rectangle<int> matrixPanel_;      // the card inside the overlay
+    void paintMatrix (juce::Graphics&);
+    void showMatrix (bool shouldShow);
     juce::ComboBox modSrcBox[kNumModRows];
     juce::ComboBox modDestBox[kNumModRows];
     juce::ComboBox modCurveBox[kNumModRows];

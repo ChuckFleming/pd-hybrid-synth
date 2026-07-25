@@ -66,6 +66,7 @@ public:
     {
         const int sizeTag = (int) s.getProperties().getWithDefault ("knobSize", 1);
         const bool large  = (sizeTag == 2);
+        const bool modded = (bool) s.getProperties().getWithDefault ("modded", false);
         const float scale = sizeTag == 0 ? 0.70f : (large ? 1.0f : 0.85f);
 
         const juce::Colour ring    = large ? juce::Colour (0xff4be08a) : juce::Colour (0xff2b6b46);
@@ -91,6 +92,16 @@ public:
             arc.addCentredArc (cx, cy, r + 3.0f, r + 3.0f, 0.0f, startAngle, ang, true);
             g.setColour (pointer);
             g.strokePath (arc, juce::PathStrokeType (2.0f));
+        }
+
+        // Amber ring: at least one modulation-matrix route lands on this knob.
+        // This is what stops the matrix being write-only — the panel itself
+        // shows where modulation goes.
+        if (modded)
+        {
+            const float mr = r + (large ? 6.0f : 4.0f);
+            g.setColour (juce::Colour (0xffe8a54b));
+            g.drawEllipse (cx - mr, cy - mr, mr * 2.0f, mr * 2.0f, 1.4f);
         }
 
         const float px = cx + (r - 2.0f) * std::sin (ang);

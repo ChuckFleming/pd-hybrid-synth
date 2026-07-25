@@ -21,7 +21,8 @@
 */
 class PDHybridEditor : public juce::AudioProcessorEditor,
                        private juce::AudioProcessorValueTreeState::Listener,
-                       private juce::AsyncUpdater
+                       private juce::AsyncUpdater,
+                       private juce::Timer
 {
 public:
     explicit PDHybridEditor (PDHybridAudioProcessor&);
@@ -29,6 +30,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;   // knob -> Inspector selection
 
 private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
@@ -45,6 +47,7 @@ private:
         juce::Slider slider;
         juce::Label  label;
         std::unique_ptr<SliderAttachment> attachment;
+        juce::String paramId;
         KnobSize size = KnobSize::Normal;
     };
 
@@ -99,6 +102,67 @@ private:
     public:
         SectionPanel* panel = nullptr;
         void resized() override;
+    };
+
+    /** Editor for the three Casio-style 8-stage envelopes (DCO -> pitch,
+        DCW -> PD amount, MULTI -> filter).
+
+        The three banks share one card: a stage selector chooses which is being
+        edited, the curve is drawn as a draggable breakpoint polyline (x is real
+        elapsed time, so stage widths show their true durations), and the bank's
+        18 parameters stay underneath as ordinary knobs. Nothing is hidden from
+        the host — every rate, level, amount and sustain point keeps its own
+        parameter and automation lane; the graph is a second view of them.
+
+        Values are polled on a timer rather than listened to, so automation and
+        preset loads move the curve without any audio-thread callbacks. */
+    class StageEnvelopePanel : public juce::Component,
+                               private juce::Timer
+    {
+    public:
+        struct Bank
+        {
+            juce::String name;                   // "DCO"
+            juce::String dest;                   // "-> pitch"
+            juce::RangedAudioParameter* rate[8]  {};
+            juce::RangedAudioParameter* level[8] {};
+            juce::RangedAudioParameter* sustain = nullptr;   // int, 1..8
+            std::vector<LabeledKnob*> knobs;      // R1..R8, L1..L8, Amt, Sus
+            bool bipolar = false;                 // levels are centred on 0.5
+            juce::Colour colour;
+        };
+
+        StageEnvelopePanel();
+        ~StageEnvelopePanel() override;
+
+        void addBank (Bank b);
+        void start();                             // after the last addBank
+        static int preferredHeight();             // selector + graph + knob rows
+
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
+        void mouseUp   (const juce::MouseEvent&) override;
+        void mouseMove (const juce::MouseEvent&) override;
+        void mouseExit (const juce::MouseEvent&) override;
+
+    private:
+        void timerCallback() override;
+        void selectBank (int index);
+        juce::Rectangle<int> graphArea() const;
+        // Node i's centre, 0..7; node -1 is the (0, 0) origin the curve starts at.
+        juce::Point<float> nodePos (int i, double totalOverride = 0.0) const;
+        double totalTime() const;
+        int    hitNode (juce::Point<float> p) const;
+
+        std::vector<Bank> banks;
+        std::vector<std::unique_ptr<juce::TextButton>> bankButtons;
+        int  active = 0;
+        int  dragNode = -1;      // node being dragged, -1 = none
+        int  hoverNode = -1;
+        double dragTotal = 0.0;  // time base frozen for the duration of a drag
+        std::vector<float> lastValues;   // change detection for the repaint timer
     };
 
     // Trivial holder whose resized()/paint() defer to callbacks (used for the
@@ -179,7 +243,35 @@ private:
     Section oscA, oscB, mixer;                                           // Voice page
     Section glideSec, unison, bassSec;
     Section pluckSec, drive, routingSec, filter, filter2, filterEnv, filter2Env;   // Shape page
-    Section modEnv, multiEnvSec, pitchEnvSec, dcwEnvSec, lfo, lfo2, vibratoSec, arpSec;  // Mod page
+    Section stageEnvSec, modEnv, lfo, lfo2, vibratoSec, arpSec;   // Mod page
+    StageEnvelopePanel stageEnv;
+    void buildStageEnvelopes();
+
+    //--------------------------------------------------------------------------
+    // Modulation Inspector: a permanent right-hand column that makes the matrix
+    // readable from the outside. Click any knob and it lists every route
+    // pointing at it; knobs that are routed to carry an amber ring, so a patch's
+    // modulation is visible on the panel instead of only inside the matrix.
+    CallbackComponent inspector;
+    juce::TextButton inspAddRoute { "+ ADD ROUTE" };
+    juce::TextButton inspFullMatrix { "FULL MATRIX" };
+
+    juce::String selectedParam;              // parameter the Inspector is showing
+    juce::String selectedName;
+    std::vector<juce::Rectangle<int>> inspRouteBars;   // depth bars, filled on layout
+
+    void selectParameter (const juce::String& paramId);
+    void layoutInspector();
+    void paintInspector (juce::Graphics&);
+    void refreshModRings();                  // tag destination knobs for the ring
+    int  firstFreeMatrixSlot() const;
+    void addRouteToSelected();
+    void timerCallback() override;           // live values + ring refresh
+
+    // Matrix state as of the last refresh, so painting never touches the APVTS
+    // in a tight loop.
+    struct RouteView { int slot; int source; int dest; float depth; int curve; };
+    std::vector<RouteView> routes_;
     Section chorusSec, delaySec, reverbSec, comp, globalEqSec, stereo;   // Out page
     Section voiceSec, globalLfoSec;                                      // Global page
     Section envelope;                                                    // amp env (lives in the strip)

@@ -27,6 +27,7 @@ const juce::Colour kAccent   (0xff4be08a);   // phosphor green
 const juce::Colour kTitleCol (0xff4be08a);
 const juce::Colour kLabelCol (0xff37b06e);   // dim green control labels
 const juce::Colour kValueCol (0xff4be08a);   // bright green readouts
+const juce::Colour kModCol   (0xffe8a54b);   // amber: "modulation lands here"
 
 juce::Font monoFont (float height, bool bold = false)
 {
@@ -296,6 +297,324 @@ void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+//  StageEnvelopePanel — the three CZ 8-stage envelopes as one draggable curve
+//==============================================================================
+namespace {
+constexpr int kEnvSelH   = 22;    // stage-selector row
+constexpr int kEnvGraphH = 132;   // curve area
+constexpr float kNodeR   = 4.5f;  // breakpoint handle radius
+}
+
+PDHybridEditor::StageEnvelopePanel::StageEnvelopePanel() = default;
+PDHybridEditor::StageEnvelopePanel::~StageEnvelopePanel() { stopTimer(); }
+
+int PDHybridEditor::StageEnvelopePanel::preferredHeight()
+{
+    // selector + graph + a gap + two rows of knobs (R1..R8 then L1..L8 + Amt/Sus)
+    return kEnvSelH + kEnvGraphH + kCardPad + 2 * kCellH;
+}
+
+void PDHybridEditor::StageEnvelopePanel::addBank (Bank b)
+{
+    const int index = static_cast<int> (banks.size());
+
+    auto btn = std::make_unique<juce::TextButton> (b.name);
+    btn->setClickingTogglesState (false);
+    btn->setTooltip (b.name + "  " + b.dest);
+    btn->onClick = [this, index] { selectBank (index); };
+    addAndMakeVisible (*btn);
+    bankButtons.push_back (std::move (btn));
+
+    for (auto* k : b.knobs)
+    {
+        addAndMakeVisible (k->slider);
+        addAndMakeVisible (k->label);
+    }
+
+    banks.push_back (std::move (b));
+}
+
+void PDHybridEditor::StageEnvelopePanel::start()
+{
+    selectBank (0);
+    startTimerHz (20);
+}
+
+void PDHybridEditor::StageEnvelopePanel::selectBank (int index)
+{
+    if (index < 0 || index >= static_cast<int> (banks.size()))
+        return;
+
+    active = index;
+    for (std::size_t i = 0; i < banks.size(); ++i)
+    {
+        const bool on = (static_cast<int> (i) == active);
+        bankButtons[i]->setToggleState (on, juce::dontSendNotification);
+        for (auto* k : banks[i].knobs)
+        {
+            k->slider.setVisible (on);
+            k->label.setVisible (on);
+        }
+    }
+    resized();
+    repaint();
+}
+
+double PDHybridEditor::StageEnvelopePanel::totalTime() const
+{
+    if (banks.empty()) return 1.0;
+    double t = 0.0;
+    for (auto* p : banks[(std::size_t) active].rate)
+        if (p != nullptr) t += p->convertFrom0to1 (p->getValue());
+    return juce::jmax (1.0e-4, t);
+}
+
+juce::Rectangle<int> PDHybridEditor::StageEnvelopePanel::graphArea() const
+{
+    return getLocalBounds().withTrimmedTop (kEnvSelH).withHeight (kEnvGraphH).reduced (2, 2);
+}
+
+juce::Point<float> PDHybridEditor::StageEnvelopePanel::nodePos (int i, double totalOverride) const
+{
+    const auto g = graphArea().toFloat().reduced (6.0f, 8.0f);
+    const auto& bank = banks[(std::size_t) active];
+    const double total = totalOverride > 0.0 ? totalOverride : totalTime();
+
+    if (i < 0)   // the origin the envelope departs from
+        return { g.getX(), g.getBottom() };
+
+    double cum = 0.0;
+    for (int s = 0; s <= i; ++s)
+        if (bank.rate[s] != nullptr)
+            cum += bank.rate[s]->convertFrom0to1 (bank.rate[s]->getValue());
+
+    const float lv = bank.level[i] != nullptr
+                       ? bank.level[i]->convertFrom0to1 (bank.level[i]->getValue()) : 0.0f;
+    return { g.getX() + g.getWidth() * static_cast<float> (cum / total),
+             g.getBottom() - g.getHeight() * juce::jlimit (0.0f, 1.0f, lv) };
+}
+
+int PDHybridEditor::StageEnvelopePanel::hitNode (juce::Point<float> p) const
+{
+    for (int i = 0; i < 8; ++i)
+        if (nodePos (i).getDistanceFrom (p) <= kNodeR + 4.0f)
+            return i;
+    return -1;
+}
+
+void PDHybridEditor::StageEnvelopePanel::mouseMove (const juce::MouseEvent& e)
+{
+    const int h = graphArea().contains (e.getPosition()) ? hitNode (e.position) : -1;
+    if (h != hoverNode) { hoverNode = h; repaint(); }
+}
+
+void PDHybridEditor::StageEnvelopePanel::mouseExit (const juce::MouseEvent&)
+{
+    if (hoverNode != -1) { hoverNode = -1; repaint(); }
+}
+
+void PDHybridEditor::StageEnvelopePanel::mouseDown (const juce::MouseEvent& e)
+{
+    if (! graphArea().contains (e.getPosition()))
+        return;
+
+    dragNode = hitNode (e.position);
+    if (dragNode < 0)
+        return;
+
+    // Freeze the time base for the gesture, otherwise editing a rate rescales
+    // the x axis under the cursor and the drag fights itself.
+    dragTotal = totalTime();
+    auto& bank = banks[(std::size_t) active];
+    if (bank.rate[dragNode]  != nullptr) bank.rate[dragNode]->beginChangeGesture();
+    if (bank.level[dragNode] != nullptr) bank.level[dragNode]->beginChangeGesture();
+}
+
+void PDHybridEditor::StageEnvelopePanel::mouseDrag (const juce::MouseEvent& e)
+{
+    if (dragNode < 0) return;
+
+    const auto g = graphArea().toFloat().reduced (6.0f, 8.0f);
+    auto& bank = banks[(std::size_t) active];
+
+    if (auto* lp = bank.level[dragNode])
+    {
+        const float lv = juce::jlimit (0.0f, 1.0f, (g.getBottom() - e.position.y) / g.getHeight());
+        lp->setValueNotifyingHost (lp->convertTo0to1 (lv));
+    }
+
+    if (auto* rp = bank.rate[dragNode])
+    {
+        // x is cumulative time, so this stage's duration is the gap between the
+        // cursor and the end of the previous stage.
+        double before = 0.0;
+        for (int s = 0; s < dragNode; ++s)
+            if (bank.rate[s] != nullptr)
+                before += bank.rate[s]->convertFrom0to1 (bank.rate[s]->getValue());
+
+        const double wantCum = juce::jlimit (0.0f, 1.0f, (e.position.x - g.getX()) / g.getWidth()) * dragTotal;
+        const auto range = rp->getNormalisableRange();
+        const float t = juce::jlimit (range.start, range.end, static_cast<float> (wantCum - before));
+        rp->setValueNotifyingHost (rp->convertTo0to1 (t));
+    }
+
+    repaint();
+}
+
+void PDHybridEditor::StageEnvelopePanel::mouseUp (const juce::MouseEvent&)
+{
+    if (dragNode < 0) return;
+    auto& bank = banks[(std::size_t) active];
+    if (bank.rate[dragNode]  != nullptr) bank.rate[dragNode]->endChangeGesture();
+    if (bank.level[dragNode] != nullptr) bank.level[dragNode]->endChangeGesture();
+    dragNode = -1;
+}
+
+void PDHybridEditor::StageEnvelopePanel::timerCallback()
+{
+    // Repaint only when something actually moved (automation, preset load, or a
+    // knob being turned underneath the graph).
+    if (banks.empty()) return;
+    const auto& bank = banks[(std::size_t) active];
+
+    std::vector<float> now;
+    now.reserve (17);
+    for (int i = 0; i < 8; ++i)
+    {
+        now.push_back (bank.rate[i]  != nullptr ? bank.rate[i]->getValue()  : 0.0f);
+        now.push_back (bank.level[i] != nullptr ? bank.level[i]->getValue() : 0.0f);
+    }
+    now.push_back (bank.sustain != nullptr ? bank.sustain->getValue() : 0.0f);
+
+    if (now != lastValues) { lastValues = now; repaint(); }
+}
+
+void PDHybridEditor::StageEnvelopePanel::resized()
+{
+    auto r = getLocalBounds();
+
+    auto sel = r.removeFromTop (kEnvSelH);
+    for (auto& b : bankButtons)
+        b->setBounds (sel.removeFromLeft (86).reduced (1, 2));
+
+    r.removeFromTop (kEnvGraphH + kCardPad);
+
+    // Two knob rows for the active bank: R1..R8, then L1..L8 with Amt and Sus.
+    if (banks.empty()) return;
+    auto& knobs = banks[(std::size_t) active].knobs;
+    const int cols  = 10;
+    const int cellW = r.getWidth() / cols;
+
+    for (std::size_t k = 0; k < knobs.size(); )
+    {
+        auto krow = r.removeFromTop (kCellH);
+        for (int c = 0; c < cols && k < knobs.size(); ++c, ++k)
+        {
+            auto cell = krow.removeFromLeft (cellW);
+            knobs[k]->label.setBounds  (cell.removeFromTop (kLabelH));
+            knobs[k]->slider.setBounds (cell);
+        }
+    }
+}
+
+void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
+{
+    if (banks.empty()) return;
+
+    const auto& bank  = banks[(std::size_t) active];
+    const auto  frame = graphArea();
+    const auto  area  = frame.toFloat().reduced (6.0f, 8.0f);
+    const auto  col   = bank.colour;
+
+    g.setColour (kCardEdge);
+    g.drawRect (frame, 1);
+
+    // Horizontal guides; bipolar banks also get a centre line at "no offset".
+    g.setColour (juce::Colour (0xff0e2116));
+    for (int i = 1; i < 4; ++i)
+        g.fillRect (area.getX(), area.getY() + area.getHeight() * i / 4.0f, area.getWidth(), 1.0f);
+    if (bank.bipolar)
+    {
+        g.setColour (col.withAlpha (0.35f));
+        g.fillRect (area.getX(), area.getCentreY(), area.getWidth(), 1.0f);
+    }
+
+    // The curve, from the origin through all eight breakpoints.
+    juce::Path curve;
+    auto p = nodePos (-1);
+    curve.startNewSubPath (p);
+    for (int i = 0; i < 8; ++i)
+        curve.lineTo (nodePos (i));
+
+    auto fill = curve;
+    fill.lineTo (area.getRight(), area.getBottom());
+    fill.lineTo (area.getX(),     area.getBottom());
+    fill.closeSubPath();
+    g.setColour (col.withAlpha (0.11f));
+    g.fillPath (fill);
+
+    g.setColour (col);
+    g.strokePath (curve, juce::PathStrokeType (1.6f));
+
+    // Sustain point: the stage the envelope holds on until note-off.
+    const int susStage = bank.sustain != nullptr
+        ? juce::roundToInt (bank.sustain->convertFrom0to1 (bank.sustain->getValue())) : 0;
+    if (susStage >= 1 && susStage <= 8)
+    {
+        const float sx = nodePos (susStage - 1).x;
+        g.setColour (col.withAlpha (0.55f));
+        for (float y = frame.getY() + 2.0f; y < frame.getBottom() - 2.0f; y += 6.0f)
+            g.fillRect (sx, y, 1.0f, 3.0f);
+        g.setFont (monoFont (9.0f));
+        g.drawText ("SUS", juce::Rectangle<float> (sx + 3.0f, (float) frame.getY() + 2.0f, 30.0f, 11.0f),
+                    juce::Justification::centredLeft);
+    }
+
+    // Breakpoint handles; the hovered one reads out its rate and level.
+    for (int i = 0; i < 8; ++i)
+    {
+        const auto np = nodePos (i);
+        const bool lit = (i == dragNode || i == hoverNode);
+        g.setColour (kCardBg);
+        g.fillRect (np.x - kNodeR, np.y - kNodeR, kNodeR * 2.0f, kNodeR * 2.0f);
+        g.setColour (lit ? juce::Colours::white.interpolatedWith (col, 0.6f) : col);
+        g.drawRect (juce::Rectangle<float> (np.x - kNodeR, np.y - kNodeR, kNodeR * 2.0f, kNodeR * 2.0f), 1.4f);
+    }
+
+    if (hoverNode >= 0 && dragNode < 0)
+    {
+        const auto np = nodePos (hoverNode);
+        const auto* rp = bank.rate[hoverNode];
+        const auto* lp = bank.level[hoverNode];
+        const juce::String txt = "R" + juce::String (hoverNode + 1) + " "
+            + (rp != nullptr ? rp->getCurrentValueAsText() : juce::String())
+            + "   L" + juce::String (hoverNode + 1) + " "
+            + (lp != nullptr ? lp->getCurrentValueAsText() : juce::String());
+
+        g.setFont (monoFont (9.5f));
+        const int tw = g.getCurrentFont().getStringWidth (txt) + 12;
+        auto box = juce::Rectangle<int> ((int) np.x + 8, (int) np.y - 9, tw, 17);
+        if (box.getRight() > frame.getRight() - 2) box.setX ((int) np.x - 8 - tw);
+        g.setColour (kCardBg);   g.fillRect (box);
+        g.setColour (col.withAlpha (0.7f)); g.drawRect (box, 1);
+        g.setColour (col);       g.drawText (txt, box.reduced (6, 0), juce::Justification::centredLeft);
+    }
+
+    // Stage numbers along the bottom edge of the graph.
+    g.setFont (monoFont (8.5f));
+    g.setColour (kLabelCol.withAlpha (0.7f));
+    for (int i = 0; i < 8; ++i)
+    {
+        const float x0 = (i == 0 ? area.getX() : nodePos (i - 1).x);
+        const float x1 = nodePos (i).x;
+        if (x1 - x0 > 12.0f)
+            g.drawText (juce::String (i + 1),
+                        juce::Rectangle<float> (x0, (float) frame.getBottom() - 13.0f, x1 - x0, 11.0f),
+                        juce::Justification::centred);
+    }
+}
+
+//==============================================================================
 //  ScrollPanel
 //==============================================================================
 void PDHybridEditor::ScrollPanel::resized()
@@ -332,7 +651,10 @@ PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramI
     knob->label.setColour (juce::Label::textColourId,
                            size == KnobSize::Large ? kAccent : kLabelCol);
 
+    knob->paramId = paramId;
     knob->attachment = std::make_unique<SliderAttachment> (proc.apvts, paramId, knob->slider);
+    // Clicks also point the Inspector at this parameter (see mouseDown).
+    knob->slider.addMouseListener (this, false);
 
     knobs.push_back (std::move (knob));
     return *knobs.back();
@@ -505,38 +827,12 @@ void PDHybridEditor::buildSections()
     modEnv.knobs = { &addKnob ("modEnvA", "Atk"), &addKnob ("modEnvD", "Dec"),
                      &addKnob ("modEnvS", "Sus"), &addKnob ("modEnvR", "Rel") };
 
-    // --- CZ multi-stage envelope (8 rate + 8 level, aligned in rows) ---
-    multiEnvSec.title = "Multi-Stage Env (CZ)  ->  filter";
-    multiEnvSec.cols  = 10;
-    multiEnvSec.span  = 6;
-    for (int i = 1; i <= 8; ++i)
-        multiEnvSec.knobs.push_back (&addKnob ("czRate" + juce::String (i), "R" + juce::String (i)));
-    for (int i = 1; i <= 8; ++i)
-        multiEnvSec.knobs.push_back (&addKnob ("czLevel" + juce::String (i), "L" + juce::String (i)));
-    multiEnvSec.knobs.push_back (&addKnob ("czAmount", "Amt"));
-    multiEnvSec.knobs.push_back (&addKnob ("czSustain", "Sus", 0));
-
-    // --- CZ pitch (DCO) envelope (8 rate + 8 level, aligned in rows) ---
-    pitchEnvSec.title = "Pitch Env (CZ)  ->  pitch";
-    pitchEnvSec.cols  = 10;
-    pitchEnvSec.span  = 6;
-    for (int i = 1; i <= 8; ++i)
-        pitchEnvSec.knobs.push_back (&addKnob ("pitchEnvRate" + juce::String (i), "R" + juce::String (i)));
-    for (int i = 1; i <= 8; ++i)
-        pitchEnvSec.knobs.push_back (&addKnob ("pitchEnvLevel" + juce::String (i), "L" + juce::String (i)));
-    pitchEnvSec.knobs.push_back (&addKnob ("pitchEnvAmount", "Amt", 0));
-    pitchEnvSec.knobs.push_back (&addKnob ("pitchEnvSustain", "Sus", 0));
-
-    // --- CZ DCW (wave-depth) envelope ---
-    dcwEnvSec.title = "DCW Env (CZ)  ->  PD amount";
-    dcwEnvSec.cols  = 10;
-    dcwEnvSec.span  = 6;
-    for (int i = 1; i <= 8; ++i)
-        dcwEnvSec.knobs.push_back (&addKnob ("dcwEnvRate" + juce::String (i), "R" + juce::String (i)));
-    for (int i = 1; i <= 8; ++i)
-        dcwEnvSec.knobs.push_back (&addKnob ("dcwEnvLevel" + juce::String (i), "L" + juce::String (i)));
-    dcwEnvSec.knobs.push_back (&addKnob ("dcwEnvAmount", "Amt", 1));
-    dcwEnvSec.knobs.push_back (&addKnob ("dcwEnvSustain", "Sus", 0));
+    // The three CZ 8-stage envelopes share one card with a stage selector and a
+    // draggable curve; see buildStageEnvelopes().
+    stageEnvSec.title   = "Multi-Stage Envelopes (CZ)";
+    stageEnvSec.span    = 6;
+    stageEnvSec.custom  = &stageEnv;
+    stageEnvSec.customH = StageEnvelopePanel::preferredHeight();
 
     // --- LFOs ---
     lfo.title  = "LFO 1";
@@ -644,6 +940,360 @@ void PDHybridEditor::buildSections()
     globalLfoSec.combos = { &addCombo ("globalLfoWave", kLfoWaveNames),
                             &addCombo ("osQuality", { "OS 1x", "OS 2x", "OS 4x", "OS 8x" }) };
     globalLfoSec.knobs  = { &addKnob ("globalLfoRate", "Rate") };
+}
+
+//==============================================================================
+//  Modulation Inspector
+//==============================================================================
+namespace {
+constexpr int kInspW    = 236;   // permanent Inspector column width
+constexpr int kInspRowH = 15;
+
+// Which knob(s) a modulation destination lands on. Pitch and Amplitude have no
+// single knob of their own, so they are absent — a route to them shows in the
+// matrix summary but has nothing to ring.
+struct DestParam { pdhybrid::ModDest dest; const char* paramId; };
+const DestParam kDestParams[] = {
+    { pdhybrid::ModDest::PdAmount,      "oscAAmount" },
+    { pdhybrid::ModDest::PdAmount,      "oscBAmount" },
+    { pdhybrid::ModDest::PulseWidth,    "oscAPulseWidth" },
+    { pdhybrid::ModDest::PulseWidth,    "oscBPulseWidth" },
+    { pdhybrid::ModDest::Cutoff,        "cutoff" },
+    { pdhybrid::ModDest::Resonance,     "resonance" },
+    { pdhybrid::ModDest::Morph,         "filterMorph" },
+    { pdhybrid::ModDest::Drive,         "drive" },
+    { pdhybrid::ModDest::Pan,           "pan" },
+    { pdhybrid::ModDest::OscALevel,     "oscALevel" },
+    { pdhybrid::ModDest::OscBLevel,     "oscBLevel" },
+    { pdhybrid::ModDest::Detune,        "unisonDetune" },
+    { pdhybrid::ModDest::Filter2Cutoff, "filter2Cutoff" },
+    { pdhybrid::ModDest::LfoRate,       "lfoRate" },
+    { pdhybrid::ModDest::Lfo2Rate,      "lfo2Rate" },
+    { pdhybrid::ModDest::NoiseLevel,    "noiseLevel" },
+    { pdhybrid::ModDest::DelayMix,      "delayMix" },
+    { pdhybrid::ModDest::DelayFeedback, "delayFeedback" },
+    { pdhybrid::ModDest::MasterPan,     "pan" },
+    { pdhybrid::ModDest::GlobalEqGain,  "geHighGain" },
+};
+
+int destForParam (const juce::String& paramId)
+{
+    for (const auto& d : kDestParams)
+        if (paramId == d.paramId)
+            return static_cast<int> (d.dest);
+    return 0;
+}
+}
+
+void PDHybridEditor::selectParameter (const juce::String& paramId)
+{
+    if (paramId == selectedParam) return;
+    selectedParam = paramId;
+    if (auto* p = proc.apvts.getParameter (paramId))
+        selectedName = p->getName (40);
+    layoutInspector();
+    inspector.repaint();
+}
+
+void PDHybridEditor::mouseDown (const juce::MouseEvent& e)
+{
+    // Knob sliders forward their clicks here (addMouseListener in addKnob), so a
+    // click both grabs the knob and points the Inspector at it.
+    for (auto& k : knobs)
+        if (e.eventComponent == &k->slider)
+        {
+            selectParameter (k->paramId);
+            return;
+        }
+}
+
+int PDHybridEditor::firstFreeMatrixSlot() const
+{
+    for (int i = 1; i <= kNumModRows; ++i)
+    {
+        const auto s = juce::String (i);
+        const bool srcOff  = proc.apvts.getRawParameterValue ("mod" + s + "Source")->load() < 0.5f;
+        const bool destOff = proc.apvts.getRawParameterValue ("mod" + s + "Dest")->load() < 0.5f;
+        if (srcOff || destOff)
+            return i;
+    }
+    return 0;
+}
+
+void PDHybridEditor::addRouteToSelected()
+{
+    const int dest = destForParam (selectedParam);
+    const int slot = firstFreeMatrixSlot();
+    if (dest == 0 || slot == 0)
+        return;
+
+    // Point a free slot at this knob and give it a usable default source, then
+    // show the matrix so the choice can be changed.
+    if (auto* d = proc.apvts.getParameter ("mod" + juce::String (slot) + "Dest"))
+        d->setValueNotifyingHost (d->convertTo0to1 ((float) dest));
+    if (auto* s = proc.apvts.getParameter ("mod" + juce::String (slot) + "Source"))
+        if (s->getValue() <= 0.0f)
+            s->setValueNotifyingHost (s->convertTo0to1 ((float) pdhybrid::ModSource::Lfo));
+    // A new route starts at an audible depth, so the button does something you
+    // can hear; the depth is then adjustable in the matrix or by dragging.
+    if (auto* d = proc.apvts.getParameter ("mod" + juce::String (slot) + "Depth"))
+        if (std::abs (d->convertFrom0to1 (d->getValue())) < 1.0e-4f)
+            d->setValueNotifyingHost (d->convertTo0to1 (0.30f));
+
+    tabs.setCurrentTabIndex (2);   // "3 - Mod", where the matrix lives
+    refreshModRings();
+    inspector.repaint();
+}
+
+void PDHybridEditor::refreshModRings()
+{
+    routes_.clear();
+    for (int i = 1; i <= kNumModRows; ++i)
+    {
+        const auto s = juce::String (i);
+        const int src  = juce::roundToInt (proc.apvts.getRawParameterValue ("mod" + s + "Source")->load());
+        const int dst  = juce::roundToInt (proc.apvts.getRawParameterValue ("mod" + s + "Dest")->load());
+        const float dp = proc.apvts.getRawParameterValue ("mod" + s + "Depth")->load();
+        const int cv   = juce::roundToInt (proc.apvts.getRawParameterValue ("mod" + s + "Curve")->load());
+        if (src > 0 && dst > 0)
+            routes_.push_back ({ i, src, dst, dp, cv });
+    }
+
+    // Tag every knob that at least one route lands on; the look-and-feel draws
+    // the amber ring from this property.
+    for (auto& k : knobs)
+    {
+        const int d = destForParam (k->paramId);
+        bool modded = false;
+        if (d != 0)
+            for (const auto& r : routes_)
+                if (r.dest == d) { modded = true; break; }
+
+        if ((bool) k->slider.getProperties().getWithDefault ("modded", false) != modded)
+        {
+            k->slider.getProperties().set ("modded", modded);
+            k->slider.repaint();
+        }
+    }
+}
+
+void PDHybridEditor::timerCallback()
+{
+    refreshModRings();
+    layoutInspector();   // the route list grows and shrinks, so re-place the buttons
+    inspector.repaint();
+}
+
+void PDHybridEditor::layoutInspector()
+{
+    auto r = inspector.getLocalBounds().reduced (8, 6);
+    r.removeFromTop (16);                       // "INSPECTOR" heading
+    r.removeFromTop (kInspRowH + 6);            // selected-parameter name + value
+
+    inspRouteBars.clear();
+    const int dest = destForParam (selectedParam);
+    int shown = 0;
+    for (const auto& rt : routes_)
+        if (dest != 0 && rt.dest == dest && shown < 6)
+        {
+            r.removeFromTop (kInspRowH);        // "source   curve" line
+            inspRouteBars.push_back (r.removeFromTop (5));
+            r.removeFromTop (4);
+            ++shown;
+        }
+
+    r.removeFromTop (4);
+    inspAddRoute.setBounds (r.removeFromTop (20));
+    inspAddRoute.setEnabled (dest != 0 && firstFreeMatrixSlot() != 0);
+
+    inspFullMatrix.setBounds (inspector.getLocalBounds()
+                                  .reduced (8, 6).removeFromBottom (20));
+}
+
+void PDHybridEditor::paintInspector (juce::Graphics& g)
+{
+    auto full = inspector.getLocalBounds();
+    g.setColour (kCardEdge);
+    g.drawRect (full, 1);
+
+    auto r = full.reduced (8, 6);
+
+    g.setFont (monoFont (9.0f));
+    g.setColour (kLabelCol);
+    g.drawText ("INSPECTOR", r.removeFromTop (16), juce::Justification::centredLeft);
+
+    const int dest = destForParam (selectedParam);
+
+    // --- selected control -----------------------------------------------
+    g.setFont (monoFont (10.5f));
+    g.setColour (dest != 0 ? kModCol : kAccent);
+    auto nameRow = r.removeFromTop (kInspRowH);
+    g.drawText (selectedParam.isEmpty() ? "Click a knob" : selectedName,
+                nameRow, juce::Justification::centredLeft);
+
+    if (auto* p = proc.apvts.getParameter (selectedParam))
+    {
+        g.setFont (monoFont (9.0f));
+        g.setColour (kLabelCol);
+        g.drawText (p->getCurrentValueAsText(), nameRow, juce::Justification::centredRight);
+    }
+    r.removeFromTop (6);
+
+    // --- routes that land on it -----------------------------------------
+    int shown = 0;
+    std::size_t barIndex = 0;
+    for (const auto& rt : routes_)
+    {
+        if (dest == 0 || rt.dest != dest || shown >= 6) continue;
+
+        auto row = r.removeFromTop (kInspRowH);
+        g.setFont (monoFont (9.0f));
+        g.setColour (kAccent);
+        g.drawText (kSrcNames[rt.source], row, juce::Justification::centredLeft);
+        g.setColour (kLabelCol);
+        g.drawText (juce::String (rt.depth, 2), row, juce::Justification::centredRight);
+
+        if (barIndex < inspRouteBars.size())
+        {
+            // Bipolar bar: depth grows left or right of centre.
+            auto bar = inspRouteBars[barIndex++];
+            g.setColour (juce::Colour (0xff0e2116));
+            g.fillRect (bar);
+            const float d = juce::jlimit (-1.0f, 1.0f, rt.depth);
+            const int mid = bar.getCentreX();
+            const int w   = juce::roundToInt (std::abs (d) * bar.getWidth() * 0.5f);
+            g.setColour (kModCol);
+            g.fillRect (d >= 0.0f ? mid : mid - w, bar.getY(), juce::jmax (1, w), bar.getHeight());
+        }
+        r.removeFromTop (kInspRowH == 0 ? 0 : 9);
+        ++shown;
+    }
+
+    if (dest == 0 && selectedParam.isNotEmpty())
+    {
+        g.setFont (monoFont (9.0f));
+        g.setColour (kLabelCol.withAlpha (0.65f));
+        g.drawFittedText ("Not a modulation destination.", r.removeFromTop (28),
+                          juce::Justification::topLeft, 2);
+    }
+    else if (shown == 0 && selectedParam.isNotEmpty())
+    {
+        g.setFont (monoFont (9.0f));
+        g.setColour (kLabelCol.withAlpha (0.65f));
+        g.drawText ("No routes.", r.removeFromTop (kInspRowH), juce::Justification::centredLeft);
+    }
+
+    // --- live modulator sources -----------------------------------------
+    auto lower = full.reduced (8, 6).withTrimmedBottom (26);
+    auto modZone = lower.removeFromBottom (juce::jmin (lower.getHeight(), 7 * kInspRowH + 18));
+
+    g.setFont (monoFont (9.0f));
+    g.setColour (kLabelCol);
+    g.drawText ("SOURCES", modZone.removeFromTop (14), juce::Justification::centredLeft);
+
+    // Each row shows the source's own setting (an LFO's rate, a macro's
+    // position) with its value text, so the bar is never ambiguous.
+    // Names must match kSrcNames exactly so a source can be marked "in use".
+    struct Meter { const char* name; const char* paramId; };
+    static const Meter meters[] = {
+        { "LFO",        "lfoRate"       },
+        { "LFO 2",      "lfo2Rate"      },
+        { "Global LFO", "globalLfoRate" },
+        { "Macro 1",    "macro1"        },
+        { "Macro 2",    "macro2"        },
+    };
+    for (const auto& m : meters)
+    {
+        auto row  = modZone.removeFromTop (kInspRowH);
+        auto* p   = proc.apvts.getParameter (m.paramId);
+        const bool used = [&]
+        {
+            for (const auto& rt : routes_)
+                if (kSrcNames[rt.source] == m.name)
+                    return true;
+            return false;
+        }();
+
+        g.setFont (monoFont (8.5f));
+        g.setColour (used ? kModCol : kLabelCol.withAlpha (0.7f));
+        g.drawText (juce::String (m.name).toUpperCase(), row.removeFromLeft (58),
+                    juce::Justification::centredLeft);
+
+        if (p != nullptr)
+        {
+            g.setColour (kLabelCol);
+            g.drawText (p->getCurrentValueAsText(), row.removeFromRight (52),
+                        juce::Justification::centredRight);
+        }
+
+        auto bar = row.reduced (3, 5);
+        g.setColour (juce::Colour (0xff0e2116));
+        g.fillRect (bar);
+        if (p != nullptr)
+        {
+            g.setColour (used ? kAccent : kAccent.withAlpha (0.45f));
+            g.fillRect (bar.getX(), bar.getY(),
+                        juce::jmax (1, juce::roundToInt (p->getValue() * bar.getWidth())),
+                        bar.getHeight());
+        }
+    }
+
+    // --- matrix summary --------------------------------------------------
+    g.setFont (monoFont (9.0f));
+    g.setColour (kLabelCol);
+    g.drawText ("MATRIX  " + juce::String ((int) routes_.size()) + " / "
+                    + juce::String (kNumModRows),
+                modZone.removeFromTop (14), juce::Justification::centredLeft);
+}
+
+//==============================================================================
+//  The three CZ envelopes. Each bank keeps all 18 of its parameters as ordinary
+//  knobs (so automation lanes and existing presets are untouched); the curve is
+//  a second view of the same values.
+//==============================================================================
+void PDHybridEditor::buildStageEnvelopes()
+{
+    auto param = [this] (const juce::String& id) { return proc.apvts.getParameter (id); };
+
+    auto makeBank = [&] (const juce::String& name, const juce::String& dest,
+                         const juce::String& prefix, const juce::String& amountId,
+                         const juce::String& sustainId, int amountDecimals,
+                         bool bipolar, juce::Colour colour)
+    {
+        StageEnvelopePanel::Bank b;
+        b.name = name;
+        b.dest = dest;
+        b.bipolar = bipolar;
+        b.colour = colour;
+        b.sustain = param (sustainId);
+
+        for (int i = 1; i <= 8; ++i)
+        {
+            b.rate[i - 1]  = param (prefix + "Rate"  + juce::String (i));
+            b.level[i - 1] = param (prefix + "Level" + juce::String (i));
+        }
+        for (int i = 1; i <= 8; ++i)
+            b.knobs.push_back (&addKnob (prefix + "Rate" + juce::String (i),
+                                         "R" + juce::String (i), 2, KnobSize::Small));
+        for (int i = 1; i <= 8; ++i)
+            b.knobs.push_back (&addKnob (prefix + "Level" + juce::String (i),
+                                         "L" + juce::String (i), 2, KnobSize::Small));
+        b.knobs.push_back (&addKnob (amountId,  "Amt", amountDecimals, KnobSize::Large));
+        b.knobs.push_back (&addKnob (sustainId, "Sus Pt", 0));
+
+        stageEnv.addBank (std::move (b));
+    };
+
+    // Parameter ids are "czRate1..8" / "czLevel1..8" for the filter envelope and
+    // "<prefix>Rate/Level" for the other two.
+    makeBank ("DCO",   "-> pitch",     "pitchEnv", "pitchEnvAmount", "pitchEnvSustain",
+              0, true,  juce::Colour (0xffe8a54b));
+    makeBank ("DCW",   "-> PD amount", "dcwEnv",   "dcwEnvAmount",   "dcwEnvSustain",
+              1, true,  juce::Colour (0xffe8a54b));
+    makeBank ("MULTI", "-> filter",    "cz",       "czAmount",       "czSustain",
+              2, false, juce::Colour (0xff4be08a));
+
+    stageEnv.start();
 }
 
 //==============================================================================
@@ -827,6 +1477,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     refreshPresetList();
 
     buildSections();
+    buildStageEnvelopes();
     buildStrip();
 
     // Keep the shared timbre controls in sync with each slot's engine type.
@@ -880,7 +1531,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         { "1 - Voice",  { &oscA, &oscB, &mixer, &bassSec, &unison, &glideSec }, nullptr, {}, 0 },
         { "2 - Shape",  { &pluckSec, &drive, &routingSec,
                           &filter, &filter2, &filterEnv, &filter2Env },         nullptr, {}, 0 },
-        { "3 - Mod",    { &pitchEnvSec, &dcwEnvSec, &multiEnvSec,
+        { "3 - Mod",    { &stageEnvSec,
                           &modEnv, &lfo, &lfo2, &vibratoSec, &arpSec }, &matrixHolder,
           "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
         { "4 - Out",    { &chorusSec, &delaySec, &reverbSec,
@@ -907,6 +1558,18 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         scrollers.push_back (std::move (scroller));
     }
 
+    // --- Modulation Inspector ---
+    inspector.onPaint   = [this] (juce::Graphics& g) { paintInspector (g); };
+    inspector.onResized = [this] { layoutInspector(); };
+    inspector.addAndMakeVisible (inspAddRoute);
+    inspector.addAndMakeVisible (inspFullMatrix);
+    inspAddRoute.onClick   = [this] { addRouteToSelected(); };
+    inspFullMatrix.onClick = [this] { tabs.setCurrentTabIndex (2); };
+    addAndMakeVisible (inspector);
+    selectParameter ("cutoff");
+    refreshModRings();
+    startTimerHz (12);   // live meters + ring/route refresh
+
     // Added last so it sits on top of the tabs; it never intercepts the mouse.
     addAndMakeVisible (crtOverlay);
 
@@ -917,7 +1580,10 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
 PDHybridEditor::~PDHybridEditor()
 {
+    stopTimer();
     cancelPendingUpdate();
+    for (auto& k : knobs)
+        k->slider.removeMouseListener (this);
     proc.apvts.removeParameterListener ("oscAType", this);
     proc.apvts.removeParameterListener ("oscBType", this);
     tabs.clearTabs();     // release content components before members are destroyed
@@ -1119,6 +1785,9 @@ void PDHybridEditor::resized()
     x -= 190; presetButton.setBounds (x, y, 184, 26);
 
     strip.setBounds (r.removeFromTop (kStripH).reduced (kMargin, 4));
+    // The Inspector is a column, not a page: it spans the tab area's full height
+    // so nothing in it competes with the strip for the same row.
+    inspector.setBounds (r.removeFromRight (kInspW).reduced (6, 6));
     tabs.setBounds (r);
     crtOverlay.setBounds (getLocalBounds());
 }

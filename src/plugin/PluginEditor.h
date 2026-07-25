@@ -305,6 +305,12 @@ private:
     pdui::FilterResponse filt1Resp, filt2Resp;
     pdui::TransferCurve  driveCurve;
     pdui::EqResponse     eqResp;
+    pdui::VelocityCurve  velCurveDisp;
+    pdui::ScaleOffsets   scaleDisp;
+    pdui::LfoCurve       globalLfoCurve;
+    // LFO cards put the waveform beside the rate knob, so these small holders
+    // own both and lay them out side by side.
+    CallbackComponent    lfo1Head, lfo2Head, globalLfoHead;
     pdui::GainReductionMeter grMeter;
     pdui::DelayTaps      delayTaps;
     pdui::ReverbDecay    reverbDecay;
@@ -329,6 +335,8 @@ private:
     // so the child curves and the painted rows can never drift apart.
     struct RouteRow { juce::Rectangle<int> text, bar; int routeIndex; };
     std::vector<RouteRow> routeRows_;
+    juce::Rectangle<int> selCard_, srcCard_, matrixCard_;   // the Inspector's three cards
+    int selCardTop_ = 0;
 
     pdui::SourceMeters sourceMeters;   // real DSP levels, not parameter positions
 

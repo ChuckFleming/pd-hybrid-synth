@@ -412,6 +412,7 @@ public:
         juce::String name;
         bool         trace;        // scrolling history rather than a single bar
         bool         bipolar;      // value swings around zero
+        bool         handle = false;   // draw a slider handle rather than a fill
     };
 
     std::function<void (int)> onRowClicked;
@@ -519,7 +520,14 @@ public:
             {
                 const float v = juce::jlimit (-1.0f, 1.0f, value);
                 g.setColour (col);
-                if (row.bipolar)
+                if (row.handle)
+                {
+                    // Slider look: a filled track up to the value, then a marker.
+                    const int w = juce::roundToInt (std::abs (v) * plot.getWidth());
+                    g.fillRect (plot.getX(), plot.getCentreY() - 1, juce::jmax (1, w), 2);
+                    g.fillRect (plot.getX() + w - 1, plot.getY() - 1, 3, plot.getHeight() + 2);
+                }
+                else if (row.bipolar)
                 {
                     const int mid = plot.getCentreX();
                     const int w   = juce::roundToInt (std::abs (v) * plot.getWidth() * 0.5f);
@@ -1051,6 +1059,128 @@ private:
 
     juce::AudioProcessorValueTreeState* apvts_ = nullptr;
     float last_[2] { -1e9f, -1e9f };
+};
+
+//==============================================================================
+/** What the velocity curve setting actually does to incoming velocity, drawn
+    against a linear reference. Mirrors the mapping in handleMidi exactly. */
+class VelocityCurve : public juce::Component,
+                      private juce::Timer
+{
+public:
+    VelocityCurve() { setInterceptsMouseClicks (false, false); }
+    ~VelocityCurve() override { stopTimer(); }
+
+    void attach (juce::AudioProcessorValueTreeState& s, const juce::String& id)
+    { apvts_ = &s; id_ = id; startTimerHz (10); }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "VELOCITY CURVE");
+        if (apvts_ == nullptr) return;
+
+        auto* p = apvts_->getParameter (id_);
+        const int mode = p != nullptr ? juce::roundToInt (p->convertFrom0to1 (p->getValue())) : 0;
+
+        g.setColour (kGrid);
+        g.fillRect (in.getCentreX(), in.getY(), 1.0f, in.getHeight());
+        g.fillRect (in.getX(), in.getCentreY(), in.getWidth(), 1.0f);
+        g.setColour (kEdge);   // linear reference
+        g.drawLine (in.getX(), in.getBottom(), in.getRight(), in.getY(), 1.0f);
+
+        juce::Path path;
+        for (int i = 0; i <= 64; ++i)
+        {
+            const float v = (float) i / 64.0f;
+            float out = v;
+            switch (mode)
+            {
+                case 1: out = std::sqrt (v); break;   // Soft
+                case 2: out = v * v;         break;   // Hard
+                case 3: out = 1.0f;          break;   // Fixed
+                default: break;                       // Linear
+            }
+            const float x = in.getX() + v * in.getWidth();
+            const float y = in.getBottom() - out * in.getHeight();
+            if (i == 0) path.startNewSubPath (x, y);
+            else        path.lineTo (x, y);
+        }
+        g.setColour (kTrace.withAlpha (0.25f));
+        g.strokePath (path, juce::PathStrokeType (3.0f));
+        g.setColour (kTrace);
+        g.strokePath (path, juce::PathStrokeType (1.5f));
+    }
+
+private:
+    void timerCallback() override
+    {
+        if (apvts_ == nullptr) return;
+        auto* p = apvts_->getParameter (id_);
+        const float v = p != nullptr ? p->getValue() : 0.0f;
+        if (! juce::approximatelyEqual (v, last_)) { last_ = v; repaint(); }
+    }
+    juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    juce::String id_;
+    float last_ = -1.0f;
+};
+
+//==============================================================================
+/** Per-pitch-class cents deviation from equal temperament, so "Just Intonation"
+    stops being a word in a menu. Reads the same table the voices tune from. */
+class ScaleOffsets : public juce::Component,
+                     private juce::Timer
+{
+public:
+    ScaleOffsets() { setInterceptsMouseClicks (false, false); }
+    ~ScaleOffsets() override { stopTimer(); }
+
+    void attach (juce::AudioProcessorValueTreeState& s, const juce::String& id)
+    { apvts_ = &s; id_ = id; startTimerHz (10); }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "SCALE OFFSET (CENTS)");
+        if (apvts_ == nullptr) return;
+
+        auto* p = apvts_->getParameter (id_);
+        const int scale = p != nullptr ? juce::roundToInt (p->convertFrom0to1 (p->getValue())) : 0;
+
+        in = in.withTrimmedBottom (10.0f);
+        const float cy = in.getCentreY();
+        g.setColour (kEdge);
+        g.fillRect (in.getX(), cy, in.getWidth(), 1.0f);
+
+        static const char* names[12] { "C", "C#", "D", "D#", "E", "F",
+                                       "F#", "G", "G#", "A", "A#", "B" };
+        const float w = in.getWidth() / 12.0f;
+        g.setFont (monoF (7.5f));
+        for (int pc = 0; pc < 12; ++pc)
+        {
+            const float cents = (float) pdhybrid::tuningCentsOffset (scale, pc);
+            const float h = juce::jlimit (-1.0f, 1.0f, cents / 20.0f) * in.getHeight() * 0.42f;
+            const float x = in.getX() + (float) pc * w;
+
+            g.setColour (std::abs (cents) < 0.05f ? kDim.withAlpha (0.4f) : kTrace);
+            g.fillRect (x + w * 0.25f, h >= 0.0f ? cy - h : cy,
+                        w * 0.5f, juce::jmax (1.0f, std::abs (h)));
+
+            g.setColour (kDim.withAlpha (0.7f));
+            g.drawText (names[pc], juce::Rectangle<float> (x, (float) getHeight() - 12.0f, w, 10.0f),
+                        juce::Justification::centred);
+        }
+    }
+
+private:
+    void timerCallback() override
+    {
+        if (apvts_ == nullptr) return;
+        auto* p = apvts_->getParameter (id_);
+        const float v = p != nullptr ? p->getValue() : 0.0f;
+        if (! juce::approximatelyEqual (v, last_)) { last_ = v; repaint(); }
+    }
+    juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    juce::String id_;
+    float last_ = -1.0f;
 };
 
 //==============================================================================

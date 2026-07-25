@@ -1083,11 +1083,25 @@ void PDHybridEditor::buildSections()
     lfo.span    = 2;
     lfo.toggles = { &addToggle ("lfoRetrig", "RETRIG") };
     lfo.combos  = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames) };
-    lfo.custom  = &lfo1Curve;
-    lfo.customH = 62;
+    lfo.custom  = &lfo1Head;
+    lfo.customH = kCellH;
     lfo.stackId = 1;   // LFO 1 above LFO 2, beside the envelope card
-    lfo.knobs   = { &addKnob ("lfoRate", "Rate"), &addKnob ("lfoFade", "Fade"),
-                    &addKnob ("lfoPhase", "Phase") };
+    lfo.cols    = 2;
+    lfo.knobs   = { &addKnob ("lfoFade", "Fade"), &addKnob ("lfoPhase", "Phase") };
+    {
+        auto& rate = addKnob ("lfoRate", "Rate");
+        lfo1Head.addAndMakeVisible (lfo1Curve);
+        lfo1Head.addAndMakeVisible (rate.slider);
+        lfo1Head.addAndMakeVisible (rate.label);
+        lfo1Head.onResized = [this, &rate]
+        {
+            auto b = lfo1Head.getLocalBounds();
+            auto cell = b.removeFromRight (78);
+            rate.label.setBounds  (cell.removeFromTop (kLabelH));
+            rate.slider.setBounds (cell);
+            lfo1Curve.setBounds (b.withTrimmedRight (6).reduced (0, 6));
+        };
+    }
 
     lfo2Curve.attach (proc.apvts, "lfo2Wave", "lfo2Rate");
     lfo2Curve.setLiveReader ([this]
@@ -1101,11 +1115,25 @@ void PDHybridEditor::buildSections()
     lfo2.span    = 2;
     lfo2.toggles = { &addToggle ("lfo2Retrig", "RETRIG") };
     lfo2.combos  = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames) };
-    lfo2.custom  = &lfo2Curve;
-    lfo2.customH = 62;
+    lfo2.custom  = &lfo2Head;
+    lfo2.customH = kCellH;
     lfo2.stackId = 1;
-    lfo2.knobs   = { &addKnob ("lfo2Rate", "Rate"), &addKnob ("lfo2Fade", "Fade"),
-                     &addKnob ("lfo2Phase", "Phase") };
+    lfo2.cols    = 2;
+    lfo2.knobs   = { &addKnob ("lfo2Fade", "Fade"), &addKnob ("lfo2Phase", "Phase") };
+    {
+        auto& rate = addKnob ("lfo2Rate", "Rate");
+        lfo2Head.addAndMakeVisible (lfo2Curve);
+        lfo2Head.addAndMakeVisible (rate.slider);
+        lfo2Head.addAndMakeVisible (rate.label);
+        lfo2Head.onResized = [this, &rate]
+        {
+            auto b = lfo2Head.getLocalBounds();
+            auto cell = b.removeFromRight (78);
+            rate.label.setBounds  (cell.removeFromTop (kLabelH));
+            rate.slider.setBounds (cell);
+            lfo2Curve.setBounds (b.withTrimmedRight (6).reduced (0, 6));
+        };
+    }
 
     // --- Vibrato (Casio CZ-style) ---
     vibratoSec.title   = "Vibrato";
@@ -1198,23 +1226,51 @@ void PDHybridEditor::buildSections()
     voiceSec.combos = { &addCombo ("notePriority", { "Priority: Last", "Priority: Top", "Priority: Bottom" }),
                         &addCombo ("stealPolicy", { "Steal Oldest", "Steal Quietest" }),
                         &addCombo ("velCurve", { "Vel Linear", "Vel Soft", "Vel Hard", "Vel Fixed" }) };
+    velCurveDisp.attach (proc.apvts, "velCurve");
+    voiceSec.custom  = &velCurveDisp;
+    voiceSec.customH = 72;
     voiceSec.knobs = { &addKnob ("polyphony", "Poly", 0, KnobSize::Large),
                        &addKnob ("ampVelSens", "Vel Sens"),
                        &addKnob ("pitchBendRange", "Bend", 0) };
 
+    scaleDisp.attach (proc.apvts, "tuningScale");
     tuningSec.title  = "Tuning";
     tuningSec.cols   = 3;
     tuningSec.span   = 3;
+    tuningSec.custom  = &scaleDisp;
+    tuningSec.customH = 72;
     tuningSec.combos = { &addCombo ("tuningScale", { "Equal Temperament", "Just Intonation", "Pythagorean" }) };
     tuningSec.knobs  = { &addKnob ("masterTune", "Tune", 1), &addKnob ("transpose", "Transpose", 0) };
 
     // The global LFO is a modulation-matrix source ("Global LFO") that had no
     // control at all in the editor before this rebuild.
+    globalLfoCurve.attach (proc.apvts, "globalLfoWave", "globalLfoRate");
+    globalLfoCurve.setLiveReader ([this]
+    {
+        float lv[PDHybridAudioProcessor::kNumModSources] {};
+        proc.readModLevels (lv, PDHybridAudioProcessor::kNumModSources);
+        return lv[(int) pdhybrid::ModSource::GlobalLfo];
+    });
     globalLfoSec.title  = "Global LFO";
     globalLfoSec.cols   = 1;
     globalLfoSec.span   = 4;
+    globalLfoSec.custom  = &globalLfoHead;
+    globalLfoSec.customH = kCellH;
     globalLfoSec.combos = { &addCombo ("globalLfoWave", kLfoWaveNames) };
-    globalLfoSec.knobs  = { &addKnob ("globalLfoRate", "Rate", 2, KnobSize::Large) };
+    {
+        auto& rate = addKnob ("globalLfoRate", "Rate", 2, KnobSize::Large);
+        globalLfoHead.addAndMakeVisible (globalLfoCurve);
+        globalLfoHead.addAndMakeVisible (rate.slider);
+        globalLfoHead.addAndMakeVisible (rate.label);
+        globalLfoHead.onResized = [this, &rate]
+        {
+            auto b = globalLfoHead.getLocalBounds();
+            auto cell = b.removeFromRight (86);
+            rate.label.setBounds  (cell.removeFromTop (kLabelH));
+            rate.slider.setBounds (cell);
+            globalLfoCurve.setBounds (b.withTrimmedRight (6).reduced (0, 6));
+        };
+    }
 
     qualitySec.title  = "Quality";
     qualitySec.cols   = 1;
@@ -1229,6 +1285,7 @@ void PDHybridEditor::buildSections()
 namespace {
 constexpr int kInspW    = 236;   // permanent Inspector column width
 constexpr int kInspRowH = 15;
+constexpr int kInspMatrixH = 80;   // title + three hint lines + the button
 
 // Which knob(s) a modulation destination lands on. Pitch and Amplitude have no
 // single knob of their own, so they are absent — a route to them shows in the
@@ -1266,22 +1323,33 @@ int destForParam (const juce::String& paramId)
 }
 
 // Sources the Inspector meters, in the order they are shown. Indices are
-// ModSource values; the names must match kSrcNames.
-struct MeterRow { int src; const char* name; bool trace; bool bipolar; };
+// Seven rows, as drawn. There is deliberately no DCW row: the DCW envelope
+// drives PD amount directly and is not a matrix source, so there is nothing
+// honest to meter for it.
+struct MeterRow { int src; const char* name; bool trace; bool bipolar; bool handle; };
 const std::vector<MeterRow> kMeterRows {
-    { (int) pdhybrid::ModSource::Lfo,        "LFO 1",   true,  true  },
-    { (int) pdhybrid::ModSource::Lfo2,       "LFO 2",   true,  true  },
-    { (int) pdhybrid::ModSource::GlobalLfo,  "GLB LFO", true,  true  },
-    { (int) pdhybrid::ModSource::AmpEnv,     "AMP ENV", true,  false },
-    { (int) pdhybrid::ModSource::ModEnv,     "MOD ENV", true,  false },
-    { (int) pdhybrid::ModSource::FilterEnvA, "FLT ENV", true,  false },
-    { (int) pdhybrid::ModSource::MultiEnv,   "MULTI",   true,  false },
-    { (int) pdhybrid::ModSource::PitchEnv,   "PITCH",   true,  true  },
-    { (int) pdhybrid::ModSource::Velocity,   "VEL",     false, false },
-    { (int) pdhybrid::ModSource::ModWheel,   "MODWHL",  false, false },
-    { (int) pdhybrid::ModSource::Macro1,     "MACRO 1", false, false },
-    { (int) pdhybrid::ModSource::Macro2,     "MACRO 2", false, false },
+    { (int) pdhybrid::ModSource::Lfo,       "LFO 1",   true,  true,  false },
+    { (int) pdhybrid::ModSource::Lfo2,      "LFO 2",   true,  true,  false },
+    { (int) pdhybrid::ModSource::GlobalLfo, "GLB LFO", true,  true,  false },
+    { (int) pdhybrid::ModSource::PitchEnv,  "DCO ENV", true,  true,  false },
+    { (int) pdhybrid::ModSource::ModEnv,    "MOD ENV", true,  false, false },
+    { (int) pdhybrid::ModSource::Macro1,    "MACRO 1", false, false, true  },
+    { (int) pdhybrid::ModSource::Macro2,    "MACRO 2", false, false, true  },
 };
+
+// Card frame matching the page cards: black box, thin outline, title in a notch.
+void drawInspCard (juce::Graphics& g, juce::Rectangle<int> b,
+                   const juce::String& title, juce::Colour edge, juce::Colour titleCol)
+{
+    g.setColour (kCardBg);  g.fillRect (b);
+    g.setColour (edge);     g.drawRect (b, 1);
+    g.setFont (monoFont (8.5f));
+    const int tw = g.getCurrentFont().getStringWidth (title) + 12;
+    juce::Rectangle<int> tag (b.getX() + 8, b.getY() - 1, tw, 12);
+    g.setColour (kCardBg);  g.fillRect (tag);
+    g.setColour (titleCol);
+    g.drawText (title, tag.withTrimmedLeft (4), juce::Justification::centredLeft);
+}
 }
 
 void PDHybridEditor::selectParameter (const juce::String& paramId)
@@ -1401,7 +1469,10 @@ void PDHybridEditor::layoutInspector()
     inspDestsBtn.setToggleState   (showDestinations,   juce::dontSendNotification);
     r.removeFromTop (4);
 
-    r.removeFromTop (kInspRowH + 6);            // selected name + value
+    // --- selected-object card -------------------------------------------
+    selCardTop_ = r.getY();
+    r.removeFromTop (10);                       // card title notch
+    r.removeFromTop (kInspRowH + 4);            // selected name + value
 
     routeRows_.clear();
     const int dest = destForParam (selectedParam);
@@ -1420,19 +1491,29 @@ void PDHybridEditor::layoutInspector()
         routeRows_.push_back (row);
     }
 
+    if (routeRows_.empty())
+        r.removeFromTop (26);                   // "nothing modulates this" line
+
     r.removeFromTop (4);
-    inspAddRoute.setBounds (r.removeFromTop (20));
+    inspAddRoute.setBounds (r.removeFromTop (20).reduced (4, 0));
     inspAddRoute.setEnabled (! showDestinations && dest != 0 && firstFreeMatrixSlot() != 0);
     inspAddRoute.setVisible (! showDestinations);
+    selCard_ = { 0, selCardTop_, inspector.getWidth(), r.getY() + 6 - selCardTop_ };
+    selCard_ = selCard_.reduced (4, 0);
 
-    // --- bottom block: the live source meters ---------------------------
-    auto bottom = inspector.getLocalBounds().reduced (8, 6);
-    inspFullMatrix.setBounds (bottom.removeFromBottom (20));
-    bottom.removeFromBottom (16);               // MATRIX count line
+    // --- matrix card, pinned to the bottom ------------------------------
+    // Title notch, three lines of hint, then the button — sized explicitly so
+    // the text can never run under either.
+    auto bottom = inspector.getLocalBounds().reduced (4, 6);
+    matrixCard_ = bottom.removeFromBottom (kInspMatrixH);
+    inspFullMatrix.setBounds (matrixCard_.reduced (6, 0).withTop (matrixCard_.getBottom() - 24)
+                                                        .withHeight (20));
 
+    // --- live sources card ----------------------------------------------
+    bottom.removeFromBottom (10);
     const int want = sourceMeters.preferredHeight();
-    auto zone = bottom.removeFromBottom (juce::jmin (bottom.getHeight(), want + 16));
-    zone.removeFromTop (16);                    // "SOURCES" heading
+    srcCard_ = bottom.removeFromBottom (juce::jmin (bottom.getHeight(), want + 20));
+    auto zone = srcCard_.reduced (5, 0).withTrimmedTop (14).withTrimmedBottom (5);
     sourceMeters.setBounds (zone);
 
     // Mark which sources a route actually uses, and which one is being followed.
@@ -1467,6 +1548,30 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
     r.removeFromTop (18 + 4);                 // the direction toggle (buttons paint themselves)
 
     const int dest = destForParam (selectedParam);
+
+    // --- the three cards -------------------------------------------------
+    // The selected card is amber-edged when it is showing a modulation object,
+    // matching the amber rings on the panel.
+    const bool amber = showDestinations || dest != 0;
+    drawInspCard (g, selCard_,
+                  showDestinations ? kSrcNames[selectedSource].toUpperCase() + "  MODULATOR"
+                                   : "SELECTED",
+                  amber ? kModCol.withAlpha (0.55f) : kCardEdge,
+                  amber ? kModCol : kTitleCol);
+    drawInspCard (g, srcCard_, "MODULATORS " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7"))
+                                 + " LIVE", kCardEdge, kTitleCol);
+    drawInspCard (g, matrixCard_, "MATRIX " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7"))
+                                    + " " + juce::String ((int) routes_.size())
+                                    + " / " + juce::String (kNumModRows), kCardEdge, kTitleCol);
+
+    g.setFont (monoFont (8.0f));
+    g.setColour (kLabelCol.withAlpha (0.55f));
+    g.drawFittedText ("Amber rings on the panel mark every knob a route points at. "
+                      "Click one to inspect its sources.",
+                      matrixCard_.reduced (7, 0).withTrimmedTop (13).withTrimmedBottom (26),
+                      juce::Justification::topLeft, 3);
+
+    r.removeFromTop (10);                     // selected card's title notch
 
     // --- what is selected ------------------------------------------------
     auto nameRow = r.removeFromTop (kInspRowH);
@@ -1525,20 +1630,6 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
         g.drawFittedText (msg, r.removeFromTop (26), juce::Justification::topLeft, 2);
     }
 
-    // --- live sources (SourceMeters paints itself) -----------------------
-    g.setFont (monoFont (9.0f));
-    g.setColour (kLabelCol);
-    g.drawText ("LIVE SOURCES  (click to follow)",
-                sourceMeters.getBounds().withY (sourceMeters.getY() - 15).withHeight (14),
-                juce::Justification::centredLeft);
-
-    // --- matrix summary --------------------------------------------------
-    g.setFont (monoFont (9.0f));
-    g.setColour (kLabelCol);
-    g.drawText ("MATRIX  " + juce::String ((int) routes_.size()) + " / "
-                    + juce::String (kNumModRows),
-                inspFullMatrix.getBounds().withY (inspFullMatrix.getY() - 16).withHeight (14),
-                juce::Justification::centredLeft);
 }
 
 //==============================================================================
@@ -1909,7 +2000,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     {
         std::vector<pdui::SourceMeters::Row> rows;
         for (const auto& m : kMeterRows)
-            rows.push_back ({ m.src, m.name, m.trace, m.bipolar });
+            rows.push_back ({ m.src, m.name, m.trace, m.bipolar, m.handle });
         sourceMeters.setRows (std::move (rows));
     }
     sourceMeters.setReader ([this] (float* d, int n) { proc.readModLevels (d, n); });

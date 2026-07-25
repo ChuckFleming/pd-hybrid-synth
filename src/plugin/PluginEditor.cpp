@@ -15,10 +15,10 @@ constexpr int kMargin   = 16;   // panel outer margin
 constexpr int kMatrixRowH = 26;
 constexpr int kTopBar   = 48;   // title bar above the tabs
 constexpr int kGridCols = 6;    // every tab page uses this fixed column count
-constexpr int kStripH    = 142;  // fixed performance strip between title bar and tabs
+constexpr int kStripH    = 150;  // fixed performance strip between title bar and tabs
 constexpr int kFooterH   = 24;   // page indicator / route count / panic + rand
 constexpr int kDeletePresetId = 9000;   // menu id, kept clear of the preset ids
-constexpr int kStripCurveH = 56; // amp-envelope curve, inline beside its knobs
+constexpr int kStripCurveH = 42; // amp-envelope curve, above its row of knobs
 constexpr int kStripCapH = 13;   // caption band along the strip's top edge
 
 // Palette — "CZ Terminal": black with green phosphor, outlined boxes.
@@ -1461,6 +1461,10 @@ void PDHybridEditor::buildStrip()
 
     for (auto* k : stripKnobs)
     {
+        // The strip reads as one instrument face, so its readouts are bare text
+        // rather than boxed fields.
+        k->slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        k->slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
         strip.addAndMakeVisible (k->slider);
         strip.addAndMakeVisible (k->label);
     }
@@ -1557,12 +1561,13 @@ void PDHybridEditor::layoutStrip()
         placeKnob (stripKnobs[3], z.removeFromLeft (88));
     }
     divider();
-    {   // Curve and its four knobs on one line — the strip is a single row.
-        auto z = group ("", 352, kCellH);
-        for (int i = 3; i >= 0; --i)
-            placeKnob (stripKnobs[4 + i], z.removeFromRight (54));
-        z.removeFromRight (8);
-        ampCurve.setBounds (z.withSizeKeepingCentre (z.getWidth(), kStripCurveH));
+    {   // Curve across the top, its four knobs in a single row underneath.
+        auto z = group ("", 248, kStripCurveH + 4 + kCellH);
+        ampCurve.setBounds (z.removeFromTop (kStripCurveH));
+        z.removeFromTop (4);
+        const int cw = z.getWidth() / 4;
+        for (int i = 0; i < 4; ++i)
+            placeKnob (stripKnobs[4 + i], z.removeFromLeft (cw));
     }
     divider();
 
@@ -1773,8 +1778,20 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     addAndMakeVisible (crtOverlay);
 
     setResizable (true, true);
-    setResizeLimits (1040, 620, 2400, 1700);
-    setSize (1320, 980);
+    setResizeLimits (1040, 620, 2600, 1900);
+    // Open at whatever size the *tallest* page actually needs, so nothing has to
+    // be scrolled to be reached. Asking the pages rather than hard-coding a
+    // number means this stays right when cards are added or resized later.
+    {
+        const int w        = 1340;
+        const int contentW = w - kInspW - 12;
+        int tallest = 0;
+        for (auto& page : pages)
+            tallest = juce::jmax (tallest, page->preferredHeight (contentW));
+
+        const int h = kTopBar + kStripH + tabs.getTabBarDepth() + tallest + kFooterH + 6;
+        setSize (w, juce::jlimit (700, 1900, h));
+    }
 }
 
 PDHybridEditor::~PDHybridEditor()

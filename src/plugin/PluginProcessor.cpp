@@ -1010,6 +1010,7 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // Global modulation (sets delay mix/feedback + master pan for this block).
     applyGlobalModulation (buffer, numSamples);
+    publishModLevels();
 
     // Global output effects across the whole block: compressor then delay.
     if (buffer.getNumChannels() >= 2)
@@ -1085,6 +1086,31 @@ void PDHybridAudioProcessor::readScope (float* dest, int num) const noexcept
     // Copy the `num` most recent samples in chronological order.
     for (int i = 0; i < num; ++i)
         dest[i] = scopeBuf_[(w - num + i) & (kScopeSize - 1)];
+}
+
+void PDHybridAudioProcessor::publishModLevels() noexcept
+{
+    // Per-voice sources come from the newest sounding voice; the global ones are
+    // only known here. If nothing is playing the per-voice slots stay zero, so
+    // the meters fall back to rest rather than freezing on the last note.
+    pdhybrid::ModSources s;
+    engine.latestModSources (s);
+    s[pdhybrid::ModSource::GlobalLfo] = globalLfo.value();
+    s[pdhybrid::ModSource::Macro1]    = macro1_;
+    s[pdhybrid::ModSource::Macro2]    = macro2_;
+    s[pdhybrid::ModSource::ModWheel]  = modWheel_;
+
+    for (int i = 0; i < kNumModSources; ++i)
+        modLevels_[i].store (static_cast<float> (s.v[i]), std::memory_order_relaxed);
+
+    gainReduction_.store (static_cast<float> (compressor.gainReductionDb()),
+                          std::memory_order_relaxed);
+}
+
+void PDHybridAudioProcessor::readModLevels (float* dest, int num) const noexcept
+{
+    for (int i = 0; i < juce::jmin (num, kNumModSources); ++i)
+        dest[i] = modLevels_[i].load (std::memory_order_relaxed);
 }
 
 juce::AudioProcessorEditor* PDHybridAudioProcessor::createEditor()

@@ -42,6 +42,11 @@ public:
     int    note    () const noexcept { return note_; }
     double envLevel() const noexcept { return env_.level(); }   // for quietest-steal
 
+    // The modulation-source values this voice used on its last control-rate
+    // update. Published purely so the editor can meter them; nothing in the DSP
+    // reads it back.
+    const ModSources& lastModSources() const noexcept { return lastSources_; }
+
     void setPitchBendSemitones (double semitones) noexcept { pitchBend_ = semitones; }
     void setPressure           (double pressure01) noexcept { pressure_ = pressure01; }
     void setTimbre             (double timbre01)   noexcept { timbre_ = timbre01; }
@@ -105,6 +110,7 @@ private:
     double oscBLevelMod_ = 0.0;
     double noiseLevelMod_ = 0.0; // noise level after matrix modulation
     double randomMod_ = 0.0;    // per-note sample & hold random source
+    ModSources lastSources_;    // snapshot for the editor's live meters
     double panL_      = 0.70710678;   // equal-power pan gains (default centre)
     double panR_      = 0.70710678;
     double unisonDetuneCents_ = 0.0;  // per-voice unison detune

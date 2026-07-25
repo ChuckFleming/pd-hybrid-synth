@@ -362,4 +362,24 @@ int SynthEngine::activeVoiceCount() const noexcept
     return n;
 }
 
+bool SynthEngine::latestModSources (ModSources& out) const noexcept
+{
+    // Newest sounding voice: the one a player just triggered is the one whose
+    // envelopes and LFOs they expect the meters to be following.
+    int best = -1;
+    std::uint64_t newest = 0;
+    for (std::size_t i = 0; i < voices_.size(); ++i)
+        if (voices_[i].isActive() && (best < 0 || voiceAge_[i] > newest))
+        {
+            best = static_cast<int> (i);
+            newest = voiceAge_[i];
+        }
+
+    if (best < 0)
+        return false;
+
+    out = voices_[static_cast<std::size_t> (best)].lastModSources();
+    return true;
+}
+
 } // namespace pdhybrid

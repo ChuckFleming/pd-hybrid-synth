@@ -159,6 +159,8 @@ void Voice::applyModulation() noexcept
     src[ModSource::PitchEnv]   = (pitchEnv_.level() - 0.5) * 2.0;   // bipolar
     // GlobalLfo stays 0 here; it drives the global dests in the processor.
 
+    lastSources_ = src;   // for the editor's live source meters
+
     double mod[ModMatrix::kNumDests];
     params_.modMatrix.evaluate (src, mod);
 

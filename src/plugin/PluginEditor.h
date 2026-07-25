@@ -6,8 +6,10 @@
 #include "SynthLookAndFeel.h"
 #include "CrtOverlay.h"
 #include "ScopeDisplay.h"
+#include "Displays.h"
 #include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 /**
@@ -20,7 +22,8 @@
 */
 class PDHybridEditor : public juce::AudioProcessorEditor,
                        private juce::AudioProcessorValueTreeState::Listener,
-                       private juce::AsyncUpdater
+                       private juce::AsyncUpdater,
+                       private juce::Timer
 {
 public:
     explicit PDHybridEditor (PDHybridAudioProcessor&);
@@ -28,39 +31,70 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;   // knob -> Inspector selection
 
 private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+    using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;
+
+    // Three sizes give the panel a hierarchy: Large for the handful of controls
+    // that define a patch, Normal for a section's own controls, Small for trim.
+    // The layout cell is the same for all three; only the rotary scales inside it.
+    enum class KnobSize { Small, Normal, Large };
 
     struct LabeledKnob
     {
         juce::Slider slider;
         juce::Label  label;
         std::unique_ptr<SliderAttachment> attachment;
+        juce::String paramId;
+        KnobSize size = KnobSize::Normal;
     };
 
-    // One titled card: knobs laid out in `cols` columns, optional combos in a
-    // header row. `bounds` is filled in during layout and used when painting.
+    // One titled card. `cols` is how many knob columns run inside the card;
+    // `span` is how many columns of the page's fixed grid the card occupies.
+    // Optional LED toggles sit in the title strip; an optional `custom`
+    // component (the multi-stage envelope editor) sits above the knob rows.
+    // `bounds` is filled in during layout and used when painting.
     struct Section
     {
         juce::String title;
         std::vector<LabeledKnob*> knobs;
         std::vector<juce::ComboBox*> combos;
+        std::vector<juce::Button*> toggles;
         int cols = 4;
-        int stackId = 0;   // non-zero: stacks vertically with consecutive same-id sections
+        int span = 2;             // grid columns (the page grid is kGridCols wide)
+        // Consecutive sections sharing a non-zero stackId occupy one block of
+        // `span` columns and split its height between them, so a short card can
+        // sit above another instead of claiming a whole row.
+        int stackId = 0;
+        juce::Component* custom = nullptr;
+        int customH = 0;          // height reserved for `custom`, 0 = none
+        // A second display placed *between* two groups of knobs, so a card can
+        // hold e.g. a filter's response, its controls, its envelope curve and
+        // then that envelope's controls — one object instead of two cards.
+        juce::Component* custom2 = nullptr;
+        int customH2 = 0;
+        int knobSplit = -1;       // knobs before this index go above custom2
+        juce::Colour titleCol { 0xff4be08a };   // amber marks a modulation source
         juce::Rectangle<int> bounds;
     };
 
-    // A tab page: flows a list of Section cards left-to-right, wrapping to the
-    // panel width, and optionally hosts one full-width trailing component
-    // (used for the modulation matrix). Sized taller than the viewport when
-    // needed so the viewport scrolls.
+    // A tab page. Cards are packed into a *fixed* column grid: the column count
+    // never varies with width, so a card's row and column are the same at every
+    // window size and only the column width stretches. That is what makes the
+    // panel learnable — nothing ever moves to a different place.
+    //
+    // Optionally hosts one full-width trailing component (the modulation
+    // matrix), and is sized taller than the viewport when needed so it scrolls.
     class SectionPanel : public juce::Component
     {
     public:
         void addSection (const Section& s);
         void setTrailing (juce::Component* c, int fullHeight, juce::String title);
+        /** Re-height the card hosting `c` (used when a card's body collapses). */
+        void setCustomHeight (juce::Component* c, int newHeight);
 
         int  preferredHeight (int width);   // height needed to lay out at `width`
         void resized() override;
@@ -84,18 +118,95 @@ private:
         void resized() override;
     };
 
-    // Trivial holder whose resized() defers to a callback (lays out the matrix).
+    /** Editor for the three Casio-style 8-stage envelopes (DCO -> pitch,
+        DCW -> PD amount, MULTI -> filter).
+
+        The three banks share one card: a stage selector chooses which is being
+        edited, the curve is drawn as a draggable breakpoint polyline (x is real
+        elapsed time, so stage widths show their true durations), and the bank's
+        18 parameters stay underneath as ordinary knobs. Nothing is hidden from
+        the host — every rate, level, amount and sustain point keeps its own
+        parameter and automation lane; the graph is a second view of them.
+
+        Values are polled on a timer rather than listened to, so automation and
+        preset loads move the curve without any audio-thread callbacks. */
+    class StageEnvelopePanel : public juce::Component,
+                               private juce::Timer
+    {
+    public:
+        struct Bank
+        {
+            juce::String name;                   // "DCO"
+            juce::String dest;                   // "-> pitch"
+            juce::RangedAudioParameter* rate[8]  {};
+            juce::RangedAudioParameter* level[8] {};
+            juce::RangedAudioParameter* sustain = nullptr;   // int, 1..8
+            std::vector<LabeledKnob*> knobs;      // R1..R8, L1..L8, Amt, Sus
+            bool bipolar = false;                 // levels are centred on 0.5
+            juce::Colour colour;
+        };
+
+        StageEnvelopePanel();
+        ~StageEnvelopePanel() override;
+
+        void addBank (Bank b);
+        void start();                             // after the last addBank
+        int  preferredHeight() const;             // selector + graph + knob rows
+        std::function<void()> onHeightChanged;    // fired when NUMERIC collapses
+
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
+        void mouseUp   (const juce::MouseEvent&) override;
+        void mouseMove (const juce::MouseEvent&) override;
+        void mouseExit (const juce::MouseEvent&) override;
+
+    private:
+        void timerCallback() override;
+        void selectBank (int index);
+        juce::Rectangle<int> graphArea() const;
+        // Node i's centre, 0..7; node -1 is the (0, 0) origin the curve starts at.
+        juce::Point<float> nodePos (int i, double totalOverride = 0.0) const;
+        double totalTime() const;
+        int    hitNode (juce::Point<float> p) const;
+
+        juce::Rectangle<int> selectorArea() const;
+        juce::Rectangle<int> segmentArea (int i) const;
+        juce::Rectangle<int> expanderArea() const;
+
+        std::vector<Bank> banks;
+        bool expanded = true;    // NUMERIC row of R/L knobs showing
+        int  active = 0;
+        int  dragNode = -1;      // node being dragged, -1 = none
+        int  hoverNode = -1;
+        double dragTotal = 0.0;  // time base frozen for the duration of a drag
+        std::vector<float> lastValues;   // change detection for the repaint timer
+    };
+
+    // Trivial holder whose resized()/paint() defer to callbacks (used for the
+    // modulation matrix and the performance strip).
     struct CallbackComponent : public juce::Component
     {
         std::function<void()> onResized;
+        std::function<void (juce::Graphics&)> onPaint;
+        std::function<void (const juce::MouseEvent&)> onMouseDown;
+        std::function<bool (const juce::KeyPress&)> onKeyPress;
         void resized() override { if (onResized) onResized(); }
+        void paint (juce::Graphics& g) override { if (onPaint) onPaint (g); }
+        void mouseDown (const juce::MouseEvent& e) override { if (onMouseDown) onMouseDown (e); }
+        bool keyPressed (const juce::KeyPress& k) override
+        { return onKeyPress ? onKeyPress (k) : false; }
     };
 
     LabeledKnob& addKnob (const juce::String& paramId, const juce::String& text,
-                          int decimals = 2);
+                          int decimals = 2, KnobSize size = KnobSize::Normal);
     juce::ComboBox& addCombo (const juce::String& paramId, const juce::StringArray& items);
+    juce::Button&   addToggle (const juce::String& paramId, const juce::String& text);
 
     void buildSections();
+    void buildStrip();
+    void layoutStrip();
     void layoutMatrix();
 
     // Track each slot's engine type: grey out the PD-only wave controls, and
@@ -111,20 +222,42 @@ private:
     SynthLookAndFeel lnf;
     juce::TooltipWindow tooltips { this, 600 };
 
-    juce::TextButton initButton { "Init" };
-    juce::TextButton randButton { "Rand" };
-    juce::TextButton panicButton { "Panic" };
-    juce::TextButton saveButton { "Save" };
-    juce::TextButton deleteButton { "Del" };
+    juce::TextButton initButton { "INIT" };
+    juce::TextButton saveButton { "SAVE" };
     juce::TextButton prevButton { "<" };
     juce::TextButton nextButton { ">" };
     juce::TextButton abButton { "A/B: A" };
     juce::TextButton crtButton { "CRT" };
     juce::TextButton presetButton { "Presets" };   // opens the hierarchical preset menu
 
+    // Footer strip: where you are, how much modulation is live, and the two
+    // actions that are not part of editing a patch.
+    CallbackComponent footer;
+    juce::TextButton randButton { "RAND" };
+    juce::TextButton panicButton { "PANIC" };
+    void paintFooter (juce::Graphics&);
+    void layoutFooter();
+
     juce::ValueTree  abState_[2];   // A/B compare snapshots
     int              abSlot_ = 0;
-    juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
+
+    /** Pushes the last tab (GLOBAL) to the right-hand end of the bar, so the
+        settings page reads as off to one side rather than as the fifth stage of
+        the signal path. Re-applied after every re-layout the bar performs. */
+    struct SignalPathTabs : public juce::TabbedComponent
+    {
+        using juce::TabbedComponent::TabbedComponent;
+        void resized() override            { juce::TabbedComponent::resized(); pinLast(); }
+        void currentTabChanged (int, const juce::String&) override { pinLast(); }
+        void pinLast()
+        {
+            auto& bar = getTabbedButtonBar();
+            if (bar.getNumTabs() < 2) return;
+            if (auto* last = bar.getTabButton (bar.getNumTabs() - 1))
+                last->setBounds (last->getBounds().withX (bar.getWidth() - last->getWidth() - 6));
+        }
+    };
+    SignalPathTabs tabs { juce::TabbedButtonBar::TabsAtTop };
 
     void refreshPresetList();
     void showPresetMenu();
@@ -134,6 +267,8 @@ private:
     std::vector<std::unique_ptr<LabeledKnob>> knobs;
     std::vector<std::unique_ptr<juce::ComboBox>> combos;
     std::vector<std::unique_ptr<ComboBoxAttachment>> comboAttachments;
+    std::vector<std::unique_ptr<juce::TextButton>> toggleButtons;
+    std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;
 
     std::vector<std::unique_ptr<SectionPanel>> pages;
     std::vector<std::unique_ptr<ScrollPanel>>  scrollers;
@@ -141,17 +276,98 @@ private:
     ScopeDisplay scope_ { [this] (float* d, int n) { proc.readScope (d, n); } };  // master output scope
     CrtOverlay crtOverlay;   // click-through CRT effect layered over everything
 
-    // Named sections (built once, then handed to pages).
-    Section oscA, oscB, mixer;                                   // Oscillators
-    Section voiceSec, glideSec, unison, stereo, bassSec, arpSec; // Voice / performance
-    Section filter, filter2, filterEnv, filter2Env;                      // Filters
-    Section envelope, modEnv, multiEnvSec, pitchEnvSec, dcwEnvSec;       // Envelopes
-    Section lfo, lfo2, vibratoSec;                                       // Modulation
-    Section pluckSec, drive, chorusSec, comp, delaySec, reverbSec, globalEqSec, masterSec;  // FX
+    // Fixed performance strip above the tab bar: the controls reached on every
+    // patch, so they never leave the screen whichever page is showing.
+    CallbackComponent strip;
+    std::vector<LabeledKnob*> stripKnobs;   // cutoff, reso, macro 1/2, A D S R Vel, master
+    juce::ComboBox* stripPoly = nullptr;
+    juce::Button*   stripLimiter = nullptr;
+    juce::Button*   stripArp = nullptr;
+    std::vector<int> stripDividers_;        // x positions of the cluster rules
+    std::vector<std::pair<juce::String, juce::Rectangle<int>>> stripGroups_;
 
-    // Modulation matrix.
+    // Named sections (built once, then handed to pages).
+    Section oscA, oscB, mixer;                                           // Voice page
+    Section glideSec, unison, bassSec;
+    Section pluckSec, drive, routingSec, filter, filter2;   // Shape page
+    Section stageEnvSec, modEnv, lfo, lfo2, vibratoSec, arpSec;   // Mod page
+    StageEnvelopePanel stageEnv;
+    void buildStageEnvelopes();
+
+    // Waveform / curve readouts embedded in the cards that own the parameters.
+    // No captions: the card title already names them.
+    pdui::EnvelopeCurve ampCurve   { "AMP" };
+    pdui::EnvelopeCurve modCurve   { {} };
+    pdui::EnvelopeCurve filt1Curve { {} };
+    pdui::EnvelopeCurve filt2Curve { {} };
+    pdui::EnvelopeCurve bassCurve  { {} };
+    pdui::LfoCurve      lfo1Curve;
+    pdui::LfoCurve      lfo2Curve;
+    pdui::RoutingDiagram routingDiagram;
+    pdui::WaveCyclePreview oscACycle, oscBCycle;
+    pdui::FilterResponse filt1Resp, filt2Resp;
+    pdui::TransferCurve  driveCurve;
+    pdui::EqResponse     eqResp;
+    pdui::VelocityCurve  velCurveDisp;
+    pdui::ScaleOffsets   scaleDisp;
+    pdui::LfoCurve       globalLfoCurve;
+    // LFO cards put the waveform beside the rate knob, so these small holders
+    // own both and lay them out side by side.
+    CallbackComponent    lfo1Head, lfo2Head, globalLfoHead;
+    pdui::GainReductionMeter grMeter;
+    pdui::DelayTaps      delayTaps;
+    pdui::ReverbDecay    reverbDecay;
+
+    //--------------------------------------------------------------------------
+    // Modulation Inspector: a permanent right-hand column that makes the matrix
+    // readable from the outside. Click any knob and it lists every route
+    // pointing at it; knobs that are routed to carry an amber ring, so a patch's
+    // modulation is visible on the panel instead of only inside the matrix.
+    CallbackComponent inspector;
+    juce::TextButton inspAddRoute { "+ ADD ROUTE" };
+    juce::TextButton inspFullMatrix { "FULL MATRIX" };
+    juce::TextButton inspSourcesBtn { "SOURCES" };
+    juce::TextButton inspDestsBtn { "DESTINATIONS" };
+
+    juce::String selectedParam;              // knob the Inspector is showing
+    juce::String selectedName;
+    int  selectedSource = 2;                 // modulator shown in DESTINATIONS mode (LFO)
+    bool showDestinations = false;           // which direction the Inspector reads
+
+    // Geometry is computed once in layoutInspector() and reused when painting,
+    // so the child curves and the painted rows can never drift apart.
+    struct RouteRow { juce::Rectangle<int> text, bar; int routeIndex; };
+    std::vector<RouteRow> routeRows_;
+    juce::Rectangle<int> selCard_, srcCard_, matrixCard_;   // the Inspector's three cards
+    int selCardTop_ = 0;
+
+    pdui::SourceMeters sourceMeters;   // real DSP levels, not parameter positions
+
+    void selectParameter (const juce::String& paramId);
+    void layoutInspector();
+    void paintInspector (juce::Graphics&);
+    void inspectorClicked (const juce::MouseEvent&);
+    void refreshModRings();                  // tag destination knobs for the ring
+    int  firstFreeMatrixSlot() const;
+    void addRouteToSelected();
+    void timerCallback() override;           // live values + ring refresh
+
+    // Matrix state as of the last refresh, so painting never touches the APVTS
+    // in a tight loop.
+    struct RouteView { int slot; int source; int dest; float depth; int curve; };
+    std::vector<RouteView> routes_;
+    Section chorusSec, delaySec, reverbSec, comp, globalEqSec, stereo;   // Out page
+    Section voiceSec, tuningSec, globalLfoSec, qualitySec;               // Global page
+    Section envelope;                                                    // amp env (lives in the strip)
+
+    // Modulation matrix. Lives as an overlay over the whole editor rather than
+    // on a page: it is the "show me everything" view, opened from the Inspector.
     static constexpr int kNumModRows = 10;
     CallbackComponent matrixHolder;
+    juce::TextButton matrixCloseButton { "CLOSE" };
+    juce::Rectangle<int> matrixPanel_;      // the card inside the overlay
+    void paintMatrix (juce::Graphics&);
+    void showMatrix (bool shouldShow);
     juce::ComboBox modSrcBox[kNumModRows];
     juce::ComboBox modDestBox[kNumModRows];
     juce::ComboBox modCurveBox[kNumModRows];

@@ -71,6 +71,12 @@ private:
         int stackId = 0;
         juce::Component* custom = nullptr;
         int customH = 0;          // height reserved for `custom`, 0 = none
+        // A second display placed *between* two groups of knobs, so a card can
+        // hold e.g. a filter's response, its controls, its envelope curve and
+        // then that envelope's controls — one object instead of two cards.
+        juce::Component* custom2 = nullptr;
+        int customH2 = 0;
+        int knobSplit = -1;       // knobs before this index go above custom2
         juce::Colour titleCol { 0xff4be08a };   // amber marks a modulation source
         juce::Rectangle<int> bounds;
     };
@@ -280,7 +286,7 @@ private:
     // Named sections (built once, then handed to pages).
     Section oscA, oscB, mixer;                                           // Voice page
     Section glideSec, unison, bassSec;
-    Section pluckSec, drive, routingSec, filter, filter2, filterEnv, filter2Env;   // Shape page
+    Section pluckSec, drive, routingSec, filter, filter2;   // Shape page
     Section stageEnvSec, modEnv, lfo, lfo2, vibratoSec, arpSec;   // Mod page
     StageEnvelopePanel stageEnv;
     void buildStageEnvelopes();
@@ -296,6 +302,8 @@ private:
     pdui::LfoCurve      lfo2Curve;
     pdui::RoutingDiagram routingDiagram;
     pdui::WaveCyclePreview oscACycle, oscBCycle;
+    pdui::FilterResponse filt1Resp, filt2Resp;
+    pdui::TransferCurve  driveCurve;
 
     //--------------------------------------------------------------------------
     // Modulation Inspector: a permanent right-hand column that makes the matrix

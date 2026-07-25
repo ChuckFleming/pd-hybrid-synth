@@ -2,7 +2,11 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_dsp/juce_dsp.h>
 #include "dsp/OscillatorUnit.h"
+#include "dsp/FilterUnit.h"
+#include "dsp/Waveshaper.h"
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -566,6 +570,206 @@ private:
 };
 
 //==============================================================================
+/** A filter's magnitude response, measured rather than modelled.
+
+    Runs a real `FilterUnit` of the selected type, fires an impulse through it
+    and transforms the result, so all five filter types — including the comb,
+    allpass and PD resonator, which have no textbook curve — plot correctly from
+    the same code. */
+class FilterResponse : public juce::Component,
+                       private juce::Timer
+{
+public:
+    FilterResponse() { setInterceptsMouseClicks (false, false); }
+    ~FilterResponse() override { stopTimer(); }
+
+    void attach (juce::AudioProcessorValueTreeState& s, const juce::String& type,
+                 const juce::String& cutoff, const juce::String& reso, const juce::String& morph)
+    {
+        apvts_ = &s;
+        type_ = type; cutoff_ = cutoff; reso_ = reso; morph_ = morph;
+        startTimerHz (12);
+        rebuild();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "RESPONSE");
+        if (apvts_ == nullptr) return;
+
+        // Decade gridlines across 20 Hz .. 20 kHz.
+        g.setColour (kGrid);
+        for (float f : { 100.0f, 1000.0f, 10000.0f })
+            g.fillRect (in.getX() + xForHz (f) * in.getWidth(), in.getY(), 1.0f, in.getHeight());
+        g.fillRect (in.getX(), in.getCentreY(), in.getWidth(), 1.0f);
+
+        juce::Path p;
+        const int px = juce::jmax (2, (int) in.getWidth());
+        for (int i = 0; i < px; ++i)
+        {
+            const float x  = in.getX() + (float) i;
+            const float hz = 20.0f * std::pow (1000.0f, (float) i / (float) (px - 1));
+            const float y  = in.getBottom() - yFor (magAtHz (hz)) * in.getHeight();
+            if (i == 0) p.startNewSubPath (x, y);
+            else        p.lineTo (x, y);
+        }
+
+        auto fill = p;
+        fill.lineTo (in.getRight(), in.getBottom());
+        fill.lineTo (in.getX(),     in.getBottom());
+        fill.closeSubPath();
+        g.setColour (kTrace.withAlpha (0.10f));
+        g.fillPath (fill);
+        g.setColour (kTrace.withAlpha (0.25f));
+        g.strokePath (p, juce::PathStrokeType (3.0f));
+        g.setColour (kTrace);
+        g.strokePath (p, juce::PathStrokeType (1.5f));
+
+        // Cutoff marker, labelled with the frequency the knob is actually set to.
+        if (auto* c = apvts_->getParameter (cutoff_))
+        {
+            const float hz = c->convertFrom0to1 (c->getValue());
+            const float mx = in.getX() + xForHz (hz) * in.getWidth();
+            g.setColour (kAmber.withAlpha (0.7f));
+            for (float y = in.getY(); y < in.getBottom(); y += 5.0f)
+                g.fillRect (mx, y, 1.0f, 2.5f);
+            g.setFont (monoF (8.0f));
+            g.drawText (c->getCurrentValueAsText(),
+                        juce::Rectangle<float> (mx + 3.0f, in.getY(), 52.0f, 11.0f),
+                        juce::Justification::topLeft);
+        }
+    }
+
+private:
+    static float xForHz (float hz)
+    { return juce::jlimit (0.0f, 1.0f, std::log (hz / 20.0f) / std::log (1000.0f)); }
+    static float yFor (float db)
+    { return juce::jlimit (0.0f, 1.0f, (db + 48.0f) / 66.0f); }   // -48 .. +18 dB
+
+    float magAtHz (float hz) const
+    {
+        const float bin = hz * (float) kN / (float) kSr;
+        const int   i   = juce::jlimit (0, kN / 2 - 1, (int) bin);
+        return mag_[(size_t) i];
+    }
+
+    float raw (const juce::String& id) const
+    {
+        auto* p = apvts_->getParameter (id);
+        return p != nullptr ? p->convertFrom0to1 (p->getValue()) : 0.0f;
+    }
+
+    void rebuild()
+    {
+        pdhybrid::FilterUnit f;
+        f.setSampleRate (kSr);
+        f.setType (static_cast<pdhybrid::FilterType> (juce::roundToInt (raw (type_))));
+        f.configure (raw (cutoff_), raw (reso_), raw (morph_));
+        f.reset();
+
+        std::array<float, 2 * kN> buf {};
+        for (int i = 0; i < kN; ++i)
+            buf[(size_t) i] = f.processSample (i == 0 ? 1.0f : 0.0f);
+        fft_.performFrequencyOnlyForwardTransform (buf.data());
+
+        for (int i = 0; i < kN / 2; ++i)
+            mag_[(size_t) i] = juce::Decibels::gainToDecibels (buf[(size_t) i] + 1.0e-7f);
+        repaint();
+    }
+
+    void timerCallback() override
+    {
+        if (apvts_ == nullptr) return;
+        const float now[4] { raw (type_), raw (cutoff_), raw (reso_), raw (morph_) };
+        bool changed = false;
+        for (int i = 0; i < 4; ++i)
+            if (! juce::approximatelyEqual (now[i], last_[i])) { last_[i] = now[i]; changed = true; }
+        if (changed) rebuild();
+    }
+
+    static constexpr int    kOrder = 10;
+    static constexpr int    kN     = 1 << kOrder;
+    static constexpr double kSr    = 48000.0;
+
+    juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    juce::String type_, cutoff_, reso_, morph_;
+    juce::dsp::FFT fft_ { kOrder };
+    std::array<float, kN / 2> mag_ {};
+    float last_[4] { -1e9f, -1e9f, -1e9f, -1e9f };
+};
+
+//==============================================================================
+/** The overdrive's input-to-output transfer curve, so the nine distortion types
+    stop being names in a list. Uses the same Waveshaper the voices use. */
+class TransferCurve : public juce::Component,
+                      private juce::Timer
+{
+public:
+    TransferCurve() { setInterceptsMouseClicks (false, false); }
+    ~TransferCurve() override { stopTimer(); }
+
+    void attach (juce::AudioProcessorValueTreeState& s, const juce::String& curve,
+                 const juce::String& drive, const juce::String& bias)
+    {
+        apvts_ = &s; curve_ = curve; drive_ = drive; bias_ = bias;
+        startTimerHz (12);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "TRANSFER");
+        if (apvts_ == nullptr) return;
+
+        pdhybrid::Waveshaper sh;
+        sh.setCurve (static_cast<pdhybrid::ShaperCurve> (juce::roundToInt (raw (curve_))));
+        sh.setDrive (raw (drive_));
+        sh.setBias  (raw (bias_));
+
+        g.setColour (kGrid);
+        g.fillRect (in.getCentreX(), in.getY(), 1.0f, in.getHeight());
+        g.fillRect (in.getX(), in.getCentreY(), in.getWidth(), 1.0f);
+        // Unity reference: what "no shaping" would look like.
+        g.setColour (kEdge);
+        g.drawLine (in.getX(), in.getBottom(), in.getRight(), in.getY(), 1.0f);
+
+        juce::Path p;
+        const int steps = 128;
+        for (int i = 0; i <= steps; ++i)
+        {
+            const float x = -1.0f + 2.0f * (float) i / (float) steps;
+            const float y = juce::jlimit (-1.2f, 1.2f, sh.process (x));
+            const float px = in.getX() + (x * 0.5f + 0.5f) * in.getWidth();
+            const float py = in.getCentreY() - y * in.getHeight() * 0.45f;
+            if (i == 0) p.startNewSubPath (px, py);
+            else        p.lineTo (px, py);
+        }
+        g.setColour (kTrace.withAlpha (0.25f));
+        g.strokePath (p, juce::PathStrokeType (3.0f));
+        g.setColour (kTrace);
+        g.strokePath (p, juce::PathStrokeType (1.5f));
+    }
+
+private:
+    float raw (const juce::String& id) const
+    {
+        auto* p = apvts_->getParameter (id);
+        return p != nullptr ? p->convertFrom0to1 (p->getValue()) : 0.0f;
+    }
+    void timerCallback() override
+    {
+        if (apvts_ == nullptr) return;
+        const float now[3] { raw (curve_), raw (drive_), raw (bias_) };
+        for (int i = 0; i < 3; ++i)
+            if (! juce::approximatelyEqual (now[i], last_[i])) { last_[i] = now[i]; repaint(); }
+        for (int i = 0; i < 3; ++i) last_[i] = now[i];
+    }
+
+    juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    juce::String curve_, drive_, bias_;
+    float last_[3] { -1e9f, -1e9f, -1e9f };
+};
+
+//==============================================================================
 /** The audio path as blocks and arrows, driven by the three routing choices.
     This is what makes filterRouting / drivePos / fxRouting legible: the picture
     changes when they do. */
@@ -595,87 +799,104 @@ public:
         const int  fx       = juce::roundToInt (fxRouting_->convertFrom0to1 (fxRouting_->getValue()));
         const bool drive    = driveOn_->getValue() > 0.5f;
 
-        in = in.withTrimmedTop (10.0f);
+        in = in.withTrimmedTop (10.0f).withTrimmedBottom (12.0f);
         const float bw = 46.0f, bh = 17.0f;
         const float cy = in.getCentreY();
-        float x = in.getX();
+        const float dy = 20.0f;          // vertical offset of the parallel lanes
 
-        auto block = [&] (juce::Rectangle<float> b, const juce::String& t, bool lit)
+        auto block = [&] (float bx, float by, float w, const juce::String& t, bool lit)
         {
+            juce::Rectangle<float> b (bx, by - bh * 0.5f, w, bh);
             g.setColour (lit ? kTrace : kEdge);
             g.drawRect (b, 1.0f);
             g.setFont (monoF (8.0f));
-            g.setColour (lit ? kTrace : kDim.withAlpha (0.5f));
+            g.setColour (lit ? kTrace : kDim.withAlpha (0.45f));
             g.drawText (t, b, juce::Justification::centred);
         };
-        auto arrow = [&] (float x0, float y0, float x1, float y1)
+        static const float dashes[] { 3.0f, 3.0f };
+        auto wire = [&] (float x0, float y0, float x1, float y1, bool active)
         {
+            g.setColour (active ? kTrace : kDim.withAlpha (0.3f));
+            if (active)
+                g.drawLine (x0, y0, x1, y1, 1.1f);
+            else
+                g.drawDashedLine (juce::Line<float> (x0, y0, x1, y1), dashes, 2, 1.0f);
+        };
+        auto arrow = [&] (float x1, float y1)
+        {
+            juce::Path h;
+            h.addTriangle (x1, y1, x1 - 4.0f, y1 - 3.0f, x1 - 4.0f, y1 + 3.0f);
             g.setColour (kTrace);
-            g.drawLine (x0, y0, x1, y1, 1.0f);
-            juce::Path head;
-            head.addTriangle (x1, y1, x1 - 4.0f, y1 - 3.0f, x1 - 4.0f, y1 + 3.0f);
-            g.fillPath (head);
+            g.fillPath (h);
         };
 
-        // Source
-        block ({ x, cy - bh * 0.5f, bw, bh }, "OSC", true);
+        float x = in.getX();
+        block (x, cy, bw, "OSC MIX", true);
         x += bw;
 
         if (drivePre)
         {
-            arrow (x, cy, x + 12.0f, cy); x += 12.0f;
-            block ({ x, cy - bh * 0.5f, bw, bh }, "DRIVE", drive);
+            wire (x, cy, x + 14.0f, cy, true); arrow (x + 14.0f, cy);
+            x += 14.0f;
+            block (x, cy, bw, "DRIVE", drive);
             x += bw;
         }
 
-        arrow (x, cy, x + 12.0f, cy); x += 12.0f;
+        // Filters. Series runs left to right on the centre line; parallel splits
+        // into two lanes that rejoin, so the topology reads at a glance.
+        const float fx1 = x + 14.0f;
+        wire (x, cy, fx1, cy, true); arrow (fx1, cy);
 
-        // Filters: single, in series, or in parallel.
         if (routing == 2)
         {
-            const float dy = 13.0f;
-            block ({ x, cy - dy - bh * 0.5f, bw, bh }, "FLT 1", true);
-            block ({ x, cy + dy - bh * 0.5f, bw, bh }, "FLT 2", true);
-            g.setColour (kTrace);
-            g.drawLine (x - 6.0f, cy - dy, x - 6.0f, cy + dy, 1.0f);
-            g.drawLine (x - 6.0f, cy - dy, x, cy - dy, 1.0f);
-            g.drawLine (x - 6.0f, cy + dy, x, cy + dy, 1.0f);
-            g.drawLine (x + bw, cy - dy, x + bw + 6.0f, cy - dy, 1.0f);
-            g.drawLine (x + bw, cy + dy, x + bw + 6.0f, cy + dy, 1.0f);
-            g.drawLine (x + bw + 6.0f, cy - dy, x + bw + 6.0f, cy + dy, 1.0f);
-            x += bw + 6.0f;
+            const float top = cy - dy, bot = cy + dy;
+            wire (fx1, cy, fx1, top, true);
+            wire (fx1, cy, fx1, bot, true);
+            block (fx1, top, bw, "FLT 1", true);
+            block (fx1, bot, bw, "FLT 2", true);
+            const float join = fx1 + bw + 14.0f;
+            wire (fx1 + bw, top, join, top, true);
+            wire (fx1 + bw, bot, join, bot, true);
+            wire (join, top, join, bot, true);
+            wire (join, cy, join + 10.0f, cy, true);
+            x = join + 10.0f;
         }
         else
         {
-            block ({ x, cy - bh * 0.5f, bw, bh }, "FLT 1", true);
-            x += bw;
-            if (routing == 1)
-            {
-                arrow (x, cy, x + 12.0f, cy); x += 12.0f;
-                block ({ x, cy - bh * 0.5f, bw, bh }, "FLT 2", true);
-                x += bw;
-            }
+            block (fx1, cy, bw, "FLT 1", true);
+            x = fx1 + bw;
+            const float second = x + 14.0f;
+            const bool  on = (routing == 1);
+            wire (x, cy, second, cy, on);
+            if (on) arrow (second, cy);
+            block (second, cy, bw, "FLT 2", on);
+            x = second + bw;
         }
 
         if (! drivePre)
         {
-            arrow (x, cy, x + 12.0f, cy); x += 12.0f;
-            block ({ x, cy - bh * 0.5f, bw, bh }, "DRIVE", drive);
+            wire (x, cy, x + 14.0f, cy, true); arrow (x + 14.0f, cy);
+            x += 14.0f;
+            block (x, cy, bw, "DRIVE", drive);
             x += bw;
         }
 
-        arrow (x, cy, x + 12.0f, cy); x += 12.0f;
-        block ({ x, cy - bh * 0.5f, bw, bh }, "AMP", true);
-        x += bw;
+        wire (x, cy, x + 14.0f, cy, true); arrow (x + 14.0f, cy);
+        x += 14.0f;
+        block (x, cy, bw - 8.0f, "AMP", true);
+        x += bw - 8.0f;
 
-        // FX tail, named by the routing choice.
         static const char* fxText[3] { "DLY>REV", "REV>DLY", "REV+DLY" };
-        arrow (x, cy, x + 12.0f, cy); x += 12.0f;
-        block ({ x, cy - bh * 0.5f, bw + 14.0f, bh }, fxText[juce::jlimit (0, 2, fx)], true);
+        wire (x, cy, x + 14.0f, cy, true); arrow (x + 14.0f, cy);
+        x += 14.0f;
+        block (x, cy, bw + 12.0f, fxText[juce::jlimit (0, 2, fx)], true);
 
         g.setFont (monoF (8.0f));
-        g.setColour (kDim.withAlpha (0.65f));
-        g.drawText (routing == 0 ? "single filter" : (routing == 1 ? "filters in series" : "filters in parallel"),
+        g.setColour (kDim.withAlpha (0.6f));
+        g.drawText (juce::String (routing == 0 ? "single filter"
+                                : routing == 1 ? "filters in series" : "filters in parallel")
+                        + (drivePre ? "  |  drive pre-filter" : "  |  drive post-filter")
+                        + "  |  dashed = inactive",
                     getLocalBounds().reduced (6, 4), juce::Justification::bottomLeft);
     }
 

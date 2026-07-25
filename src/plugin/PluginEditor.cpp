@@ -102,6 +102,8 @@ void PDHybridEditor::SectionPanel::addSection (const Section& s)
         addAndMakeVisible (*t);
     if (s.custom != nullptr)
         addAndMakeVisible (*s.custom);
+    if (s.custom2 != nullptr)
+        addAndMakeVisible (*s.custom2);
 
     sections.push_back (s);
 }
@@ -134,9 +136,15 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
 {
     const int comboMinW = 112;   // enough to read the longest choice ("Phase Distortion")
 
+    // A split card lays its two knob groups out independently, so each group
+    // rounds up to whole rows on its own.
     auto knobRows = [&] (const Section& s)
     {
-        return (static_cast<int> (s.knobs.size()) + s.cols - 1) / juce::jmax (1, s.cols);
+        const int cols = juce::jmax (1, s.cols);
+        const int n = static_cast<int> (s.knobs.size());
+        if (s.custom2 == nullptr || s.knobSplit <= 0 || s.knobSplit >= n)
+            return (n + cols - 1) / cols;
+        return (s.knobSplit + cols - 1) / cols + (n - s.knobSplit + cols - 1) / cols;
     };
 
     // FIXED grid: the column count is a constant, not a function of width. Cards
@@ -158,7 +166,8 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
     auto sectionHeight = [&] (const Section& s, int comboRowsCount)
     {
         return kHeaderH + 2 * kCardPad + comboRowsCount * kComboRowH
-             + s.customH + (s.customH > 0 ? kCardPad : 0)
+             + s.customH  + (s.customH  > 0 ? kCardPad : 0)
+             + s.customH2 + (s.customH2 > 0 ? kCardPad : 0)
              + knobRows (s) * kCellH;
     };
 
@@ -210,9 +219,23 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
         std::size_t k = 0;
         while (k < s.knobs.size())
         {
+            // The second display drops in once the first knob group is placed.
+            if (s.custom2 != nullptr && s.knobSplit >= 0
+                && k == static_cast<std::size_t> (s.knobSplit))
+            {
+                s.custom2->setBounds (inner.removeFromTop (s.customH2));
+                inner.removeFromTop (kCardPad);
+            }
+
             auto krow = inner.removeFromTop (kCellH);
             for (int c = 0; c < s.cols && k < s.knobs.size(); ++c, ++k)
             {
+                // Start a fresh row at the split, even mid-row, so the second
+                // display always lands between the two knob groups.
+                if (s.custom2 != nullptr && s.knobSplit > 0 && c > 0
+                    && k == static_cast<std::size_t> (s.knobSplit))
+                    break;
+
                 auto cell = krow.removeFromLeft (cellW);
                 s.knobs[k]->label.setBounds (cell.removeFromTop (kLabelH));
                 // Slider takes the whole cell so its value box has room; the
@@ -934,7 +957,7 @@ void PDHybridEditor::buildSections()
     // Signal topology gets its own card instead of hiding in three unrelated ones.
     routingSec.title   = "Routing";
     routingSec.cols    = 1;
-    routingSec.span    = 2;
+    routingSec.span    = 3;
     routingSec.combos  = { &addCombo ("filterRouting", { "Single Filter", "Filters Series", "Filters Parallel" }),
                            &addCombo ("drivePos", { "Drive Post Filter", "Drive Pre Filter" }),
                            &addCombo ("fxRouting", { "Delay -> Reverb", "Reverb -> Delay", "Reverb, Dry Delay" }) };
@@ -951,9 +974,12 @@ void PDHybridEditor::buildSections()
     pluckSec.knobs   = { &addKnob ("pluckDecay", "Decay"), &addKnob ("pluckDamp", "Damp"),
                          &addKnob ("pluckDispersion", "Disp"), &addKnob ("pluckBurst", "Burst", 1) };
 
+    driveCurve.attach (proc.apvts, "driveType", "drive", "bias");
     drive.title   = "Overdrive";
     drive.cols    = 3;
-    drive.span    = 2;
+    drive.span    = 3;
+    drive.custom  = &driveCurve;
+    drive.customH = 68;
     drive.toggles = { &addToggle ("driveOn", "ON") };
     drive.combos  = { &addCombo ("driveType",
                        { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz", "Rectify",
@@ -962,45 +988,48 @@ void PDHybridEditor::buildSections()
                       &addKnob ("gain", "Gain"), &addKnob ("crushBits", "Crush"),
                       &addKnob ("downsample", "Downsmpl") };
 
-    filter.title  = "Filter 1";
-    filter.cols   = 5;
-    filter.span   = 3;
+    // A filter and its envelope are one object: response curve, the filter's own
+    // controls, the envelope curve, then that envelope's controls — all in the
+    // one card, rather than two cards a row apart.
+    filt1Resp.attach (proc.apvts, "filterType", "cutoff", "resonance", "filterMorph");
+    filt1Curve.attach (proc.apvts, "filterEnvA", "filterEnvD", "filterEnvS", "filterEnvR");
+    filter.title    = "Filter 1";
+    filter.cols     = 5;
+    filter.span     = 3;
+    filter.custom   = &filt1Resp;
+    filter.customH  = 68;
+    filter.custom2  = &filt1Curve;
+    filter.customH2 = 50;
+    filter.knobSplit = 5;
     filter.combos = { &addCombo ("filterType",
                         { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }) };
     filter.knobs  = { &addKnob ("cutoff", "Cutoff", 2, KnobSize::Large),
                       &addKnob ("resonance", "Reso", 2, KnobSize::Large),
                       &addKnob ("filterMorph", "Morph"), &addKnob ("keyTrack", "Key Trk"),
-                      &addKnob ("filterEnvAmount", "Env Amt") };
+                      &addKnob ("filterEnvAmount", "Env Amt"),
+                      // --- split: the envelope's own controls ---
+                      &addKnob ("filterEnvA", "Atk"), &addKnob ("filterEnvD", "Dec"),
+                      &addKnob ("filterEnvS", "Sus"), &addKnob ("filterEnvR", "Rel"),
+                      &addKnob ("filterVelSens", "Vel") };
 
-    filter2.title  = "Filter 2";
-    filter2.cols   = 5;
-    filter2.span   = 3;
+    filt2Resp.attach (proc.apvts, "filter2Type", "filter2Cutoff", "filter2Res", "filter2Morph");
+    filt2Curve.attach (proc.apvts, "filter2EnvA", "filter2EnvD", "filter2EnvS", "filter2EnvR");
+    filter2.title    = "Filter 2";
+    filter2.cols     = 5;
+    filter2.span     = 3;
+    filter2.custom   = &filt2Resp;
+    filter2.customH  = 68;
+    filter2.custom2  = &filt2Curve;
+    filter2.customH2 = 50;
+    filter2.knobSplit = 4;
     filter2.combos = { &addCombo ("filter2Type",
                         { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }) };
     filter2.knobs  = { &addKnob ("filter2Cutoff", "Cutoff", 2, KnobSize::Large),
                        &addKnob ("filter2Res", "Reso", 2, KnobSize::Large),
-                       &addKnob ("filter2Morph", "Morph"), &addKnob ("filter2EnvAmount", "Env Amt") };
-
-    // Each filter envelope sits directly beneath the filter it drives, and shows
-    // its shape rather than only four numbers.
-    filt1Curve.attach (proc.apvts, "filterEnvA", "filterEnvD", "filterEnvS", "filterEnvR");
-    filterEnv.title   = "Filter 1 Env";
-    filterEnv.cols    = 5;
-    filterEnv.span    = 3;
-    filterEnv.custom  = &filt1Curve;
-    filterEnv.customH = 62;
-    filterEnv.knobs = { &addKnob ("filterEnvA", "Atk"), &addKnob ("filterEnvD", "Dec"),
-                        &addKnob ("filterEnvS", "Sus"), &addKnob ("filterEnvR", "Rel"),
-                        &addKnob ("filterVelSens", "Vel") };
-
-    filt2Curve.attach (proc.apvts, "filter2EnvA", "filter2EnvD", "filter2EnvS", "filter2EnvR");
-    filter2Env.title   = "Filter 2 Env";
-    filter2Env.cols    = 5;
-    filter2Env.span    = 3;
-    filter2Env.custom  = &filt2Curve;
-    filter2Env.customH = 62;
-    filter2Env.knobs = { &addKnob ("filter2EnvA", "Atk"), &addKnob ("filter2EnvD", "Dec"),
-                         &addKnob ("filter2EnvS", "Sus"), &addKnob ("filter2EnvR", "Rel") };
+                       &addKnob ("filter2Morph", "Morph"), &addKnob ("filter2EnvAmount", "Env Amt"),
+                       // --- split ---
+                       &addKnob ("filter2EnvA", "Atk"), &addKnob ("filter2EnvD", "Dec"),
+                       &addKnob ("filter2EnvS", "Sus"), &addKnob ("filter2EnvR", "Rel") };
 
     // ------------------------------------------------------------------ MOD --
     // The amp envelope lives in the performance strip, not on a page.
@@ -1810,8 +1839,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                         { &oscA, &oscB, &mixer, &bassSec, &pluckSec, &unison, &glideSec },
                                                                                 nullptr, {}, 0 },
         { "2 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " SHAPE",
-                        { &filter, &filter2, &filterEnv, &filter2Env,
-                          &routingSec, &drive },                                nullptr, {}, 0 },
+                        { &filter, &filter2, &routingSec, &drive },              nullptr, {}, 0 },
         { "3 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " MOD",
                         { &stageEnvSec, &lfo, &lfo2,
                           &modEnv, &vibratoSec, &arpSec },                      nullptr, {}, 0 },

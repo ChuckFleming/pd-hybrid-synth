@@ -304,6 +304,10 @@ private:
     pdui::WaveCyclePreview oscACycle, oscBCycle;
     pdui::FilterResponse filt1Resp, filt2Resp;
     pdui::TransferCurve  driveCurve;
+    pdui::EqResponse     eqResp;
+    pdui::GainReductionMeter grMeter;
+    pdui::DelayTaps      delayTaps;
+    pdui::ReverbDecay    reverbDecay;
 
     //--------------------------------------------------------------------------
     // Modulation Inspector: a permanent right-hand column that makes the matrix

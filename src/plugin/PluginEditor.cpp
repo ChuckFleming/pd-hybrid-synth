@@ -320,16 +320,30 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
             }
             else
             {
-                // Split the row height evenly between the stacked members, so
-                // the block's bottom lines up with its neighbours.
-                const int n  = static_cast<int> (units[u].members.size());
-                const int mh = (rowHeight[r] - (n - 1) * kGap) / juce::jmax (1, n);
-                int yy = rowY[r];
+                // Share the row height between the stacked members in proportion
+                // to what each actually needs — an even split starves a tall card
+                // (a compressor with a meter and two knob rows) to pad a short one.
+                const int n = static_cast<int> (units[u].members.size());
+                std::vector<int> natural;
+                int total = 0;
                 for (int idx : units[u].members)
                 {
-                    Section& s = sections[(std::size_t) idx];
+                    const Section& s = sections[(std::size_t) idx];
+                    const int h = sectionHeight (s, comboRowsFor (s, cw));
+                    natural.push_back (h);
+                    total += h;
+                }
+
+                const int avail = rowHeight[r] - (n - 1) * kGap;
+                int yy = rowY[r], used = 0;
+                for (int i = 0; i < n; ++i)
+                {
+                    Section& s = sections[(std::size_t) units[u].members[(std::size_t) i]];
+                    const int mh = (i == n - 1) ? (avail - used)
+                                                : (natural[(std::size_t) i] * avail / juce::jmax (1, total));
                     placeCard (s, { cx, yy, cw, mh }, comboRowsFor (s, cw));
                     yy += mh + kGap;
+                    used += mh;
                 }
             }
         }
@@ -1120,9 +1134,12 @@ void PDHybridEditor::buildSections()
     chorusSec.knobs   = { &addKnob ("chorusRate", "Rate"), &addKnob ("chorusDepth", "Depth"),
                           &addKnob ("chorusMix", "Mix") };
 
+    delayTaps.attach (proc.apvts);
     delaySec.title   = "Delay";
     delaySec.cols    = 3;
     delaySec.span    = 2;
+    delaySec.custom  = &delayTaps;
+    delaySec.customH = 56;
     delaySec.toggles = { &addToggle ("delayOn", "ON") };
     delaySec.combos  = { &addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" }),
                          &addCombo ("delaySyncL", kSyncNames), &addCombo ("delaySyncR", kSyncNames) };
@@ -1130,34 +1147,45 @@ void PDHybridEditor::buildSections()
                          &addKnob ("delayFeedback", "Fbk"), &addKnob ("delayMix", "Mix"),
                          &addKnob ("delayDuck", "Duck") };
 
+    reverbDecay.attach (proc.apvts);
     reverbSec.title   = "Reverb";
     reverbSec.cols    = 4;
     reverbSec.span    = 2;
+    reverbSec.custom  = &reverbDecay;
+    reverbSec.customH = 46;
     reverbSec.toggles = { &addToggle ("reverbOn", "ON") };
     reverbSec.knobs   = { &addKnob ("reverbSize", "Size"), &addKnob ("reverbDamp", "Damp"),
                           &addKnob ("reverbWidth", "Width"), &addKnob ("reverbMix", "Mix") };
 
+    grMeter.setReader ([this] { return proc.gainReductionDb(); });
     comp.title   = "Compressor";
     comp.cols    = 3;
     comp.span    = 2;
+    comp.custom  = &grMeter;
+    comp.customH = 34;
     comp.toggles = { &addToggle ("compOn", "ON") };
-    comp.knobs   = { &addKnob ("compThreshold", "Thr"), &addKnob ("compRatio", "Ratio"),
-                     &addKnob ("compAttack", "Atk"), &addKnob ("compRelease", "Rel"),
-                     &addKnob ("compMakeup", "Gain") };
+    comp.knobs   = { &addKnob ("compThreshold", "Thr", 1, KnobSize::Large),
+                     &addKnob ("compRatio", "Ratio"), &addKnob ("compMakeup", "Gain"),
+                     &addKnob ("compAttack", "Atk"), &addKnob ("compRelease", "Rel") };
+    comp.stackId = 2;   // sits above Stereo in one grid column
 
+    eqResp.attach (proc.apvts);
     globalEqSec.title   = "Global EQ";
-    globalEqSec.cols    = 4;
-    globalEqSec.span    = 2;
+    globalEqSec.cols    = 8;
+    globalEqSec.span    = 4;
+    globalEqSec.custom  = &eqResp;
+    globalEqSec.customH = 72;
     globalEqSec.toggles = { &addToggle ("globalEqOn", "ON") };
     globalEqSec.knobs = { &addKnob ("geLowFreq", "Lo Hz", 0),  &addKnob ("geLowGain", "Lo dB", 1),
                           &addKnob ("geMid1Freq", "M1 Hz", 0), &addKnob ("geMid1Gain", "M1 dB", 1),
                           &addKnob ("geMid2Freq", "M2 Hz", 0), &addKnob ("geMid2Gain", "M2 dB", 1),
                           &addKnob ("geHighFreq", "Hi Hz", 0), &addKnob ("geHighGain", "Hi dB", 1) };
 
-    stereo.title = "Stereo";
-    stereo.cols  = 2;
-    stereo.span  = 2;
-    stereo.knobs = { &addKnob ("pan", "Pan"), &addKnob ("panSpread", "Spread") };
+    stereo.title   = "Stereo";
+    stereo.cols    = 2;
+    stereo.span    = 2;
+    stereo.stackId = 2;
+    stereo.knobs   = { &addKnob ("pan", "Pan"), &addKnob ("panSpread", "Spread") };
 
     // --------------------------------------------------------------- GLOBAL --
     // Voice allocation and tuning are not part of the audio path, so they sit
@@ -1845,7 +1873,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                           &modEnv, &vibratoSec, &arpSec },                      nullptr, {}, 0 },
         { "4 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " OUT",
                         { &chorusSec, &delaySec, &reverbSec,
-                          &globalEqSec, &comp, &stereo },                       nullptr, {}, 0 },
+                          &globalEqSec, &comp, &stereo },                        nullptr, {}, 0 },
         { juce::String (juce::CharPointer_UTF8 ("\xe2\x9a\x99")) + " GLOBAL",
                         { &voiceSec, &tuningSec, &globalLfoSec, &qualitySec },  nullptr, {}, 0 },
     };

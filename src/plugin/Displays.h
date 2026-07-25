@@ -5,6 +5,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "dsp/OscillatorUnit.h"
 #include "dsp/FilterUnit.h"
+#include "dsp/GlobalEq.h"
 #include "dsp/Waveshaper.h"
 #include <array>
 #include <algorithm>
@@ -767,6 +768,289 @@ private:
     juce::AudioProcessorValueTreeState* apvts_ = nullptr;
     juce::String curve_, drive_, bias_;
     float last_[3] { -1e9f, -1e9f, -1e9f };
+};
+
+//==============================================================================
+/** The global EQ's four-band response, measured through the real GlobalEq so
+    the curve is the filter, not an approximation of it. */
+class EqResponse : public juce::Component,
+                   private juce::Timer
+{
+public:
+    EqResponse() { setInterceptsMouseClicks (false, false); }
+    ~EqResponse() override { stopTimer(); }
+
+    void attach (juce::AudioProcessorValueTreeState& s)
+    {
+        apvts_ = &s;
+        startTimerHz (12);
+        rebuild();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "RESPONSE");
+        if (apvts_ == nullptr) return;
+
+        g.setColour (kGrid);
+        for (float f : { 100.0f, 1000.0f, 10000.0f })
+            g.fillRect (in.getX() + xForHz (f) * in.getWidth(), in.getY(), 1.0f, in.getHeight());
+        g.setColour (kEdge);
+        g.fillRect (in.getX(), in.getCentreY(), in.getWidth(), 1.0f);   // 0 dB
+
+        juce::Path p;
+        const int px = juce::jmax (2, (int) in.getWidth());
+        for (int i = 0; i < px; ++i)
+        {
+            const float hz  = 20.0f * std::pow (1000.0f, (float) i / (float) (px - 1));
+            const int   bin = juce::jlimit (0, kN / 2 - 1, (int) (hz * (float) kN / (float) kSr));
+            const float y   = in.getCentreY() - juce::jlimit (-24.0f, 24.0f, mag_[(size_t) bin])
+                                                  * in.getHeight() / 48.0f;
+            if (i == 0) p.startNewSubPath (in.getX() + (float) i, y);
+            else        p.lineTo (in.getX() + (float) i, y);
+        }
+        g.setColour (kTrace.withAlpha (0.25f));
+        g.strokePath (p, juce::PathStrokeType (3.0f));
+        g.setColour (kTrace);
+        g.strokePath (p, juce::PathStrokeType (1.6f));
+
+        // A marker per band, at its frequency and gain.
+        static const char* fq[4] { "geLowFreq", "geMid1Freq", "geMid2Freq", "geHighFreq" };
+        static const char* gn[4] { "geLowGain", "geMid1Gain", "geMid2Gain", "geHighGain" };
+        g.setFont (monoF (7.5f));
+        for (int b = 0; b < 4; ++b)
+        {
+            const float hz = raw (fq[b]), db = raw (gn[b]);
+            const float mx = in.getX() + xForHz (hz) * in.getWidth();
+            const float my = in.getCentreY() - juce::jlimit (-24.0f, 24.0f, db) * in.getHeight() / 48.0f;
+            g.setColour (kBg);    g.fillRect (mx - 3.0f, my - 3.0f, 6.0f, 6.0f);
+            g.setColour (kTrace); g.drawRect (juce::Rectangle<float> (mx - 3.0f, my - 3.0f, 6.0f, 6.0f), 1.0f);
+            g.setColour (kDim.withAlpha (0.7f));
+            g.drawText (hz >= 1000.0f ? juce::String (hz / 1000.0f, 1) + "k" : juce::String ((int) hz),
+                        juce::Rectangle<float> (mx - 18.0f, in.getBottom() - 10.0f, 36.0f, 10.0f),
+                        juce::Justification::centred);
+        }
+    }
+
+private:
+    static float xForHz (float hz)
+    { return juce::jlimit (0.0f, 1.0f, std::log (juce::jmax (20.0f, hz) / 20.0f) / std::log (1000.0f)); }
+
+    float raw (const juce::String& id) const
+    {
+        auto* p = apvts_->getParameter (id);
+        return p != nullptr ? p->convertFrom0to1 (p->getValue()) : 0.0f;
+    }
+
+    void rebuild()
+    {
+        pdhybrid::GlobalEq eq;
+        eq.setSampleRate (kSr);
+        static const char* fq[4] { "geLowFreq", "geMid1Freq", "geMid2Freq", "geHighFreq" };
+        static const char* gn[4] { "geLowGain", "geMid1Gain", "geMid2Gain", "geHighGain" };
+        for (int b = 0; b < 4; ++b)
+            eq.setBand (b, raw (fq[b]), raw (gn[b]));
+
+        std::array<float, 2 * kN> buf {};
+        for (int i = 0; i < kN; ++i)
+            buf[(size_t) i] = eq.processSample (i == 0 ? 1.0f : 0.0f);
+        fft_.performFrequencyOnlyForwardTransform (buf.data());
+        for (int i = 0; i < kN / 2; ++i)
+            mag_[(size_t) i] = juce::Decibels::gainToDecibels (buf[(size_t) i] + 1.0e-7f);
+        repaint();
+    }
+
+    void timerCallback() override
+    {
+        if (apvts_ == nullptr) return;
+        static const char* ids[8] { "geLowFreq", "geLowGain", "geMid1Freq", "geMid1Gain",
+                                    "geMid2Freq", "geMid2Gain", "geHighFreq", "geHighGain" };
+        bool changed = false;
+        for (int i = 0; i < 8; ++i)
+        {
+            const float v = raw (ids[i]);
+            if (! juce::approximatelyEqual (v, last_[i])) { last_[i] = v; changed = true; }
+        }
+        if (changed) rebuild();
+    }
+
+    static constexpr int    kOrder = 10;
+    static constexpr int    kN     = 1 << kOrder;
+    static constexpr double kSr    = 48000.0;
+
+    juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    juce::dsp::FFT fft_ { kOrder };
+    std::array<float, kN / 2> mag_ {};
+    float last_[8] { -1e9f, -1e9f, -1e9f, -1e9f, -1e9f, -1e9f, -1e9f, -1e9f };
+};
+
+//==============================================================================
+/** Compressor gain reduction, read live off the audio thread. Amber, because
+    it is the one output stage that moves on its own. */
+class GainReductionMeter : public juce::Component,
+                           private juce::Timer
+{
+public:
+    GainReductionMeter() { setInterceptsMouseClicks (false, false); }
+    ~GainReductionMeter() override { stopTimer(); }
+
+    void setReader (std::function<float()> r) { read_ = std::move (r); startTimerHz (24); }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "GAIN REDUCTION");
+        in = in.withTrimmedTop (9.0f);
+
+        g.setColour (juce::Colour (0xff0e2116));
+        g.fillRect (in);
+
+        // Scale runs 0 dB at the right to -24 dB at the left, so reduction grows
+        // leftwards from rest the way a hardware meter does.
+        g.setColour (kGrid);
+        for (int db = -6; db > -24; db -= 6)
+            g.fillRect (in.getRight() + (float) db / 24.0f * in.getWidth(), in.getY(), 1.0f, in.getHeight());
+
+        const float amt = juce::jlimit (0.0f, 24.0f, -gr_);
+        const float w   = amt / 24.0f * in.getWidth();
+        g.setColour (kAmber);
+        g.fillRect (in.getRight() - w, in.getY(), w, in.getHeight());
+
+        g.setFont (monoF (8.0f));
+        g.setColour (amt > 0.05f ? kAmber : kDim.withAlpha (0.6f));
+        g.drawText (juce::String (gr_, 1) + " dB", getLocalBounds().reduced (5, 2),
+                    juce::Justification::topRight);
+    }
+
+private:
+    void timerCallback() override
+    {
+        if (! read_) return;
+        const float v = read_();
+        if (! juce::approximatelyEqual (v, gr_)) { gr_ = v; repaint(); }
+    }
+
+    std::function<float()> read_;
+    float gr_ = 0.0f;
+};
+
+//==============================================================================
+/** Delay taps: the echo pattern the current time, feedback and mode produce. */
+class DelayTaps : public juce::Component,
+                  private juce::Timer
+{
+public:
+    DelayTaps() { setInterceptsMouseClicks (false, false); }
+    ~DelayTaps() override { stopTimer(); }
+
+    void attach (juce::AudioProcessorValueTreeState& s) { apvts_ = &s; startTimerHz (10); }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "TAPS");
+        if (apvts_ == nullptr) return;
+
+        const float tL  = raw ("delayTimeL"), tR = raw ("delayTimeR");
+        const float fb  = juce::jlimit (0.0f, 0.95f, raw ("delayFeedback"));
+        const int   mod = juce::roundToInt (raw ("delayMode"));   // 0 mono 1 stereo 2 ping-pong
+        const float span = juce::jmax (0.05f, juce::jmax (tL, tR) * 6.0f);
+
+        g.setColour (kGrid);
+        g.fillRect (in.getX(), in.getCentreY(), in.getWidth(), 1.0f);
+
+        // Dry hit, then successive echoes decaying by the feedback amount.
+        float level = 1.0f;
+        for (int n = 0; n < 12 && level > 0.02f; ++n)
+        {
+            const float t = (mod == 0 ? tL : (n % 2 == 0 ? tL : tR)) * (float) n;
+            const float x = in.getX() + juce::jlimit (0.0f, 1.0f, t / span) * in.getWidth();
+            const float h = level * in.getHeight() * 0.46f;
+            // Ping-pong alternates sides; the others stay centred.
+            const float up = (mod == 2 && n % 2 == 1) ? -1.0f : 1.0f;
+            g.setColour (n == 0 ? kTrace : kTrace.withAlpha (0.35f + 0.6f * level));
+            if (mod == 2) g.fillRect (x, in.getCentreY() - (up > 0 ? h : 0.0f), 1.6f, h);
+            else          g.fillRect (x, in.getCentreY() - h, 1.6f, h * 2.0f);
+            level *= fb;
+            if (t > span) break;
+        }
+    }
+
+private:
+    float raw (const juce::String& id) const
+    {
+        auto* p = apvts_->getParameter (id);
+        return p != nullptr ? p->convertFrom0to1 (p->getValue()) : 0.0f;
+    }
+    void timerCallback() override
+    {
+        if (apvts_ == nullptr) return;
+        const float now[4] { raw ("delayTimeL"), raw ("delayTimeR"),
+                             raw ("delayFeedback"), raw ("delayMode") };
+        for (int i = 0; i < 4; ++i)
+            if (! juce::approximatelyEqual (now[i], last_[i])) { last_[i] = now[i]; repaint(); }
+    }
+
+    juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    float last_[4] { -1e9f, -1e9f, -1e9f, -1e9f };
+};
+
+//==============================================================================
+/** Reverb decay envelope, from size and damping. */
+class ReverbDecay : public juce::Component,
+                    private juce::Timer
+{
+public:
+    ReverbDecay() { setInterceptsMouseClicks (false, false); }
+    ~ReverbDecay() override { stopTimer(); }
+
+    void attach (juce::AudioProcessorValueTreeState& s) { apvts_ = &s; startTimerHz (10); }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "DECAY");
+        if (apvts_ == nullptr) return;
+
+        const float size = juce::jlimit (0.0f, 1.0f, raw ("reverbSize"));
+        const float damp = juce::jlimit (0.0f, 1.0f, raw ("reverbDamp"));
+        // Longer tail with size; damping shortens it and rounds the front.
+        const float k = 1.0f / (0.12f + size * 2.2f) * (1.0f + damp * 1.4f);
+
+        juce::Path p;
+        p.startNewSubPath (in.getX(), in.getBottom());
+        const int px = juce::jmax (2, (int) in.getWidth());
+        for (int i = 0; i < px; ++i)
+        {
+            const float t = (float) i / (float) (px - 1) * 3.0f;
+            const float a = std::exp (-k * t) * (1.0f - std::exp (-t * 26.0f));
+            p.lineTo (in.getX() + (float) i, in.getBottom() - a * in.getHeight() * 0.94f);
+        }
+
+        auto fill = p;
+        fill.lineTo (in.getRight(), in.getBottom());
+        fill.closeSubPath();
+        g.setColour (kTrace.withAlpha (0.10f));
+        g.fillPath (fill);
+        g.setColour (kTrace.withAlpha (0.25f));
+        g.strokePath (p, juce::PathStrokeType (3.0f));
+        g.setColour (kTrace);
+        g.strokePath (p, juce::PathStrokeType (1.4f));
+    }
+
+private:
+    float raw (const juce::String& id) const
+    {
+        auto* p = apvts_->getParameter (id);
+        return p != nullptr ? p->convertFrom0to1 (p->getValue()) : 0.0f;
+    }
+    void timerCallback() override
+    {
+        if (apvts_ == nullptr) return;
+        const float now[2] { raw ("reverbSize"), raw ("reverbDamp") };
+        for (int i = 0; i < 2; ++i)
+            if (! juce::approximatelyEqual (now[i], last_[i])) { last_[i] = now[i]; repaint(); }
+    }
+
+    juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    float last_[2] { -1e9f, -1e9f };
 };
 
 //==============================================================================

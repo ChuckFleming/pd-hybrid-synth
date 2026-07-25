@@ -1102,6 +1102,9 @@ void PDHybridAudioProcessor::publishModLevels() noexcept
 
     for (int i = 0; i < kNumModSources; ++i)
         modLevels_[i].store (static_cast<float> (s.v[i]), std::memory_order_relaxed);
+
+    gainReduction_.store (static_cast<float> (compressor.gainReductionDb()),
+                          std::memory_order_relaxed);
 }
 
 void PDHybridAudioProcessor::readModLevels (float* dest, int num) const noexcept

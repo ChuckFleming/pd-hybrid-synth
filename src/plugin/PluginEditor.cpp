@@ -106,6 +106,20 @@ void PDHybridEditor::SectionPanel::addSection (const Section& s)
     sections.push_back (s);
 }
 
+void PDHybridEditor::SectionPanel::setCustomHeight (juce::Component* c, int newHeight)
+{
+    for (auto& s : sections)
+        if (s.custom == c && s.customH != newHeight)
+        {
+            s.customH = newHeight;
+            resized();
+            repaint();
+            if (auto* vp = findParentComponentOfClass<juce::Viewport>())
+                vp->resized();     // the panel's preferred height just changed
+            return;
+        }
+}
+
 void PDHybridEditor::SectionPanel::setTrailing (juce::Component* c, int fullHeight,
                                                 juce::String title)
 {
@@ -322,7 +336,8 @@ void PDHybridEditor::SectionPanel::resized()
 
 void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
 {
-    auto drawFrame = [&g] (juce::Rectangle<int> b, const juce::String& title)
+    auto drawFrame = [&g] (juce::Rectangle<int> b, const juce::String& title,
+                           juce::Colour titleColour = kTitleCol)
     {
         // Black box with a thin green outline (square corners, terminal style).
         g.setColour (kCardBg);
@@ -336,13 +351,13 @@ void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
         juce::Rectangle<int> tag (b.getX() + 12, b.getY() - 1, tw, kHeaderH - 6);
         g.setColour (kCardBg);
         g.fillRect (tag);
-        g.setColour (kTitleCol);
+        g.setColour (titleColour);
         g.drawText (title, tag.withTrimmedLeft (5), juce::Justification::centredLeft);
     };
 
     for (const auto& s : sections)
     {
-        drawFrame (s.bounds, s.title);
+        drawFrame (s.bounds, s.title, s.titleCol);
 
         // Punch a black notch behind each header toggle so it reads as breaking
         // the frame, matching the title tag on the other end.
@@ -364,29 +379,37 @@ constexpr int kEnvGraphH = 118;   // curve area
 // The 16 rate/level knobs use a compact cell: they are reference numbers under
 // the graph, not the primary way to edit the envelope.
 constexpr int kEnvKnobH  = 62;
+constexpr int kEnvSegW   = 104;   // one stage-selector segment
 constexpr float kNodeR   = 4.5f;  // breakpoint handle radius
 }
 
 PDHybridEditor::StageEnvelopePanel::StageEnvelopePanel() = default;
 PDHybridEditor::StageEnvelopePanel::~StageEnvelopePanel() { stopTimer(); }
 
-int PDHybridEditor::StageEnvelopePanel::preferredHeight()
+int PDHybridEditor::StageEnvelopePanel::preferredHeight() const
 {
-    // selector + graph + a gap + two rows of knobs (R1..R8 then L1..L8 + Amt/Sus)
-    return kEnvSelH + kEnvGraphH + kCardPad + 2 * kEnvKnobH;
+    // selector + graph + the AMT / SUS PT row, then the two collapsible rows of
+    // numeric knobs (R1..R8 then L1..L8).
+    return kEnvSelH + kEnvGraphH + kCardPad + kEnvKnobH + (expanded ? 2 * kEnvKnobH : 0);
+}
+
+juce::Rectangle<int> PDHybridEditor::StageEnvelopePanel::selectorArea() const
+{
+    return getLocalBounds().withHeight (kEnvSelH).reduced (0, 2);
+}
+
+juce::Rectangle<int> PDHybridEditor::StageEnvelopePanel::segmentArea (int i) const
+{
+    return selectorArea().withX (selectorArea().getX() + i * kEnvSegW).withWidth (kEnvSegW);
+}
+
+juce::Rectangle<int> PDHybridEditor::StageEnvelopePanel::expanderArea() const
+{
+    return { 2, kEnvSelH + kEnvGraphH + kCardPad + 4, 92, 18 };
 }
 
 void PDHybridEditor::StageEnvelopePanel::addBank (Bank b)
 {
-    const int index = static_cast<int> (banks.size());
-
-    auto btn = std::make_unique<juce::TextButton> (b.name);
-    btn->setClickingTogglesState (false);
-    btn->setTooltip (b.name + "  " + b.dest);
-    btn->onClick = [this, index] { selectBank (index); };
-    addAndMakeVisible (*btn);
-    bankButtons.push_back (std::move (btn));
-
     for (auto* k : b.knobs)
     {
         addAndMakeVisible (k->slider);
@@ -411,11 +434,14 @@ void PDHybridEditor::StageEnvelopePanel::selectBank (int index)
     for (std::size_t i = 0; i < banks.size(); ++i)
     {
         const bool on = (static_cast<int> (i) == active);
-        bankButtons[i]->setToggleState (on, juce::dontSendNotification);
-        for (auto* k : banks[i].knobs)
+        for (std::size_t k = 0; k < banks[i].knobs.size(); ++k)
         {
-            k->slider.setVisible (on);
-            k->label.setVisible (on);
+            // The last two knobs (Amt, Sus Pt) stay out on the expander row;
+            // the sixteen numeric ones follow the NUMERIC toggle.
+            const bool numeric = (k < 16);
+            const bool vis = on && (! numeric || expanded);
+            banks[i].knobs[k]->slider.setVisible (vis);
+            banks[i].knobs[k]->label.setVisible (vis);
         }
     }
     resized();
@@ -477,6 +503,22 @@ void PDHybridEditor::StageEnvelopePanel::mouseExit (const juce::MouseEvent&)
 
 void PDHybridEditor::StageEnvelopePanel::mouseDown (const juce::MouseEvent& e)
 {
+    // Stage selector: three segments choosing which envelope is being edited.
+    for (int i = 0; i < static_cast<int> (banks.size()); ++i)
+        if (segmentArea (i).contains (e.getPosition()))
+        {
+            selectBank (i);
+            return;
+        }
+
+    if (expanderArea().contains (e.getPosition()))
+    {
+        expanded = ! expanded;
+        selectBank (active);                       // re-apply knob visibility
+        if (onHeightChanged) onHeightChanged();
+        return;
+    }
+
     if (! graphArea().contains (e.getPosition()))
         return;
 
@@ -553,28 +595,34 @@ void PDHybridEditor::StageEnvelopePanel::timerCallback()
 
 void PDHybridEditor::StageEnvelopePanel::resized()
 {
-    auto r = getLocalBounds();
-
-    auto sel = r.removeFromTop (kEnvSelH);
-    for (auto& b : bankButtons)
-        b->setBounds (sel.removeFromLeft (96).withTrimmedBottom (12).reduced (1, 2));
-
-    r.removeFromTop (kEnvGraphH + kCardPad);
-
-    // Two knob rows for the active bank: R1..R8, then L1..L8 with Amt and Sus.
     if (banks.empty()) return;
-    auto& knobs = banks[(std::size_t) active].knobs;
-    const int cols  = 10;
-    const int cellW = r.getWidth() / cols;
 
-    for (std::size_t k = 0; k < knobs.size(); )
+    auto r = getLocalBounds();
+    r.removeFromTop (kEnvSelH + kEnvGraphH + kCardPad);
+
+    auto& knobs = banks[(std::size_t) active].knobs;
+
+    // Amount and the sustain point ride the expander row, right-aligned: they
+    // are the envelope's two headline controls, not part of the numeric grid.
+    auto amtRow = r.removeFromTop (kEnvKnobH);
+    for (int i = 1; i >= 0; --i)
+    {
+        auto cell = amtRow.removeFromRight (74);
+        knobs[(std::size_t) (16 + i)]->label.setBounds  (cell.removeFromTop (kLabelH - 2));
+        knobs[(std::size_t) (16 + i)]->slider.setBounds (cell);
+    }
+
+    // Then a clean row of eight rates and a clean row of eight levels.
+    const int cellW = r.getWidth() / 8;
+    for (int row = 0; row < 2; ++row)
     {
         auto krow = r.removeFromTop (kEnvKnobH);
-        for (int c = 0; c < cols && k < knobs.size(); ++c, ++k)
+        for (int c = 0; c < 8; ++c)
         {
             auto cell = krow.removeFromLeft (cellW);
-            knobs[k]->label.setBounds  (cell.removeFromTop (kLabelH - 2));
-            knobs[k]->slider.setBounds (cell);
+            auto* k = knobs[(std::size_t) (row * 8 + c)];
+            k->label.setBounds  (cell.removeFromTop (kLabelH - 2));
+            k->slider.setBounds (cell);
         }
     }
 }
@@ -583,24 +631,68 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
 {
     if (banks.empty()) return;
 
-    // Destination caption under each stage button, so the selector doubles as
-    // documentation of what each envelope actually drives.
-    g.setFont (monoFont (8.0f));
-    for (std::size_t i = 0; i < banks.size(); ++i)
-    {
-        auto b = bankButtons[i]->getBounds();
-        g.setColour (static_cast<int> (i) == active ? banks[i].colour : kLabelCol.withAlpha (0.55f));
-        g.drawText (banks[i].dest, b.getX(), b.getBottom(), b.getWidth(), 12,
-                    juce::Justification::centred);
-    }
-    g.setColour (kLabelCol.withAlpha (0.5f));
-    g.drawText ("8 STAGES  -  DRAG A NODE: UP/DOWN = LEVEL, LEFT/RIGHT = RATE",
-                juce::Rectangle<int> (static_cast<int> (banks.size()) * 96 + 12, 0,
-                                      getWidth(), kEnvSelH),
-                juce::Justification::centredLeft);
-
     const auto& bank  = banks[(std::size_t) active];
     const auto  frame = graphArea();
+    const int susStage = bank.sustain != nullptr
+        ? juce::roundToInt (bank.sustain->convertFrom0to1 (bank.sustain->getValue())) : 0;
+
+    // --- stage selector: one outlined strip, segment per envelope -----------
+    {
+        auto sel = selectorArea();
+        g.setColour (kCardEdge);
+        g.drawRect (sel, 1);
+
+        for (int i = 0; i < static_cast<int> (banks.size()); ++i)
+        {
+            auto seg = segmentArea (i);
+            const bool on = (i == active);
+            if (on)
+            {
+                g.setColour (banks[(std::size_t) i].colour.withAlpha (0.10f));
+                g.fillRect (seg.reduced (1));
+            }
+            g.setColour (kCardEdge);
+            g.fillRect (seg.getRight(), seg.getY(), 1, seg.getHeight());
+
+            auto inner = seg.reduced (8, 3);
+            g.setFont (monoFont (10.0f));
+            g.setColour (on ? banks[(std::size_t) i].colour : kLabelCol.withAlpha (0.65f));
+            g.drawText (banks[(std::size_t) i].name, inner.removeFromTop (13),
+                        juce::Justification::centredLeft);
+            g.setFont (monoFont (8.0f));
+            g.setColour (on ? kLabelCol : kLabelCol.withAlpha (0.45f));
+            g.drawText (banks[(std::size_t) i].dest, inner, juce::Justification::topLeft);
+        }
+
+        // Trailing segment: what the graph is and how to drive it, including
+        // the sustain stage the envelope is actually holding on.
+        auto hint = selectorArea().withTrimmedLeft (static_cast<int> (banks.size()) * kEnvSegW + 10);
+        g.setFont (monoFont (8.5f));
+        g.setColour (kLabelCol.withAlpha (0.6f));
+        const juce::String dot (juce::CharPointer_UTF8 ("\xc2\xb7"));
+        g.drawText ("8 STAGES  " + dot + "  SUSTAIN AT " + juce::String (susStage)
+                        + "  " + dot + "  DRAG: UP/DOWN = LEVEL, LEFT/RIGHT = RATE",
+                    hint, juce::Justification::centredLeft);
+    }
+
+    // --- NUMERIC expander --------------------------------------------------
+    {
+        auto ex = expanderArea();
+        g.setColour (expanded ? juce::Colour (0xff123322) : kCardBg);
+        g.fillRect (ex);
+        g.setColour (expanded ? kAccent : kCardEdge);
+        g.drawRect (ex, 1);
+        g.setFont (monoFont (8.5f));
+        g.setColour (kAccent);
+        g.drawText (juce::String (expanded ? juce::CharPointer_UTF8 ("\xe2\x96\xbe")
+                                           : juce::CharPointer_UTF8 ("\xe2\x96\xb8")) + " NUMERIC",
+                    ex, juce::Justification::centred);
+
+        g.setFont (monoFont (8.0f));
+        g.setColour (kLabelCol.withAlpha (0.5f));
+        g.drawText ("all 18 params still automatable",
+                    ex.withX (ex.getRight() + 8).withWidth (260), juce::Justification::centredLeft);
+    }
     const auto  area  = frame.toFloat().reduced (6.0f, 8.0f);
     const auto  col   = bank.colour;
 
@@ -635,8 +727,6 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
     g.strokePath (curve, juce::PathStrokeType (1.6f));
 
     // Sustain point: the stage the envelope holds on until note-off.
-    const int susStage = bank.sustain != nullptr
-        ? juce::roundToInt (bank.sustain->convertFrom0to1 (bank.sustain->getValue())) : 0;
     if (susStage >= 1 && susStage <= 8)
     {
         const float sx = nodePos (susStage - 1).x;
@@ -929,11 +1019,13 @@ void PDHybridEditor::buildSections()
                      &addKnob ("modEnvS", "Sus"), &addKnob ("modEnvR", "Rel") };
 
     // The three CZ 8-stage envelopes share one card with a stage selector and a
-    // draggable curve; see buildStageEnvelopes().
-    stageEnvSec.title   = "Multi-Stage Envelopes (CZ)";
-    stageEnvSec.span    = 4;   // LFO 1 / LFO 2 stack beside it in the other two
-    stageEnvSec.custom  = &stageEnv;
-    stageEnvSec.customH = StageEnvelopePanel::preferredHeight();
+    // draggable curve; see buildStageEnvelopes(). Amber-titled because the card
+    // *is* a modulation source, the same way modulated knobs are ringed amber.
+    stageEnvSec.title     = "Multi-Stage Envelopes (CZ)";
+    stageEnvSec.titleCol  = kModCol;
+    stageEnvSec.span      = 4;   // LFO 1 / LFO 2 stack beside it in the other two
+    stageEnvSec.custom    = &stageEnv;
+    stageEnvSec.customH   = stageEnv.preferredHeight();
 
     // --- LFOs: the card shows the real output traced over a dim shape guide ---
     lfo1Curve.attach (proc.apvts, "lfoWave", "lfoRate");
@@ -946,7 +1038,7 @@ void PDHybridEditor::buildSections()
     lfo.title   = "LFO 1";
     lfo.cols    = 3;
     lfo.span    = 2;
-    lfo.toggles = { &addToggle ("lfoRetrig", "RTRG") };
+    lfo.toggles = { &addToggle ("lfoRetrig", "RETRIG") };
     lfo.combos  = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames) };
     lfo.custom  = &lfo1Curve;
     lfo.customH = 62;
@@ -964,7 +1056,7 @@ void PDHybridEditor::buildSections()
     lfo2.title   = "LFO 2";
     lfo2.cols    = 3;
     lfo2.span    = 2;
-    lfo2.toggles = { &addToggle ("lfo2Retrig", "RTRG") };
+    lfo2.toggles = { &addToggle ("lfo2Retrig", "RETRIG") };
     lfo2.combos  = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames) };
     lfo2.custom  = &lfo2Curve;
     lfo2.customH = 62;
@@ -1440,6 +1532,13 @@ void PDHybridEditor::buildStageEnvelopes()
               2, false, juce::Colour (0xff4be08a));
 
     stageEnv.start();
+    // Collapsing the numeric rows changes the card's height, so the page it
+    // sits on has to be re-laid-out.
+    stageEnv.onHeightChanged = [this]
+    {
+        for (auto& page : pages)
+            page->setCustomHeight (&stageEnv, stageEnv.preferredHeight());
+    };
 }
 
 //==============================================================================

@@ -71,6 +71,7 @@ private:
         int stackId = 0;
         juce::Component* custom = nullptr;
         int customH = 0;          // height reserved for `custom`, 0 = none
+        juce::Colour titleCol { 0xff4be08a };   // amber marks a modulation source
         juce::Rectangle<int> bounds;
     };
 
@@ -86,6 +87,8 @@ private:
     public:
         void addSection (const Section& s);
         void setTrailing (juce::Component* c, int fullHeight, juce::String title);
+        /** Re-height the card hosting `c` (used when a card's body collapses). */
+        void setCustomHeight (juce::Component* c, int newHeight);
 
         int  preferredHeight (int width);   // height needed to lay out at `width`
         void resized() override;
@@ -142,7 +145,8 @@ private:
 
         void addBank (Bank b);
         void start();                             // after the last addBank
-        static int preferredHeight();             // selector + graph + knob rows
+        int  preferredHeight() const;             // selector + graph + knob rows
+        std::function<void()> onHeightChanged;    // fired when NUMERIC collapses
 
         void resized() override;
         void paint (juce::Graphics&) override;
@@ -161,8 +165,12 @@ private:
         double totalTime() const;
         int    hitNode (juce::Point<float> p) const;
 
+        juce::Rectangle<int> selectorArea() const;
+        juce::Rectangle<int> segmentArea (int i) const;
+        juce::Rectangle<int> expanderArea() const;
+
         std::vector<Bank> banks;
-        std::vector<std::unique_ptr<juce::TextButton>> bankButtons;
+        bool expanded = true;    // NUMERIC row of R/L knobs showing
         int  active = 0;
         int  dragNode = -1;      // node being dragged, -1 = none
         int  hoverNode = -1;

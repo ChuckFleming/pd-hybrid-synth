@@ -8,6 +8,7 @@
 #include "ScopeDisplay.h"
 #include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 /**
@@ -32,30 +33,46 @@ public:
 private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+    using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;
+
+    // Three sizes give the panel a hierarchy: Large for the handful of controls
+    // that define a patch, Normal for a section's own controls, Small for trim.
+    // The layout cell is the same for all three; only the rotary scales inside it.
+    enum class KnobSize { Small, Normal, Large };
 
     struct LabeledKnob
     {
         juce::Slider slider;
         juce::Label  label;
         std::unique_ptr<SliderAttachment> attachment;
+        KnobSize size = KnobSize::Normal;
     };
 
-    // One titled card: knobs laid out in `cols` columns, optional combos in a
-    // header row. `bounds` is filled in during layout and used when painting.
+    // One titled card. `cols` is how many knob columns run inside the card;
+    // `span` is how many columns of the page's fixed grid the card occupies.
+    // Optional LED toggles sit in the title strip; an optional `custom`
+    // component (the multi-stage envelope editor) sits above the knob rows.
+    // `bounds` is filled in during layout and used when painting.
     struct Section
     {
         juce::String title;
         std::vector<LabeledKnob*> knobs;
         std::vector<juce::ComboBox*> combos;
+        std::vector<juce::Button*> toggles;
         int cols = 4;
-        int stackId = 0;   // non-zero: stacks vertically with consecutive same-id sections
+        int span = 2;             // grid columns (the page grid is kGridCols wide)
+        juce::Component* custom = nullptr;
+        int customH = 0;          // height reserved for `custom`, 0 = none
         juce::Rectangle<int> bounds;
     };
 
-    // A tab page: flows a list of Section cards left-to-right, wrapping to the
-    // panel width, and optionally hosts one full-width trailing component
-    // (used for the modulation matrix). Sized taller than the viewport when
-    // needed so the viewport scrolls.
+    // A tab page. Cards are packed into a *fixed* column grid: the column count
+    // never varies with width, so a card's row and column are the same at every
+    // window size and only the column width stretches. That is what makes the
+    // panel learnable — nothing ever moves to a different place.
+    //
+    // Optionally hosts one full-width trailing component (the modulation
+    // matrix), and is sized taller than the viewport when needed so it scrolls.
     class SectionPanel : public juce::Component
     {
     public:
@@ -84,18 +101,24 @@ private:
         void resized() override;
     };
 
-    // Trivial holder whose resized() defers to a callback (lays out the matrix).
+    // Trivial holder whose resized()/paint() defer to callbacks (used for the
+    // modulation matrix and the performance strip).
     struct CallbackComponent : public juce::Component
     {
         std::function<void()> onResized;
+        std::function<void (juce::Graphics&)> onPaint;
         void resized() override { if (onResized) onResized(); }
+        void paint (juce::Graphics& g) override { if (onPaint) onPaint (g); }
     };
 
     LabeledKnob& addKnob (const juce::String& paramId, const juce::String& text,
-                          int decimals = 2);
+                          int decimals = 2, KnobSize size = KnobSize::Normal);
     juce::ComboBox& addCombo (const juce::String& paramId, const juce::StringArray& items);
+    juce::Button&   addToggle (const juce::String& paramId, const juce::String& text);
 
     void buildSections();
+    void buildStrip();
+    void layoutStrip();
     void layoutMatrix();
 
     // Track each slot's engine type: grey out the PD-only wave controls, and
@@ -134,6 +157,8 @@ private:
     std::vector<std::unique_ptr<LabeledKnob>> knobs;
     std::vector<std::unique_ptr<juce::ComboBox>> combos;
     std::vector<std::unique_ptr<ComboBoxAttachment>> comboAttachments;
+    std::vector<std::unique_ptr<juce::TextButton>> toggleButtons;
+    std::vector<std::unique_ptr<ButtonAttachment>> buttonAttachments;
 
     std::vector<std::unique_ptr<SectionPanel>> pages;
     std::vector<std::unique_ptr<ScrollPanel>>  scrollers;
@@ -141,13 +166,23 @@ private:
     ScopeDisplay scope_ { [this] (float* d, int n) { proc.readScope (d, n); } };  // master output scope
     CrtOverlay crtOverlay;   // click-through CRT effect layered over everything
 
+    // Fixed performance strip above the tab bar: the controls reached on every
+    // patch, so they never leave the screen whichever page is showing.
+    CallbackComponent strip;
+    std::vector<LabeledKnob*> stripKnobs;   // cutoff, reso, macro 1/2, A D S R Vel, master
+    juce::ComboBox* stripPoly = nullptr;
+    juce::Button*   stripLimiter = nullptr;
+    std::vector<int> stripDividers_;        // x positions of the cluster rules
+    std::vector<std::pair<juce::String, juce::Rectangle<int>>> stripGroups_;
+
     // Named sections (built once, then handed to pages).
-    Section oscA, oscB, mixer;                                   // Oscillators
-    Section voiceSec, glideSec, unison, stereo, bassSec, arpSec; // Voice / performance
-    Section filter, filter2, filterEnv, filter2Env;                      // Filters
-    Section envelope, modEnv, multiEnvSec, pitchEnvSec, dcwEnvSec;       // Envelopes
-    Section lfo, lfo2, vibratoSec;                                       // Modulation
-    Section pluckSec, drive, chorusSec, comp, delaySec, reverbSec, globalEqSec, masterSec;  // FX
+    Section oscA, oscB, mixer;                                           // Voice page
+    Section glideSec, unison, bassSec;
+    Section pluckSec, drive, routingSec, filter, filter2, filterEnv, filter2Env;   // Shape page
+    Section modEnv, multiEnvSec, pitchEnvSec, dcwEnvSec, lfo, lfo2, vibratoSec, arpSec;  // Mod page
+    Section chorusSec, delaySec, reverbSec, comp, globalEqSec, stereo;   // Out page
+    Section voiceSec, globalLfoSec;                                      // Global page
+    Section envelope;                                                    // amp env (lives in the strip)
 
     // Modulation matrix.
     static constexpr int kNumModRows = 10;

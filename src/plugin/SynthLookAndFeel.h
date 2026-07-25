@@ -56,29 +56,47 @@ public:
         g.drawRect (r, 1);
     }
 
+    /** The editor tags each slider with a "knobSize" property (0 small,
+        1 normal, 2 large). The slider's *bounds* stay a full layout cell so its
+        value box never truncates; the drawn rotary is what scales, which is how
+        the panel gets a size hierarchy without disturbing the grid. */
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                            float pos, float startAngle, float endAngle,
-                           juce::Slider&) override
+                           juce::Slider& s) override
     {
-        const juce::Colour ring    (0xff2b6b46);
+        const int sizeTag = (int) s.getProperties().getWithDefault ("knobSize", 1);
+        const bool large  = (sizeTag == 2);
+        const float scale = sizeTag == 0 ? 0.70f : (large ? 1.0f : 0.85f);
+
+        const juce::Colour ring    = large ? juce::Colour (0xff4be08a) : juce::Colour (0xff2b6b46);
         const juce::Colour face    (0xff04140c);
         const juce::Colour pointer (0xff4be08a);
 
         auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height).reduced (3.0f);
         const float cx = bounds.getCentreX();
         const float cy = bounds.getCentreY();
-        const float r  = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 2.0f;
+        const float r  = (juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 2.0f) * scale;
         const float ang = startAngle + pos * (endAngle - startAngle);
 
         g.setColour (face);
         g.fillEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
         g.setColour (ring);
-        g.drawEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f, 1.2f);
+        g.drawEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f, large ? 1.6f : 1.2f);
+
+        // Promoted controls also carry a value arc, so how far they are turned
+        // reads from across the room.
+        if (large)
+        {
+            juce::Path arc;
+            arc.addCentredArc (cx, cy, r + 3.0f, r + 3.0f, 0.0f, startAngle, ang, true);
+            g.setColour (pointer);
+            g.strokePath (arc, juce::PathStrokeType (2.0f));
+        }
 
         const float px = cx + (r - 2.0f) * std::sin (ang);
         const float py = cy - (r - 2.0f) * std::cos (ang);
         g.setColour (pointer);
-        g.drawLine (cx, cy, px, py, 2.0f);
+        g.drawLine (cx, cy, px, py, large ? 2.4f : 2.0f);
     }
 
     void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,

@@ -14,7 +14,9 @@ constexpr int kGap      = 8;    // gap between cards
 constexpr int kMargin   = 16;   // panel outer margin
 constexpr int kMatrixRowH = 26;
 constexpr int kTopBar   = 48;   // title bar above the tabs
-constexpr int kScopeH   = 84;   // master-output scope strip below the title bar
+constexpr int kGridCols = 6;    // every tab page uses this fixed column count
+constexpr int kStripH    = 116;  // fixed performance strip between title bar and tabs
+constexpr int kStripCapH = 13;   // caption band along the strip's top edge
 
 // Palette — "CZ Terminal": black with green phosphor, outlined boxes.
 const juce::Colour kBg       (0xff000000);
@@ -92,6 +94,10 @@ void PDHybridEditor::SectionPanel::addSection (const Section& s)
     }
     for (auto* c : s.combos)
         addAndMakeVisible (*c);
+    for (auto* t : s.toggles)
+        addAndMakeVisible (*t);
+    if (s.custom != nullptr)
+        addAndMakeVisible (*s.custom);
 
     sections.push_back (s);
 }
@@ -108,36 +114,23 @@ void PDHybridEditor::SectionPanel::setTrailing (juce::Component* c, int fullHeig
 
 int PDHybridEditor::SectionPanel::layout (bool apply, int width)
 {
-    const int comboMinW = 132;   // enough to read the longest choice ("Phase Distortion")
-    const int minColW   = 300;   // a 4-column knob card fits inside one grid column
+    const int comboMinW = 112;   // enough to read the longest choice ("Phase Distortion")
 
-    // A card's natural width: its knob columns, but never so narrow that combos
-    // would truncate below comboMinW.
-    auto innerW = [&] (const Section& s)
-    {
-        const int knobW  = s.cols * kCellW;
-        const int comboW = juce::jmin (static_cast<int> (s.combos.size()), 2) * comboMinW;
-        return juce::jmax (knobW, comboW);
-    };
-    auto naturalW = [&] (const Section& s) { return innerW (s) + 2 * kCardPad; };
     auto knobRows = [&] (const Section& s)
     {
         return (static_cast<int> (s.knobs.size()) + s.cols - 1) / juce::jmax (1, s.cols);
     };
 
-    // Column grid: card left/right edges snap to a shared set of columns so they
-    // line up across rows. Columns stretch to justify against the panel width.
-    const int contentW = juce::jmax (minColW, width - 2 * kMargin);
-    const int numCols   = juce::jlimit (1, 6, (contentW + kGap) / (minColW + kGap));
-    const int colW      = (contentW - (numCols - 1) * kGap) / numCols;
-    const int colPitch  = colW + kGap;
+    // FIXED grid: the column count is a constant, not a function of width. Cards
+    // therefore always land in the same row and column; resizing only stretches
+    // the columns. (This is deliberate — see the SectionPanel comment.)
+    const int contentW = juce::jmax (kGridCols * 60, width - 2 * kMargin);
+    const int numCols  = kGridCols;
+    const int colW     = (contentW - (numCols - 1) * kGap) / numCols;
+    const int colPitch = colW + kGap;
 
-    auto spanOf = [&] (const Section& s)
-    {
-        const int sp = (naturalW (s) + kGap + colPitch - 1) / colPitch;   // ceil
-        return juce::jlimit (1, numCols, sp);
-    };
-    auto cardW = [&] (int span) { return span * colW + (span - 1) * kGap; };
+    auto spanOf = [&] (const Section& s) { return juce::jlimit (1, numCols, s.span); };
+    auto cardW  = [&] (int span) { return span * colW + (span - 1) * kGap; };
     auto comboRowsFor = [&] (const Section& s, int cw)
     {
         if (s.combos.empty()) return 0;
@@ -146,13 +139,30 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
     };
     auto sectionHeight = [&] (const Section& s, int comboRowsCount)
     {
-        return kHeaderH + 2 * kCardPad + comboRowsCount * kComboRowH + knobRows (s) * kCellH;
+        return kHeaderH + 2 * kCardPad + comboRowsCount * kComboRowH
+             + s.customH + (s.customH > 0 ? kCardPad : 0)
+             + knobRows (s) * kCellH;
     };
 
-    // Position one card's combos + knobs inside its bounds.
+    // Position one card's toggles, combos, custom component and knobs.
     auto placeCard = [&] (Section& s, juce::Rectangle<int> bounds, int comboRowsCount)
     {
         s.bounds = bounds;
+
+        // LED toggles sit in the title strip, right-aligned, breaking the frame
+        // the same way the title tag does on the left.
+        if (! s.toggles.empty())
+        {
+            int tx = bounds.getRight() - 8;
+            for (auto it = s.toggles.rbegin(); it != s.toggles.rend(); ++it)
+            {
+                const int tw = juce::jmax (34, (*it)->getButtonText().length() * 7 + 14);
+                tx -= tw;
+                (*it)->setBounds (tx, bounds.getY() - 1, tw, kHeaderH - 6);
+                tx -= 4;
+            }
+        }
+
         auto inner = bounds;
         inner.removeFromTop (kHeaderH);
         inner = inner.reduced (kCardPad);
@@ -172,6 +182,12 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
             }
         }
 
+        if (s.custom != nullptr && s.customH > 0)
+        {
+            s.custom->setBounds (inner.removeFromTop (s.customH));
+            inner.removeFromTop (kCardPad);
+        }
+
         const int cellW = inner.getWidth() / juce::jmax (1, s.cols);
         std::size_t k = 0;
         while (k < s.knobs.size())
@@ -180,111 +196,46 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
             for (int c = 0; c < s.cols && k < s.knobs.size(); ++c, ++k)
             {
                 auto cell = krow.removeFromLeft (cellW);
-                s.knobs[k]->label.setBounds  (cell.removeFromTop (kLabelH));
+                s.knobs[k]->label.setBounds (cell.removeFromTop (kLabelH));
+                // Slider takes the whole cell so its value box has room; the
+                // look-and-feel scales the drawn rotary by the knob's size tag.
                 s.knobs[k]->slider.setBounds (cell);
             }
         }
     };
 
-    // Build units: a run of consecutive same-(nonzero)-stackId sections becomes a
-    // single unit whose members sit side-by-side (narrow strips) in one grid column.
-    struct Unit { std::vector<int> members; int span; bool stacked; };
-    std::vector<Unit> units;
-    for (std::size_t i = 0; i < sections.size(); )
-    {
-        if (sections[i].stackId != 0)
-        {
-            const int id = sections[i].stackId;
-            Unit u; u.stacked = true; u.span = 1;
-            while (i < sections.size() && sections[i].stackId == id)
-            {
-                u.members.push_back (static_cast<int> (i));
-                u.span = juce::jmax (u.span, spanOf (sections[i]));
-                ++i;
-            }
-            units.push_back (std::move (u));
-        }
-        else
-        {
-            Unit u; u.stacked = false; u.span = spanOf (sections[i]);
-            u.members.push_back (static_cast<int> (i));
-            units.push_back (std::move (u));
-            ++i;
-        }
-    }
-
-    // Pack units into rows of numCols columns.
-    std::vector<int> unitRow (units.size(), 0), unitCol (units.size(), 0);
+    // Pack cards into rows of the fixed grid, honouring each card's declared span.
+    std::vector<int> secRow (sections.size(), 0), secCol (sections.size(), 0);
     {
         int col = 0, row = 0;
-        for (std::size_t u = 0; u < units.size(); ++u)
+        for (std::size_t i = 0; i < sections.size(); ++i)
         {
-            if (col > 0 && col + units[u].span > numCols) { ++row; col = 0; }
-            unitRow[u] = row; unitCol[u] = col; col += units[u].span;
+            const int sp = spanOf (sections[i]);
+            if (col > 0 && col + sp > numCols) { ++row; col = 0; }
+            secRow[i] = row; secCol[i] = col; col += sp;
         }
     }
-    const int numRows = units.empty() ? 0 : (unitRow.back() + 1);
+    const int numRows = sections.empty() ? 0 : (secRow.back() + 1);
 
-    // Per-row uniform combo zone from standalone units only (stacked mini-cards
-    // keep their own compact combo zones), then shared row heights.
+    // A row shares one combo-zone depth and one height, so card bottoms line up.
     std::vector<int> rowComboRows (juce::jmax (1, numRows), 0), rowHeight (juce::jmax (1, numRows), 0);
-    for (std::size_t u = 0; u < units.size(); ++u)
-        if (! units[u].stacked)
-            rowComboRows[unitRow[u]] = juce::jmax (rowComboRows[unitRow[u]],
-                comboRowsFor (sections[units[u].members[0]], cardW (units[u].span)));
+    for (std::size_t i = 0; i < sections.size(); ++i)
+        rowComboRows[secRow[i]] = juce::jmax (rowComboRows[secRow[i]],
+            comboRowsFor (sections[i], cardW (spanOf (sections[i]))));
 
-    for (std::size_t u = 0; u < units.size(); ++u)
-    {
-        int h;
-        if (units[u].stacked)
-        {
-            // Members sit side-by-side, so the group is as tall as its tallest strip.
-            const int n = static_cast<int> (units[u].members.size());
-            const int memberW = (cardW (units[u].span) - (n - 1) * kGap) / juce::jmax (1, n);
-            h = 0;
-            for (int idx : units[u].members)
-            {
-                const Section& s = sections[static_cast<std::size_t> (idx)];
-                h = juce::jmax (h, sectionHeight (s, comboRowsFor (s, memberW)));
-            }
-        }
-        else
-            h = sectionHeight (sections[units[u].members[0]], rowComboRows[unitRow[u]]);
-        rowHeight[unitRow[u]] = juce::jmax (rowHeight[unitRow[u]], h);
-    }
+    for (std::size_t i = 0; i < sections.size(); ++i)
+        rowHeight[secRow[i]] = juce::jmax (rowHeight[secRow[i]],
+            sectionHeight (sections[i], rowComboRows[secRow[i]]));
 
     std::vector<int> rowY (juce::jmax (1, numRows), kMargin);
     { int yy = kMargin; for (int r = 0; r < numRows; ++r) { rowY[r] = yy; yy += rowHeight[r] + kGap; } }
 
     if (apply)
-    {
-        for (std::size_t u = 0; u < units.size(); ++u)
-        {
-            const int r  = unitRow[u];
-            const int cx = kMargin + unitCol[u] * colPitch;
-            const int cw = cardW (units[u].span);
-
-            if (units[u].stacked)
-            {
-                // Place the grouped strips left-to-right, all at the shared row
-                // height so their bottoms line up with the neighbouring cards.
-                const int n = static_cast<int> (units[u].members.size());
-                const int memberW = (cw - (n - 1) * kGap) / juce::jmax (1, n);
-                int xx = cx;
-                for (int idx : units[u].members)
-                {
-                    Section& s = sections[static_cast<std::size_t> (idx)];
-                    const int crc = comboRowsFor (s, memberW);
-                    placeCard (s, { xx, rowY[r], memberW, rowHeight[r] }, crc);
-                    xx += memberW + kGap;
-                }
-            }
-            else
-            {
-                placeCard (sections[units[u].members[0]], { cx, rowY[r], cw, rowHeight[r] }, rowComboRows[r]);
-            }
-        }
-    }
+        for (std::size_t i = 0; i < sections.size(); ++i)
+            placeCard (sections[i],
+                       { kMargin + secCol[i] * colPitch, rowY[secRow[i]],
+                         cardW (spanOf (sections[i])), rowHeight[secRow[i]] },
+                       rowComboRows[secRow[i]]);
 
     int y = numRows > 0 ? (rowY[numRows - 1] + rowHeight[numRows - 1]) : kMargin;
 
@@ -330,7 +281,15 @@ void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
     };
 
     for (const auto& s : sections)
+    {
         drawFrame (s.bounds, s.title);
+
+        // Punch a black notch behind each header toggle so it reads as breaking
+        // the frame, matching the title tag on the other end.
+        g.setColour (kCardBg);
+        for (auto* t : s.toggles)
+            g.fillRect (t->getBounds().expanded (3, 0));
+    }
 
     if (trailing != nullptr)
         drawFrame (trailing->getBounds(), trailingTitle);
@@ -353,10 +312,13 @@ void PDHybridEditor::ScrollPanel::resized()
 //  Editor
 //==============================================================================
 PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramId,
-                                                      const juce::String& text, int decimals)
+                                                      const juce::String& text, int decimals,
+                                                      KnobSize size)
 {
     auto knob = std::make_unique<LabeledKnob>();
 
+    knob->size = size;
+    knob->slider.getProperties().set ("knobSize", static_cast<int> (size));
     knob->slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     knob->slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, kKnobW, 14);
     knob->slider.setNumDecimalPlacesToDisplay (decimals);
@@ -365,13 +327,27 @@ PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramI
 
     knob->label.setText (text, juce::dontSendNotification);
     knob->label.setJustificationType (juce::Justification::centred);
-    knob->label.setFont (monoFont (10.5f));
-    knob->label.setColour (juce::Label::textColourId, kLabelCol);
+    // Large knobs get the bright accent label so the promoted controls read first.
+    knob->label.setFont (monoFont (size == KnobSize::Large ? 11.0f : 10.5f));
+    knob->label.setColour (juce::Label::textColourId,
+                           size == KnobSize::Large ? kAccent : kLabelCol);
 
     knob->attachment = std::make_unique<SliderAttachment> (proc.apvts, paramId, knob->slider);
 
     knobs.push_back (std::move (knob));
     return *knobs.back();
+}
+
+juce::Button& PDHybridEditor::addToggle (const juce::String& paramId, const juce::String& text)
+{
+    auto b = std::make_unique<juce::TextButton> (text);
+    b->setClickingTogglesState (true);
+    if (auto* p = proc.apvts.getParameter (paramId))
+        b->setTooltip (p->getName (64));
+    buttonAttachments.push_back (
+        std::make_unique<ButtonAttachment> (proc.apvts, paramId, *b));
+    toggleButtons.push_back (std::move (b));
+    return *toggleButtons.back();
 }
 
 juce::ComboBox& PDHybridEditor::addCombo (const juce::String& paramId,
@@ -390,131 +366,149 @@ juce::ComboBox& PDHybridEditor::addCombo (const juce::String& paramId,
 
 void PDHybridEditor::buildSections()
 {
-    // --- Oscillator A ---
+    // ---------------------------------------------------------------- VOICE --
+    // Osc A/B carry their own Level knob (promoted, alongside the timbre knob)
+    // so the two decisions that define a layer sit together.
     oscA.title  = "Osc A";
     oscA.cols   = 4;
+    oscA.span   = 2;
     oscA.combos = { &addCombo ("oscAType", kOscTypeNames), &addCombo ("oscAWave", kPdWaveNames),
-                    &addCombo ("oscAWave2", kPdWaveNames), &addCombo ("oscACombine", { "Combine Off", "Combine On" }),
+                    &addCombo ("oscAWave2", kPdWaveNames),
                     &addCombo ("oscAExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
-    oscA.knobs  = { &addKnob ("oscAAmount", "PD Amt"), &addKnob ("oscAPulseWidth", "Width"),
+    oscA.toggles = { &addToggle ("oscACombine", "CMB") };
+    // NOTE: updateOscControls() addresses knobs 0/1/2 as amount / width / engine.
+    oscA.knobs  = { &addKnob ("oscAAmount", "PD Amt", 2, KnobSize::Large),
+                    &addKnob ("oscAPulseWidth", "Width"),
                     &addKnob ("oscAEngine", "Engine"),
+                    &addKnob ("oscALevel", "Level", 2, KnobSize::Large),
                     &addKnob ("oscAOctave", "Oct", 0), &addKnob ("oscASemi", "Semi", 0),
                     &addKnob ("oscAFine", "Fine"), &addKnob ("oscAEqLow", "EQ Lo"),
                     &addKnob ("oscAEqMid", "EQ Mid"), &addKnob ("oscAEqHigh", "EQ Hi") };
 
-    // --- Oscillator B ---
     oscB.title  = "Osc B";
     oscB.cols   = 4;
+    oscB.span   = 2;
     oscB.combos = { &addCombo ("oscBType", kOscTypeNames), &addCombo ("oscBWave", kPdWaveNames),
-                    &addCombo ("oscBWave2", kPdWaveNames), &addCombo ("oscBCombine", { "Combine Off", "Combine On" }),
+                    &addCombo ("oscBWave2", kPdWaveNames),
                     &addCombo ("oscBExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
-    oscB.knobs  = { &addKnob ("oscBAmount", "PD Amt"), &addKnob ("oscBPulseWidth", "Width"),
+    oscB.toggles = { &addToggle ("oscBCombine", "CMB") };
+    oscB.knobs  = { &addKnob ("oscBAmount", "PD Amt", 2, KnobSize::Large),
+                    &addKnob ("oscBPulseWidth", "Width"),
                     &addKnob ("oscBEngine", "Engine"),
+                    &addKnob ("oscBLevel", "Level", 2, KnobSize::Large),
                     &addKnob ("oscBOctave", "Oct", 0), &addKnob ("oscBSemi", "Semi", 0),
                     &addKnob ("oscBFine", "Fine"), &addKnob ("oscBEqLow", "EQ Lo"),
                     &addKnob ("oscBEqMid", "EQ Mid"), &addKnob ("oscBEqHigh", "EQ Hi") };
 
-    // --- Mixer ---
-    mixer.title = "Mixer";
-    mixer.cols  = 3;
-    mixer.combos = { &addCombo ("oscCrossMod", { "X-Mod Off", "Hard Sync", "Phase Mod" }) };
-    mixer.knobs = { &addKnob ("oscALevel", "Osc A"), &addKnob ("oscBLevel", "Osc B"),
-                    &addKnob ("noiseLevel", "Noise"), &addKnob ("ringMod", "Ring"),
-                    &addKnob ("noiseMod", "N.Mod"), &addKnob ("crossModAmount", "X-Amt") };
+    mixer.title  = "Mixer";
+    mixer.cols   = 4;
+    mixer.span   = 2;
+    mixer.combos = { &addCombo ("oscCrossMod", { "No Cross Mod", "Hard Sync", "Phase Mod" }) };
+    mixer.knobs  = { &addKnob ("noiseLevel", "Noise"), &addKnob ("ringMod", "Ring"),
+                     &addKnob ("noiseMod", "N.Mod"), &addKnob ("crossModAmount", "X-Amt") };
 
-    // --- Unison ---
-    // Unison / Glide / Stereo are narrow single-column strips grouped side-by-side
-    // (see stackId below), so their knobs stack vertically.
-    unison.title = "Unison";
-    unison.cols  = 1;
+    bassSec.title   = "Mono Bass";
+    bassSec.cols    = 5;
+    bassSec.span    = 3;
+    bassSec.toggles = { &addToggle ("bassOn", "ON") };
+    bassSec.combos  = { &addCombo ("bassWave", { "Saw", "Square", "Triangle", "Pulse" }),
+                        &addCombo ("bassPriority", { "Last", "Top", "Bottom" }) };
+    bassSec.knobs   = { &addKnob ("bassOctave", "Oct", 0), &addKnob ("bassTune", "Tune"),
+                        &addKnob ("bassHarmonics", "Harm"), &addKnob ("bassLevel", "Level"),
+                        &addKnob ("bassGlide", "Glide"),
+                        &addKnob ("bassAttack", "Atk"), &addKnob ("bassDecay", "Dec"),
+                        &addKnob ("bassSustain", "Sus"), &addKnob ("bassRelease", "Rel") };
+
+    unison.title = "Unison / Drift";
+    unison.cols  = 4;
+    unison.span  = 2;
     unison.knobs = { &addKnob ("unisonVoices", "Voices", 0), &addKnob ("unisonDetune", "Detune"),
-                     &addKnob ("unisonWidth", "Width") };
+                     &addKnob ("unisonWidth", "Width"), &addKnob ("drift", "Drift") };
 
-    // --- Glide ---
     glideSec.title  = "Glide";
-    glideSec.cols   = 1;
+    glideSec.cols   = 2;
+    glideSec.span   = 1;
     glideSec.combos = { &addCombo ("glideMode", { "Off", "Always", "Legato" }) };
     glideSec.knobs  = { &addKnob ("glideTime", "Time"), &addKnob ("glideCurve", "Curve") };
 
-    // --- Mono sub-bass ---
-    bassSec.title  = "Mono Bass";
-    bassSec.cols   = 5;
-    bassSec.combos = { &addCombo ("bassOn", { "Off", "On" }),
-                       &addCombo ("bassWave", { "Saw", "Square", "Triangle", "Pulse" }),
-                       &addCombo ("bassPriority", { "Last", "Top", "Bottom" }) };
-    bassSec.knobs  = { &addKnob ("bassOctave", "Oct", 0), &addKnob ("bassTune", "Tune"),
-                       &addKnob ("bassHarmonics", "Harm"), &addKnob ("bassLevel", "Level"),
-                       &addKnob ("bassGlide", "Glide"),
-                       &addKnob ("bassAttack", "Atk"), &addKnob ("bassDecay", "Dec"),
-                       &addKnob ("bassSustain", "Sus"), &addKnob ("bassRelease", "Rel") };
+    // ---------------------------------------------------------------- SHAPE --
+    // Signal topology gets its own card instead of hiding in three unrelated ones.
+    routingSec.title  = "Routing";
+    routingSec.cols   = 1;
+    routingSec.span   = 2;
+    routingSec.combos = { &addCombo ("filterRouting", { "Single Filter", "Filters Series", "Filters Parallel" }),
+                          &addCombo ("drivePos", { "Drive Post Filter", "Drive Pre Filter" }),
+                          &addCombo ("fxRouting", { "Delay -> Reverb", "Reverb -> Delay", "Reverb, Dry Delay" }) };
 
-    // --- v6.0: Voice mode & allocation ---
-    voiceSec.title = "Voice";
-    voiceSec.cols  = 3;
-    voiceSec.combos = { &addCombo ("voiceMode", { "Poly", "Mono", "Legato", "Unison Legato" }),
-                        &addCombo ("notePriority", { "Last", "Top", "Bottom" }),
-                        &addCombo ("stealPolicy", { "Oldest", "Quietest" }),
-                        &addCombo ("monoRetrigger", { "Legato", "Retrigger" }),
-                        &addCombo ("velCurve", { "Linear", "Soft", "Hard", "Fixed" }),
-                        &addCombo ("tuningScale", { "Equal", "Just", "Pythagorean" }) };
-    voiceSec.knobs = { &addKnob ("polyphony", "Poly", 0), &addKnob ("pitchBendRange", "Bend", 0),
-                       &addKnob ("masterTune", "Tune", 1), &addKnob ("transpose", "Transp", 0) };
+    pluckSec.title   = "Pluck";
+    pluckSec.cols    = 4;
+    pluckSec.span    = 2;
+    pluckSec.toggles = { &addToggle ("pluckOn", "ON") };
+    pluckSec.knobs   = { &addKnob ("pluckDecay", "Decay"), &addKnob ("pluckDamp", "Damp"),
+                         &addKnob ("pluckDispersion", "Disp"), &addKnob ("pluckBurst", "Burst", 1) };
 
-    // --- Stereo / Drift ---
-    stereo.title = "Stereo / Drift";
-    stereo.cols  = 1;
-    stereo.knobs = { &addKnob ("pan", "Pan"), &addKnob ("panSpread", "Spread"),
-                     &addKnob ("drift", "Drift") };
+    drive.title   = "Overdrive";
+    drive.cols    = 3;
+    drive.span    = 2;
+    drive.toggles = { &addToggle ("driveOn", "ON") };
+    drive.combos  = { &addCombo ("driveType",
+                       { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz", "Rectify",
+                         "Wavefold", "Foldback" }) };
+    drive.knobs   = { &addKnob ("drive", "Drive", 2, KnobSize::Large), &addKnob ("bias", "Bias"),
+                      &addKnob ("gain", "Gain"), &addKnob ("crushBits", "Crush"),
+                      &addKnob ("downsample", "Downsmpl") };
 
-    // These three narrow strips sit side-by-side inside one grid column instead
-    // of each claiming a full (sparse) column.
-    glideSec.stackId = unison.stackId = stereo.stackId = 1;
-
-    // --- Filter ---
-    filter.title  = "Filter";
+    filter.title  = "Filter 1";
     filter.cols   = 5;
+    filter.span   = 3;
     filter.combos = { &addCombo ("filterType",
                         { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }) };
-    filter.knobs  = { &addKnob ("cutoff", "Cutoff"), &addKnob ("resonance", "Reso"),
+    filter.knobs  = { &addKnob ("cutoff", "Cutoff", 2, KnobSize::Large),
+                      &addKnob ("resonance", "Reso", 2, KnobSize::Large),
                       &addKnob ("filterMorph", "Morph"), &addKnob ("keyTrack", "Key Trk"),
                       &addKnob ("filterEnvAmount", "Env Amt") };
 
-    // --- Filter 2 ---
     filter2.title  = "Filter 2";
-    filter2.cols   = 4;
-    filter2.combos = { &addCombo ("filterRouting", { "Single", "Series", "Parallel" }),
-                       &addCombo ("filter2Type",
+    filter2.cols   = 5;
+    filter2.span   = 3;
+    filter2.combos = { &addCombo ("filter2Type",
                         { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }) };
-    filter2.knobs  = { &addKnob ("filter2Cutoff", "Cutoff"), &addKnob ("filter2Res", "Reso"),
+    filter2.knobs  = { &addKnob ("filter2Cutoff", "Cutoff", 2, KnobSize::Large),
+                       &addKnob ("filter2Res", "Reso", 2, KnobSize::Large),
                        &addKnob ("filter2Morph", "Morph"), &addKnob ("filter2EnvAmount", "Env Amt") };
 
-    // --- Filter Envelopes ---
-    filterEnv.title = "Filter Env";
+    // Each filter envelope sits directly beneath the filter it drives.
+    filterEnv.title = "Filter 1 Env";
     filterEnv.cols  = 5;
+    filterEnv.span  = 3;
     filterEnv.knobs = { &addKnob ("filterEnvA", "Atk"), &addKnob ("filterEnvD", "Dec"),
                         &addKnob ("filterEnvS", "Sus"), &addKnob ("filterEnvR", "Rel"),
                         &addKnob ("filterVelSens", "Vel") };
 
     filter2Env.title = "Filter 2 Env";
-    filter2Env.cols  = 4;
+    filter2Env.cols  = 5;
+    filter2Env.span  = 3;
     filter2Env.knobs = { &addKnob ("filter2EnvA", "Atk"), &addKnob ("filter2EnvD", "Dec"),
                          &addKnob ("filter2EnvS", "Sus"), &addKnob ("filter2EnvR", "Rel") };
 
-    // --- Amp / Mod Envelopes ---
-    envelope.title = "Amp Env";
-    envelope.cols  = 5;
-    envelope.knobs = { &addKnob ("attack", "Atk"), &addKnob ("decay", "Dec"),
-                       &addKnob ("sustain", "Sus"), &addKnob ("release", "Rel"),
-                       &addKnob ("ampVelSens", "Vel") };
+    // ------------------------------------------------------------------ MOD --
+    // The amp envelope lives in the performance strip, not on a page.
+    envelope.knobs = { &addKnob ("attack", "Atk", 2, KnobSize::Small),
+                       &addKnob ("decay", "Dec", 2, KnobSize::Small),
+                       &addKnob ("sustain", "Sus", 2, KnobSize::Small),
+                       &addKnob ("release", "Rel", 2, KnobSize::Small),
+                       &addKnob ("ampVelSens", "Vel", 2, KnobSize::Small) };
 
     modEnv.title = "Mod Env";
     modEnv.cols  = 4;
+    modEnv.span  = 2;
     modEnv.knobs = { &addKnob ("modEnvA", "Atk"), &addKnob ("modEnvD", "Dec"),
                      &addKnob ("modEnvS", "Sus"), &addKnob ("modEnvR", "Rel") };
 
     // --- CZ multi-stage envelope (8 rate + 8 level, aligned in rows) ---
     multiEnvSec.title = "Multi-Stage Env (CZ)  ->  filter";
-    multiEnvSec.cols  = 8;
+    multiEnvSec.cols  = 10;
+    multiEnvSec.span  = 6;
     for (int i = 1; i <= 8; ++i)
         multiEnvSec.knobs.push_back (&addKnob ("czRate" + juce::String (i), "R" + juce::String (i)));
     for (int i = 1; i <= 8; ++i)
@@ -524,7 +518,8 @@ void PDHybridEditor::buildSections()
 
     // --- CZ pitch (DCO) envelope (8 rate + 8 level, aligned in rows) ---
     pitchEnvSec.title = "Pitch Env (CZ)  ->  pitch";
-    pitchEnvSec.cols  = 8;
+    pitchEnvSec.cols  = 10;
+    pitchEnvSec.span  = 6;
     for (int i = 1; i <= 8; ++i)
         pitchEnvSec.knobs.push_back (&addKnob ("pitchEnvRate" + juce::String (i), "R" + juce::String (i)));
     for (int i = 1; i <= 8; ++i)
@@ -534,7 +529,8 @@ void PDHybridEditor::buildSections()
 
     // --- CZ DCW (wave-depth) envelope ---
     dcwEnvSec.title = "DCW Env (CZ)  ->  PD amount";
-    dcwEnvSec.cols  = 8;
+    dcwEnvSec.cols  = 10;
+    dcwEnvSec.span  = 6;
     for (int i = 1; i <= 8; ++i)
         dcwEnvSec.knobs.push_back (&addKnob ("dcwEnvRate" + juce::String (i), "R" + juce::String (i)));
     for (int i = 1; i <= 8; ++i)
@@ -543,106 +539,224 @@ void PDHybridEditor::buildSections()
     dcwEnvSec.knobs.push_back (&addKnob ("dcwEnvSustain", "Sus", 0));
 
     // --- LFOs ---
-    lfo.title  = "LFO";
+    lfo.title  = "LFO 1";
     lfo.cols   = 3;
-    lfo.combos = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames),
-                   &addCombo ("lfoRetrig", { "Free", "Retrig" }) };
+    lfo.span   = 2;
+    lfo.toggles = { &addToggle ("lfoRetrig", "RTRG") };
+    lfo.combos = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames) };
     lfo.knobs  = { &addKnob ("lfoRate", "Rate"), &addKnob ("lfoFade", "Fade"),
                    &addKnob ("lfoPhase", "Phase") };
 
     lfo2.title  = "LFO 2";
     lfo2.cols   = 3;
-    lfo2.combos = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames),
-                    &addCombo ("lfo2Retrig", { "Free", "Retrig" }) };
+    lfo2.span   = 2;
+    lfo2.toggles = { &addToggle ("lfo2Retrig", "RTRG") };
+    lfo2.combos = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames) };
     lfo2.knobs  = { &addKnob ("lfo2Rate", "Rate"), &addKnob ("lfo2Fade", "Fade"),
                     &addKnob ("lfo2Phase", "Phase") };
 
     // --- Vibrato (Casio CZ-style) ---
-    vibratoSec.title  = "Vibrato";
-    vibratoSec.cols   = 3;
-    vibratoSec.combos = { &addCombo ("vibratoOn", { "Off", "On" }),
-                          &addCombo ("vibratoWave", { "Triangle", "Square", "Ramp Up", "Ramp Down" }) };
-    vibratoSec.knobs  = { &addKnob ("vibratoRate", "Rate"), &addKnob ("vibratoDepth", "Depth", 0),
-                          &addKnob ("vibratoDelay", "Delay") };
+    vibratoSec.title   = "Vibrato";
+    vibratoSec.cols    = 3;
+    vibratoSec.span    = 2;
+    vibratoSec.toggles = { &addToggle ("vibratoOn", "ON") };
+    vibratoSec.combos  = { &addCombo ("vibratoWave", { "Triangle", "Square", "Ramp Up", "Ramp Down" }) };
+    vibratoSec.knobs   = { &addKnob ("vibratoRate", "Rate"), &addKnob ("vibratoDepth", "Depth", 0),
+                           &addKnob ("vibratoDelay", "Delay") };
 
     // --- Arpeggiator ---
-    arpSec.title  = "Arpeggiator";
-    arpSec.cols   = 3;
-    arpSec.combos = { &addCombo ("arpOn", { "Off", "On" }),
-                      &addCombo ("arpMode", { "Up", "Down", "Up-Down", "Random", "As Played" }),
-                      &addCombo ("arpRate", { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8.", "1/4T", "1/8T" }),
-                      &addCombo ("arpLatch", { "Latch Off", "Latch On" }) };
-    arpSec.knobs  = { &addKnob ("arpOctaves", "Oct", 0), &addKnob ("arpGate", "Gate") };
+    arpSec.title   = "Arpeggiator";
+    arpSec.cols    = 2;
+    arpSec.span    = 2;
+    arpSec.toggles = { &addToggle ("arpOn", "ON"), &addToggle ("arpLatch", "LATCH") };
+    arpSec.combos  = { &addCombo ("arpMode", { "Up", "Down", "Up-Down", "Random", "As Played" }),
+                       &addCombo ("arpRate", { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8.", "1/4T", "1/8T" }) };
+    arpSec.knobs   = { &addKnob ("arpOctaves", "Oct", 0), &addKnob ("arpGate", "Gate") };
 
-    // --- Pluck (Karplus-Strong): a per-voice resonator that plucks a string with
-    // the oscillator mix. Lives on the FX tab as it is a resonant processor. ---
-    pluckSec.title  = "Pluck";
-    pluckSec.cols   = 4;
-    pluckSec.combos = { &addCombo ("pluckOn", { "Off", "On" }) };
-    pluckSec.knobs  = { &addKnob ("pluckDecay", "Decay"), &addKnob ("pluckDamp", "Damp"),
-                        &addKnob ("pluckDispersion", "Disp"), &addKnob ("pluckBurst", "Burst", 1) };
+    // ------------------------------------------------------------------ OUT --
+    chorusSec.title   = "Chorus";
+    chorusSec.cols    = 3;
+    chorusSec.span    = 2;
+    chorusSec.toggles = { &addToggle ("chorusOn", "ON") };
+    chorusSec.combos  = { &addCombo ("chorusMode", { "Mode I", "Mode II", "Mode I+II" }) };
+    chorusSec.knobs   = { &addKnob ("chorusRate", "Rate"), &addKnob ("chorusDepth", "Depth"),
+                          &addKnob ("chorusMix", "Mix") };
 
-    // --- Overdrive ---
-    drive.title  = "Overdrive";
-    drive.cols   = 5;
-    drive.combos = { &addCombo ("driveOn", { "Off", "On" }),
-                     &addCombo ("driveType",
-                       { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz", "Rectify",
-                         "Wavefold", "Foldback" }),
-                     &addCombo ("drivePos", { "Post Filter", "Pre Filter" }) };
-    drive.knobs  = { &addKnob ("drive", "Drive"), &addKnob ("bias", "Bias"),
-                     &addKnob ("gain", "Gain"), &addKnob ("crushBits", "Crush"),
-                     &addKnob ("downsample", "Downsmpl") };
+    delaySec.title   = "Delay";
+    delaySec.cols    = 3;
+    delaySec.span    = 2;
+    delaySec.toggles = { &addToggle ("delayOn", "ON") };
+    delaySec.combos  = { &addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" }),
+                         &addCombo ("delaySyncL", kSyncNames), &addCombo ("delaySyncR", kSyncNames) };
+    delaySec.knobs   = { &addKnob ("delayTimeL", "Time L"), &addKnob ("delayTimeR", "Time R"),
+                         &addKnob ("delayFeedback", "Fbk"), &addKnob ("delayMix", "Mix"),
+                         &addKnob ("delayDuck", "Duck") };
 
-    // --- Chorus / ensemble ---
-    chorusSec.title  = "Chorus";
-    chorusSec.cols   = 3;
-    chorusSec.combos = { &addCombo ("chorusOn", { "Off", "On" }),
-                         &addCombo ("chorusMode", { "I", "II", "I+II" }) };
-    chorusSec.knobs  = { &addKnob ("chorusRate", "Rate"), &addKnob ("chorusDepth", "Depth"),
-                         &addKnob ("chorusMix", "Mix") };
+    reverbSec.title   = "Reverb";
+    reverbSec.cols    = 4;
+    reverbSec.span    = 2;
+    reverbSec.toggles = { &addToggle ("reverbOn", "ON") };
+    reverbSec.knobs   = { &addKnob ("reverbSize", "Size"), &addKnob ("reverbDamp", "Damp"),
+                          &addKnob ("reverbWidth", "Width"), &addKnob ("reverbMix", "Mix") };
 
-    // --- Compressor ---
-    comp.title  = "Compressor";
-    comp.cols   = 5;
-    comp.combos = { &addCombo ("compOn", { "Off", "On" }) };
-    comp.knobs = { &addKnob ("compThreshold", "Thr"), &addKnob ("compRatio", "Ratio"),
-                   &addKnob ("compAttack", "Atk"), &addKnob ("compRelease", "Rel"),
-                   &addKnob ("compMakeup", "Gain") };
+    comp.title   = "Compressor";
+    comp.cols    = 3;
+    comp.span    = 2;
+    comp.toggles = { &addToggle ("compOn", "ON") };
+    comp.knobs   = { &addKnob ("compThreshold", "Thr"), &addKnob ("compRatio", "Ratio"),
+                     &addKnob ("compAttack", "Atk"), &addKnob ("compRelease", "Rel"),
+                     &addKnob ("compMakeup", "Gain") };
 
-    // --- Delay ---
-    delaySec.title  = "Delay";
-    delaySec.cols   = 5;
-    delaySec.combos = { &addCombo ("delayOn", { "Off", "On" }),
-                        &addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" }),
-                        &addCombo ("delaySyncL", kSyncNames), &addCombo ("delaySyncR", kSyncNames) };
-    delaySec.knobs  = { &addKnob ("delayTimeL", "Time L"), &addKnob ("delayTimeR", "Time R"),
-                        &addKnob ("delayFeedback", "Fbk"), &addKnob ("delayMix", "Mix"),
-                        &addKnob ("delayDuck", "Duck") };
-
-    // --- Reverb ---
-    reverbSec.title  = "Reverb";
-    reverbSec.cols   = 4;
-    reverbSec.combos = { &addCombo ("reverbOn", { "Off", "On" }),
-                         &addCombo ("fxRouting", { "Delay -> Reverb", "Reverb -> Delay", "Reverb, Dry Delay" }) };
-    reverbSec.knobs  = { &addKnob ("reverbSize", "Size"), &addKnob ("reverbDamp", "Damp"),
-                         &addKnob ("reverbWidth", "Width"), &addKnob ("reverbMix", "Mix") };
-
-    // --- Global master EQ (freq + gain per band) ---
-    globalEqSec.title  = "Global EQ";
-    globalEqSec.cols   = 4;
-    globalEqSec.combos = { &addCombo ("globalEqOn", { "Off", "On" }) };
+    globalEqSec.title   = "Global EQ";
+    globalEqSec.cols    = 4;
+    globalEqSec.span    = 2;
+    globalEqSec.toggles = { &addToggle ("globalEqOn", "ON") };
     globalEqSec.knobs = { &addKnob ("geLowFreq", "Lo Hz", 0),  &addKnob ("geLowGain", "Lo dB", 1),
                           &addKnob ("geMid1Freq", "M1 Hz", 0), &addKnob ("geMid1Gain", "M1 dB", 1),
                           &addKnob ("geMid2Freq", "M2 Hz", 0), &addKnob ("geMid2Gain", "M2 dB", 1),
                           &addKnob ("geHighFreq", "Hi Hz", 0), &addKnob ("geHighGain", "Hi dB", 1) };
 
-    // --- Master output ---
-    masterSec.title  = "Master";
-    masterSec.cols   = 3;
-    masterSec.combos = { &addCombo ("masterLimiter", { "Limiter Off", "Limiter On" }),
-                         &addCombo ("osQuality", { "OS 1x", "OS 2x", "OS 4x", "OS 8x" }) };
-    masterSec.knobs  = { &addKnob ("masterLevel", "Level", 1) };
+    stereo.title = "Stereo";
+    stereo.cols  = 2;
+    stereo.span  = 2;
+    stereo.knobs = { &addKnob ("pan", "Pan"), &addKnob ("panSpread", "Spread") };
+
+    // --------------------------------------------------------------- GLOBAL --
+    // Voice allocation and tuning are not part of the audio path, so they sit
+    // off it entirely rather than interrupting the chain the way the old
+    // "Voice" tab did. (voiceMode lives in the performance strip.)
+    voiceSec.title = "Voice Allocation & Tuning";
+    voiceSec.cols  = 4;
+    voiceSec.span  = 4;
+    voiceSec.toggles = { &addToggle ("monoRetrigger", "RETRIG") };
+    voiceSec.combos = { &addCombo ("notePriority", { "Priority: Last", "Priority: Top", "Priority: Bottom" }),
+                        &addCombo ("stealPolicy", { "Steal Oldest", "Steal Quietest" }),
+                        &addCombo ("velCurve", { "Vel Linear", "Vel Soft", "Vel Hard", "Vel Fixed" }),
+                        &addCombo ("tuningScale", { "Equal Temp.", "Just Intonation", "Pythagorean" }) };
+    voiceSec.knobs = { &addKnob ("polyphony", "Poly", 0), &addKnob ("pitchBendRange", "Bend", 0),
+                       &addKnob ("masterTune", "Tune", 1), &addKnob ("transpose", "Transp", 0) };
+
+    // Global LFO + oversampling. The global LFO is a modulation-matrix source
+    // ("Global LFO") that previously had no control at all in the editor.
+    globalLfoSec.title  = "Global LFO / Quality";
+    globalLfoSec.cols   = 1;
+    globalLfoSec.span   = 2;
+    globalLfoSec.combos = { &addCombo ("globalLfoWave", kLfoWaveNames),
+                            &addCombo ("osQuality", { "OS 1x", "OS 2x", "OS 4x", "OS 8x" }) };
+    globalLfoSec.knobs  = { &addKnob ("globalLfoRate", "Rate") };
+}
+
+//==============================================================================
+//  Performance strip — the controls reached on every patch, pinned above the
+//  tabs so they never leave the screen. Two of them (Macro 1 / Macro 2) had no
+//  control anywhere in the editor before this.
+//==============================================================================
+void PDHybridEditor::buildStrip()
+{
+    stripKnobs = { &addKnob ("cutoff", "Cutoff", 2, KnobSize::Large),
+                   &addKnob ("resonance", "Reso", 2, KnobSize::Large),
+                   &addKnob ("macro1", "Macro 1", 2, KnobSize::Large),
+                   &addKnob ("macro2", "Macro 2", 2, KnobSize::Large),
+                   envelope.knobs[0], envelope.knobs[1], envelope.knobs[2],
+                   envelope.knobs[3], envelope.knobs[4],
+                   &addKnob ("masterLevel", "Master", 1, KnobSize::Large) };
+
+    for (auto* k : stripKnobs)
+    {
+        strip.addAndMakeVisible (k->slider);
+        strip.addAndMakeVisible (k->label);
+    }
+
+    stripPoly = &addCombo ("voiceMode", { "Poly", "Mono", "Legato", "Unison Legato" });
+    strip.addAndMakeVisible (*stripPoly);
+    stripLimiter = &addToggle ("masterLimiter", "LIMITER");
+    strip.addAndMakeVisible (*stripLimiter);
+
+    strip.addAndMakeVisible (scope_);
+    strip.onResized = [this] { layoutStrip(); };
+    strip.onPaint   = [this] (juce::Graphics& g)
+    {
+        auto b = strip.getLocalBounds();
+        g.setColour (kCardEdge);
+        g.drawRect (b, 1);
+
+        // Group captions sit in the reserved band along the top edge, each in a
+        // black notch that breaks the frame the way the card titles do.
+        g.setFont (monoFont (9.0f));
+        for (const auto& grp : stripGroups_)
+        {
+            const int tw = g.getCurrentFont().getStringWidth (grp.first) + 10;
+            g.setColour (kCardBg);
+            g.fillRect (grp.second.getX() + 2, b.getY() - 1, tw, kStripCapH);
+            g.setColour (kTitleCol);
+            g.drawText (grp.first, grp.second.getX() + 6, b.getY() - 1, tw, kStripCapH,
+                        juce::Justification::centredLeft);
+        }
+        g.setColour (kCardEdge);
+        for (int x : stripDividers_)
+            g.fillRect (x, b.getY() + kStripCapH, 1, b.getHeight() - kStripCapH - 8);
+    };
+    addAndMakeVisible (strip);
+}
+
+void PDHybridEditor::layoutStrip()
+{
+    stripDividers_.clear();
+    stripGroups_.clear();
+
+    auto r = strip.getLocalBounds();
+    r.removeFromTop (kStripCapH);          // band reserved for the group captions
+    r = r.reduced (10, 0).withTrimmedBottom (8);
+
+    // One knob cell: label above, rotary below (sized by its own size tag).
+    auto placeKnob = [&] (LabeledKnob* k, juce::Rectangle<int> cell)
+    {
+        k->label.setBounds  (cell.removeFromTop (kLabelH));
+        k->slider.setBounds (cell);
+    };
+    auto group = [&] (const juce::String& name, int width)
+    {
+        auto zone = r.removeFromLeft (width);
+        stripGroups_.emplace_back (name, zone);
+        return zone;
+    };
+    auto divider = [&] { r.removeFromLeft (5); stripDividers_.push_back (r.removeFromLeft (1).getX()); r.removeFromLeft (5); };
+
+    {   // Filter — duplicated from the Shape page on purpose: these two are
+        // reached constantly, so they are the one thing worth showing twice.
+        auto z = group ("FILTER", 176);
+        placeKnob (stripKnobs[0], z.removeFromLeft (88));
+        placeKnob (stripKnobs[1], z.removeFromLeft (88));
+    }
+    divider();
+    {
+        auto z = group ("MACROS", 176);
+        placeKnob (stripKnobs[2], z.removeFromLeft (88));
+        placeKnob (stripKnobs[3], z.removeFromLeft (88));
+    }
+    divider();
+    {
+        auto z = group ("AMP ENV", 320);
+        const int cw = z.getWidth() / 5;
+        for (int i = 0; i < 5; ++i)
+            placeKnob (stripKnobs[4 + i], z.removeFromLeft (cw));
+    }
+    divider();
+
+    {   // Master cluster is pinned to the right; the scope takes what is left.
+        auto z = r.removeFromRight (92);
+        stripGroups_.emplace_back ("MASTER", z);
+        placeKnob (stripKnobs[9], z);
+
+        auto ctl = r.removeFromRight (112);
+        r.removeFromRight (6);
+        stripPoly->setBounds    (ctl.removeFromTop (kComboRowH).reduced (0, 2));
+        ctl.removeFromTop (4);
+        stripLimiter->setBounds (ctl.removeFromTop (20));
+
+        r.removeFromRight (6);
+        scope_.setBounds (r);
+    }
 }
 
 PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
@@ -713,6 +827,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     refreshPresetList();
 
     buildSections();
+    buildStrip();
 
     // Keep the shared timbre controls in sync with each slot's engine type.
     // Listening to the parameters (rather than the state tree) means this keeps
@@ -758,14 +873,19 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     struct Page { juce::String name; std::vector<Section*> secs; juce::Component* trailing; juce::String trailingTitle; int trailingH; };
     const int matrixH = kHeaderH + (kNumModRows / 2) * kMatrixRowH + kCardPad * 2;
 
+    // Tabs follow the signal path rather than naming categories of component:
+    // where a control sits now tells you when it happens. Global settings sit
+    // off the path entirely.
     std::vector<Page> layout {
-        { "Oscillators", { &oscA, &oscB, &mixer }, nullptr, {}, 0 },
-        { "Voice",       { &voiceSec, &glideSec, &unison, &stereo, &bassSec, &arpSec }, nullptr, {}, 0 },
-        { "Filters",     { &filter, &filter2, &filterEnv, &filter2Env },        nullptr, {}, 0 },
-        { "Envelopes",   { &envelope, &modEnv, &multiEnvSec, &pitchEnvSec, &dcwEnvSec }, nullptr, {}, 0 },
-        { "Modulation",  { &lfo, &lfo2, &vibratoSec }, &matrixHolder,
+        { "1 - Voice",  { &oscA, &oscB, &mixer, &bassSec, &unison, &glideSec }, nullptr, {}, 0 },
+        { "2 - Shape",  { &pluckSec, &drive, &routingSec,
+                          &filter, &filter2, &filterEnv, &filter2Env },         nullptr, {}, 0 },
+        { "3 - Mod",    { &pitchEnvSec, &dcwEnvSec, &multiEnvSec,
+                          &modEnv, &lfo, &lfo2, &vibratoSec, &arpSec }, &matrixHolder,
           "Modulation Matrix   (Source -> Destination x Depth)", matrixH },
-        { "FX",          { &pluckSec, &drive, &chorusSec, &comp, &delaySec, &reverbSec, &globalEqSec, &masterSec }, nullptr, {}, 0 },
+        { "4 - Out",    { &chorusSec, &delaySec, &reverbSec,
+                          &comp, &globalEqSec, &stereo },                       nullptr, {}, 0 },
+        { "Global",     { &voiceSec, &globalLfoSec },                           nullptr, {}, 0 },
     };
 
     for (auto& pg : layout)
@@ -787,14 +907,12 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         scrollers.push_back (std::move (scroller));
     }
 
-    addAndMakeVisible (scope_);   // under the CRT overlay so the scanlines fall over it
-
     // Added last so it sits on top of the tabs; it never intercepts the mouse.
     addAndMakeVisible (crtOverlay);
 
     setResizable (true, true);
-    setResizeLimits (720, 460, 2200, 1500);
-    setSize (1200, 920);
+    setResizeLimits (980, 560, 2400, 1600);
+    setSize (1280, 900);
 }
 
 PDHybridEditor::~PDHybridEditor()
@@ -836,10 +954,16 @@ void PDHybridEditor::updateOscControls()
     {
         const int type = juce::roundToInt (proc.apvts.getRawParameterValue (typeParam)->load());
         const auto roles = oscKnobRoles (type);
-        // PD Wave / PD Wave 2 / Combine (section combos 1..3) feed only the PD
-        // engine; the Excite combo (4) only the Scanned engine.
-        for (int i = 1; i <= 3; ++i) comboActive (sec.combos[(size_t) i], type == 0);
-        comboActive (sec.combos[4], roles.exciteActive);
+        // Combos are Type / PD Wave / PD Wave 2 / Excite. The two wave choices and
+        // the Combine toggle feed only the PD engine; Excite only the Scanned one.
+        comboActive (sec.combos[1], type == 0);
+        comboActive (sec.combos[2], type == 0);
+        comboActive (sec.combos[3], roles.exciteActive);
+        for (auto* t : sec.toggles)
+        {
+            t->setEnabled (type == 0);
+            t->setAlpha (type == 0 ? 1.0f : 0.4f);
+        }
         // The three shared timbre knobs relabel to the active engine's role and
         // grey out when it doesn't use them.
         knobRole (sec.knobs[0], roles.amountLabel, roles.amountActive);
@@ -994,8 +1118,7 @@ void PDHybridEditor::resized()
     x -= 58;  abButton.setBounds   (x, y, 52, 26);
     x -= 190; presetButton.setBounds (x, y, 184, 26);
 
-    auto scopeArea = r.removeFromTop (kScopeH);
-    scope_.setBounds (scopeArea.reduced (kMargin, 6));
+    strip.setBounds (r.removeFromTop (kStripH).reduced (kMargin, 4));
     tabs.setBounds (r);
     crtOverlay.setBounds (getLocalBounds());
 }
@@ -1010,7 +1133,7 @@ void PDHybridEditor::paint (juce::Graphics& g)
     g.drawText ("  PD_HYBRID", top, juce::Justification::centredLeft);
     g.setColour (kLabelCol);
     g.setFont (monoFont (11.0f));
-    g.drawText ("v6", top.withTrimmedLeft (150), juce::Justification::centredLeft);
+    g.drawText ("v7", top.withTrimmedLeft (150), juce::Justification::centredLeft);
     g.setColour (kCardEdge);
     g.fillRect (0, kTopBar - 1, getWidth(), 1);
 }

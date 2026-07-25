@@ -62,7 +62,16 @@ public:
     static constexpr int kScopeSize = 2048;   // power of two
     void readScope (float* dest, int num) const noexcept;
 
+    // Live modulation-source levels for the editor's meters. Written once per
+    // block on the audio thread, read on the message thread; relaxed atomics
+    // because a metering display neither needs ordering nor exact coherence.
+    static constexpr int kNumModSources = static_cast<int> (pdhybrid::ModSource::Count);
+    void readModLevels (float* dest, int num) const noexcept;
+
 private:
+    void publishModLevels() noexcept;
+    std::atomic<float> modLevels_[kNumModSources] {};
+
     void pushScope (const float* left, const float* right, int n) noexcept;
     float scopeBuf_[kScopeSize] = { 0.0f };
     std::atomic<int> scopeWrite_ { 0 };

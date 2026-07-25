@@ -2,7 +2,10 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <algorithm>
 #include <cmath>
+#include <functional>
+#include <vector>
 
 /**
     Small green-phosphor readouts used throughout the editor: an ADSR curve, an
@@ -154,6 +157,14 @@ public:
         startTimerHz (30);
     }
 
+    /** Supply the LFO's real output and the card shows a live trace over the
+        (dimmed) shape, instead of a free-running playhead. */
+    void setLiveReader (std::function<float()> reader)
+    {
+        live_ = std::move (reader);
+        history_.assign (kHist, 0.0f);
+    }
+
     /** Sample the waveform at phase 0..1, returning -1..1. */
     static float shape (int wave, float ph)
     {
@@ -203,33 +214,247 @@ public:
             else                            p.lineTo (x, y);
         }
 
-        g.setColour (kTrace.withAlpha (0.22f));
-        g.strokePath (p, juce::PathStrokeType (3.0f));
-        g.setColour (kTrace);
-        g.strokePath (p, juce::PathStrokeType (1.4f));
+        // With a live reader the shape becomes a dim reference and the real
+        // output is drawn over it; without one, the shape is the whole story.
+        const bool hasLive = (live_ != nullptr);
+        g.setColour (kTrace.withAlpha (hasLive ? 0.16f : 0.22f));
+        g.strokePath (p, juce::PathStrokeType (hasLive ? 1.2f : 3.0f));
+        if (! hasLive)
+        {
+            g.setColour (kTrace);
+            g.strokePath (p, juce::PathStrokeType (1.4f));
+        }
 
-        // Playhead: a dot running the cycle at the LFO's own rate.
-        const float px = in.getX() + phase_ * in.getWidth();
-        const float py = cy - shape (wv, phase_) * amp;
-        g.setColour (kTrace);
-        g.fillEllipse (px - 2.4f, py - 2.4f, 4.8f, 4.8f);
-        g.setColour (kTrace.withAlpha (0.30f));
-        g.fillRect (px, in.getY(), 1.0f, in.getHeight());
+        if (hasLive)
+        {
+            juce::Path lp;
+            for (int i = 0; i < kHist; ++i)
+            {
+                const float x = in.getX() + (float) i / (float) (kHist - 1) * in.getWidth();
+                const float y = cy - juce::jlimit (-1.0f, 1.0f, history_[(size_t) i]) * amp;
+                if (i == 0) lp.startNewSubPath (x, y);
+                else        lp.lineTo (x, y);
+            }
+            g.setColour (kTrace.withAlpha (0.25f));
+            g.strokePath (lp, juce::PathStrokeType (3.0f));
+            g.setColour (kTrace);
+            g.strokePath (lp, juce::PathStrokeType (1.4f));
+
+            // Current value, marked at the leading edge of the trace.
+            const float y = cy - juce::jlimit (-1.0f, 1.0f, history_.back()) * amp;
+            g.fillEllipse (in.getRight() - 2.4f, y - 2.4f, 4.8f, 4.8f);
+        }
+        else
+        {
+            const float px = in.getX() + phase_ * in.getWidth();
+            const float py = cy - shape (wv, phase_) * amp;
+            g.setColour (kTrace);
+            g.fillEllipse (px - 2.4f, py - 2.4f, 4.8f, 4.8f);
+        }
     }
 
 private:
     void timerCallback() override
     {
-        if (rate_ == nullptr) return;
-        const float hz = rate_->convertFrom0to1 (rate_->getValue());
-        phase_ += juce::jlimit (0.0f, 0.5f, hz / 30.0f);   // timer runs at 30 Hz
-        while (phase_ >= 1.0f) phase_ -= 1.0f;
+        if (live_ != nullptr)
+        {
+            std::rotate (history_.begin(), history_.begin() + 1, history_.end());
+            history_.back() = live_();
+        }
+        else if (rate_ != nullptr)
+        {
+            const float hz = rate_->convertFrom0to1 (rate_->getValue());
+            phase_ += juce::jlimit (0.0f, 0.5f, hz / 30.0f);   // timer runs at 30 Hz
+            while (phase_ >= 1.0f) phase_ -= 1.0f;
+        }
         repaint();
     }
 
+    static constexpr int kHist = 128;
+
     juce::String caption_;
     juce::RangedAudioParameter *wave_ = nullptr, *rate_ = nullptr;
+    std::function<float()> live_;
+    std::vector<float> history_ { std::vector<float> (kHist, 0.0f) };
     float phase_ = 0.0f;
+};
+
+//==============================================================================
+/** Live modulation-source meters.
+
+    Each row is a real reading of what the DSP is currently producing for that
+    source: the per-voice ones come from the newest sounding voice, the global
+    ones from the processor. Rows marked as traces keep a short scrolling
+    history so an LFO or an envelope is legible as motion, not just a number.
+
+    One component draws the whole list, so there are no child widgets to keep in
+    sync with the painted rows. */
+class SourceMeters : public juce::Component,
+                     private juce::Timer
+{
+public:
+    struct Row
+    {
+        int          srcIndex;     // index into ModSource / the editor's name table
+        juce::String name;
+        bool         trace;        // scrolling history rather than a single bar
+        bool         bipolar;      // value swings around zero
+    };
+
+    std::function<void (int)> onRowClicked;
+
+    SourceMeters() { startTimerHz (30); }
+    ~SourceMeters() override { stopTimer(); }
+
+    /** `reader` fills a caller-sized array with the current level of every source. */
+    void setReader (std::function<void (float*, int)> reader) { read_ = std::move (reader); }
+
+    void setRows (std::vector<Row> rows)
+    {
+        rows_ = std::move (rows);
+        history_.assign (rows_.size(), std::vector<float> (kHist, 0.0f));
+        rowBounds_.assign (rows_.size(), {});
+        repaint();
+    }
+
+    /** Which sources a matrix route actually uses, and which one is selected. */
+    void setUsage (std::vector<bool> used, int selected)
+    {
+        used_ = std::move (used);
+        selected_ = selected;
+    }
+
+    int preferredHeight() const
+    {
+        int h = 0;
+        for (const auto& r : rows_) h += r.trace ? kTraceH : kBarH;
+        return h;
+    }
+
+    void resized() override
+    {
+        auto r = getLocalBounds();
+        for (std::size_t i = 0; i < rows_.size(); ++i)
+            rowBounds_[i] = r.removeFromTop (rows_[i].trace ? kTraceH : kBarH);
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        for (std::size_t i = 0; i < rowBounds_.size(); ++i)
+            if (rowBounds_[i].contains (e.getPosition()) && onRowClicked)
+            {
+                onRowClicked (rows_[i].srcIndex);
+                return;
+            }
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        for (std::size_t i = 0; i < rows_.size(); ++i)
+        {
+            const auto& row = rows_[i];
+            auto b = rowBounds_[i];
+            const bool used = i < used_.size() && used_[i];
+            const bool sel  = row.srcIndex == selected_;
+
+            if (sel)
+            {
+                g.setColour (kAmber.withAlpha (0.10f));
+                g.fillRect (b);
+            }
+
+            g.setFont (monoF (8.5f));
+            g.setColour (used ? kAmber : kDim.withAlpha (0.65f));
+            g.drawText (row.name.toUpperCase(), b.withWidth (kNameW).reduced (3, 0),
+                        juce::Justification::centredLeft);
+
+            // The plot stops short of the value column so the two never overlap.
+            auto plot = b.withTrimmedLeft (kNameW).withTrimmedRight (kValueW)
+                         .reduced (2, row.trace ? 3 : 5);
+            auto value = history_[i].empty() ? 0.0f : history_[i].back();
+
+            g.setColour (juce::Colour (0xff0e2116));
+            g.fillRect (plot);
+
+            const auto col = used ? kTrace : kTrace.withAlpha (0.5f);
+
+            if (row.trace)
+            {
+                // Scrolling history, oldest at the left.
+                const float mid = row.bipolar ? plot.getCentreY() : (float) plot.getBottom();
+                const float amp = row.bipolar ? plot.getHeight() * 0.45f : plot.getHeight() * 0.92f;
+                if (row.bipolar)
+                {
+                    g.setColour (kGrid);
+                    g.fillRect ((float) plot.getX(), mid, (float) plot.getWidth(), 1.0f);
+                }
+
+                juce::Path p;
+                for (int s = 0; s < kHist; ++s)
+                {
+                    const float x = plot.getX() + (float) s / (float) (kHist - 1) * plot.getWidth();
+                    const float y = mid - juce::jlimit (-1.0f, 1.0f, history_[i][(size_t) s]) * amp;
+                    if (s == 0) p.startNewSubPath (x, y);
+                    else        p.lineTo (x, y);
+                }
+                g.setColour (col.withAlpha (0.25f));
+                g.strokePath (p, juce::PathStrokeType (2.6f));
+                g.setColour (col);
+                g.strokePath (p, juce::PathStrokeType (1.2f));
+            }
+            else
+            {
+                const float v = juce::jlimit (-1.0f, 1.0f, value);
+                g.setColour (col);
+                if (row.bipolar)
+                {
+                    const int mid = plot.getCentreX();
+                    const int w   = juce::roundToInt (std::abs (v) * plot.getWidth() * 0.5f);
+                    g.fillRect (v >= 0.0f ? mid : mid - w, plot.getY(), juce::jmax (1, w), plot.getHeight());
+                }
+                else
+                {
+                    g.fillRect (plot.getX(), plot.getY(),
+                                juce::jmax (1, juce::roundToInt (std::abs (v) * plot.getWidth())),
+                                plot.getHeight());
+                }
+            }
+
+            g.setFont (monoF (8.0f));
+            g.setColour (kDim);
+            g.drawText (juce::String (value, 2), b.removeFromRight (kValueW).reduced (2, 0),
+                        juce::Justification::centredRight);
+        }
+    }
+
+private:
+    void timerCallback() override
+    {
+        if (! read_ || rows_.empty()) return;
+
+        float levels[64] {};
+        read_ (levels, 64);
+        for (std::size_t i = 0; i < rows_.size(); ++i)
+        {
+            auto& h = history_[i];
+            std::rotate (h.begin(), h.begin() + 1, h.end());
+            h.back() = levels[juce::jlimit (0, 63, rows_[i].srcIndex)];
+        }
+        repaint();
+    }
+
+    static constexpr int kHist   = 96;
+    static constexpr int kTraceH = 26;
+    static constexpr int kBarH   = 15;
+    static constexpr int kNameW  = 62;   // source-name column
+    static constexpr int kValueW = 34;   // numeric readout column
+
+    std::function<void (float*, int)> read_;
+    std::vector<Row> rows_;
+    std::vector<std::vector<float>> history_;
+    std::vector<juce::Rectangle<int>> rowBounds_;
+    std::vector<bool> used_;
+    int selected_ = -1;
 };
 
 //==============================================================================

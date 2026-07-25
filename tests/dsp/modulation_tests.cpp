@@ -3,6 +3,7 @@
 
 #include "dsp/Lfo.h"
 #include "dsp/ModMatrix.h"
+#include "dsp/SynthEngine.h"
 #include "dsp/SynthParams.h"
 #include "dsp/Voice.h"
 #include "harness/Spectrum.h"
@@ -277,4 +278,69 @@ TEST_CASE ("Oscillator oversampling factor changes the anti-aliasing", "[voice][
 
     REQUIRE_FALSE (hasBadValues (os1));
     REQUIRE (diff > 1.0e-3);        // the factor really reaches the DSP
+}
+
+//==============================================================================
+// Live modulation-source metering: the editor reads these values to draw the
+// Inspector's meters, so they must reflect the newest sounding voice and fall
+// back to rest when nothing is playing.
+//==============================================================================
+TEST_CASE ("latestModSources reports nothing when silent", "[modulation][meters]")
+{
+    pdhybrid::SynthEngine engine;
+    engine.setSampleRate (48000.0);
+    pdhybrid::SynthParams p;
+    engine.setParams (p);
+
+    pdhybrid::ModSources s;
+    REQUIRE_FALSE (engine.latestModSources (s));
+}
+
+TEST_CASE ("latestModSources tracks the sounding voice", "[modulation][meters]")
+{
+    pdhybrid::SynthEngine engine;
+    engine.setSampleRate (48000.0);
+
+    pdhybrid::SynthParams p;
+    p.attack  = 0.20;     // slow enough that the amp envelope is mid-rise below
+    p.decay   = 0.50;
+    p.sustain = 0.80;
+    p.lfoRate = 4.0;
+    engine.setParams (p);
+
+    engine.noteOn (60, 0.75f);
+
+    std::vector<float> l (512), r (512);
+    engine.renderBlock (l.data(), r.data(), 512);
+
+    pdhybrid::ModSources s;
+    REQUIRE (engine.latestModSources (s));
+
+    // Velocity is captured at note-on and must survive to the meter.
+    CHECK (s[pdhybrid::ModSource::Velocity] > 0.0);
+    // Key track is (note - 60) / 48, so middle C reads exactly zero.
+    CHECK (s[pdhybrid::ModSource::KeyTrack] == Approx (0.0).margin (1.0e-9));
+    // The amp envelope has started but not finished its 200 ms attack.
+    CHECK (s[pdhybrid::ModSource::AmpEnv] > 0.0);
+    CHECK (s[pdhybrid::ModSource::AmpEnv] < 1.0);
+    // GlobalLfo is a processor-level source; a voice never fills it in.
+    CHECK (s[pdhybrid::ModSource::GlobalLfo] == Approx (0.0).margin (1.0e-9));
+
+    // The amp envelope keeps rising as more blocks are rendered.
+    const double before = s[pdhybrid::ModSource::AmpEnv];
+    for (int i = 0; i < 8; ++i)
+        engine.renderBlock (l.data(), r.data(), 512);
+    REQUIRE (engine.latestModSources (s));
+    CHECK (s[pdhybrid::ModSource::AmpEnv] > before);
+
+    // An LFO that is actually running must leave zero at some point.
+    bool lfoMoved = false;
+    for (int i = 0; i < 64 && ! lfoMoved; ++i)
+    {
+        engine.renderBlock (l.data(), r.data(), 512);
+        REQUIRE (engine.latestModSources (s));
+        if (std::abs (s[pdhybrid::ModSource::Lfo]) > 1.0e-3)
+            lfoMoved = true;
+    }
+    CHECK (lfoMoved);
 }

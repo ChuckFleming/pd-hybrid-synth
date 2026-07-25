@@ -51,6 +51,11 @@ public:
 
     int activeVoiceCount() const noexcept;
 
+    // Modulation-source values of the most recently started voice that is still
+    // sounding, for the editor's live meters. Returns false (leaving `out`
+    // untouched) when nothing is playing.
+    bool latestModSources (ModSources& out) const noexcept;
+
 private:
     struct HeldNote { int note; float velocity; int noteId; };
 

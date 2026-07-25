@@ -65,6 +65,10 @@ private:
         std::vector<juce::Button*> toggles;
         int cols = 4;
         int span = 2;             // grid columns (the page grid is kGridCols wide)
+        // Consecutive sections sharing a non-zero stackId occupy one block of
+        // `span` columns and split its height between them, so a short card can
+        // sit above another instead of claiming a whole row.
+        int stackId = 0;
         juce::Component* custom = nullptr;
         int customH = 0;          // height reserved for `custom`, 0 = none
         juce::Rectangle<int> bounds;
@@ -239,6 +243,7 @@ private:
     std::vector<LabeledKnob*> stripKnobs;   // cutoff, reso, macro 1/2, A D S R Vel, master
     juce::ComboBox* stripPoly = nullptr;
     juce::Button*   stripLimiter = nullptr;
+    juce::Button*   stripArp = nullptr;
     std::vector<int> stripDividers_;        // x positions of the cluster rules
     std::vector<std::pair<juce::String, juce::Rectangle<int>>> stripGroups_;
 
@@ -280,10 +285,8 @@ private:
     // so the child curves and the painted rows can never drift apart.
     struct RouteRow { juce::Rectangle<int> text, bar; int routeIndex; };
     std::vector<RouteRow> routeRows_;
-    struct SrcRow { juce::Rectangle<int> row, meter; int srcIndex; const char* paramId; };
-    std::vector<SrcRow> srcRows_;
 
-    pdui::LfoCurve inspLfo1, inspLfo2, inspLfoG;   // live shapes in the source list
+    pdui::SourceMeters sourceMeters;   // real DSP levels, not parameter positions
 
     void selectParameter (const juce::String& paramId);
     void layoutInspector();

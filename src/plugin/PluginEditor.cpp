@@ -38,9 +38,33 @@ juce::Font monoFont (float height, bool bold = false)
                        bold ? juce::Font::bold : juce::Font::plain);
 }
 
-const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh" };
+const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh", "Supersaw", "Harmonic" };
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                         "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
+// Must match the "filterType" / "filter2Type" choice parameters exactly.
+const juce::StringArray kFilterTypeNames { "Ladder", "State Variable", "PD Resonator",
+                                           "Comb", "Allpass", "Formant", "Diode Ladder" };
+
+// Per-type role of the filter MORPH knob. Every engine reads it differently and
+// two ignore it entirely, so the editor relabels it and greys it out when dead.
+struct FilterKnobRoles
+{
+    juce::String morphLabel; bool morphActive;
+};
+FilterKnobRoles filterKnobRoles (int type)
+{
+    switch (static_cast<pdhybrid::FilterType> (type))
+    {
+        case pdhybrid::FilterType::StateVariable: return { "LP-BP-HP", true };
+        case pdhybrid::FilterType::PdResonator:   return { "PD Amt",   true };
+        case pdhybrid::FilterType::Comb:          return { "Damp",     true };
+        case pdhybrid::FilterType::Allpass:       return { "Stages",   true };
+        case pdhybrid::FilterType::Formant:       return { "Vowel",    true };
+        case pdhybrid::FilterType::DiodeLadder:   return { "Morph",    false };  // 24 dB LP only
+        case pdhybrid::FilterType::Ladder:
+        default:                                  return { "Morph",    false };  // 24 dB LP only
+    }
+}
 
 // Per-type role of the two shared timbre knobs (the "amount" and "pulse width"
 // knobs). Each engine reads them differently, and some ignore one or both, so
@@ -65,6 +89,8 @@ OscKnobRoles oscKnobRoles (int type)
         case pdhybrid::OscType::Scanned:         return { "Stiff",  true,  "Damp",  true,  "Morph",   true,  true  };  // + excite shape
         case pdhybrid::OscType::Vosim:           return { "Formant", true, "Decay", true,  "Pulses",  true,  false };  // engine = pulse count
         case pdhybrid::OscType::Walsh:           return { "Tilt",   true,  "Odd",   true,  "Fold",    true,  false };  // engine = wavefold
+        case pdhybrid::OscType::Supersaw:        return { "Detune", true,  "Mix",   true,  "Voices",  true,  false };  // engine = saw count
+        case pdhybrid::OscType::Harmonic:        return { "Partial", true, "Odd/Ev", true, "Width",   true,  false };  // engine = window width
         default:                                 return { "PD Amt", true,  "Width", true,  "Engine",  true,  false };
     }
 }
@@ -82,7 +108,9 @@ const juce::StringArray kDstNames { "None", "Pitch", "PD Amount", "Pulse Width",
                                     "Resonance", "Morph", "Drive", "Amplitude", "Pan",
                                     "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
                                     "LFO Rate", "LFO 2 Rate", "Noise Lvl",
-                                    "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ" };
+                                    "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ",
+                                    "Ring Mod", "Cross Mod", "Engine", "PD Amount B",
+                                    "Pluck Decay", "Pluck Damp" };
 }
 
 //==============================================================================
@@ -530,12 +558,20 @@ int PDHybridEditor::StageEnvelopePanel::hitNode (juce::Point<float> p) const
 void PDHybridEditor::StageEnvelopePanel::mouseMove (const juce::MouseEvent& e)
 {
     const int h = graphArea().contains (e.getPosition()) ? hitNode (e.position) : -1;
-    if (h != hoverNode) { hoverNode = h; repaint(); }
+    if (h != hoverNode)
+    {
+        hoverNode = h;
+        // Nothing else signalled that these nodes are grabbable.
+        setMouseCursor (h >= 0 ? juce::MouseCursor::DraggingHandCursor
+                               : juce::MouseCursor::NormalCursor);
+        repaint();
+    }
 }
 
 void PDHybridEditor::StageEnvelopePanel::mouseExit (const juce::MouseEvent&)
 {
     if (hoverNode != -1) { hoverNode = -1; repaint(); }
+    setMouseCursor (juce::MouseCursor::NormalCursor);
 }
 
 void PDHybridEditor::StageEnvelopePanel::mouseDown (const juce::MouseEvent& e)
@@ -1015,8 +1051,7 @@ void PDHybridEditor::buildSections()
     filter.custom2  = &filt1Curve;
     filter.customH2 = 50;
     filter.knobSplit = 5;
-    filter.combos = { &addCombo ("filterType",
-                        { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }) };
+    filter.combos = { &addCombo ("filterType", kFilterTypeNames) };
     filter.knobs  = { &addKnob ("cutoff", "Cutoff", 2, KnobSize::Large),
                       &addKnob ("resonance", "Reso", 2, KnobSize::Large),
                       &addKnob ("filterMorph", "Morph"), &addKnob ("keyTrack", "Key Trk"),
@@ -1036,8 +1071,7 @@ void PDHybridEditor::buildSections()
     filter2.custom2  = &filt2Curve;
     filter2.customH2 = 50;
     filter2.knobSplit = 4;
-    filter2.combos = { &addCombo ("filter2Type",
-                        { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }) };
+    filter2.combos = { &addCombo ("filter2Type", kFilterTypeNames) };
     filter2.knobs  = { &addKnob ("filter2Cutoff", "Cutoff", 2, KnobSize::Large),
                        &addKnob ("filter2Res", "Reso", 2, KnobSize::Large),
                        &addKnob ("filter2Morph", "Morph"), &addKnob ("filter2EnvAmount", "Env Amt"),
@@ -1912,6 +1946,8 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // steal the combo's onChange, which the ComboBoxAttachment owns.
     proc.apvts.addParameterListener ("oscAType", this);
     proc.apvts.addParameterListener ("oscBType", this);
+    proc.apvts.addParameterListener ("filterType", this);
+    proc.apvts.addParameterListener ("filter2Type", this);
     updateOscControls();
 
     // --- Modulation matrix widgets (hosted on the Modulation tab) ---
@@ -2071,6 +2107,8 @@ PDHybridEditor::~PDHybridEditor()
         k->slider.removeMouseListener (this);
     proc.apvts.removeParameterListener ("oscAType", this);
     proc.apvts.removeParameterListener ("oscBType", this);
+    proc.apvts.removeParameterListener ("filterType", this);
+    proc.apvts.removeParameterListener ("filter2Type", this);
     tabs.clearTabs();     // release content components before members are destroyed
     setLookAndFeel (nullptr);
 }
@@ -2123,6 +2161,17 @@ void PDHybridEditor::updateOscControls()
     };
     apply (oscA, "oscAType");
     apply (oscB, "oscBType");
+
+    // The filter MORPH knob is the same shared control: it means a different
+    // thing per engine, and the two plain lowpasses don't use it at all.
+    auto applyFilter = [&] (Section& sec, const char* typeParam)
+    {
+        const int type = juce::roundToInt (proc.apvts.getRawParameterValue (typeParam)->load());
+        const auto roles = filterKnobRoles (type);
+        knobRole (sec.knobs[2], roles.morphLabel, roles.morphActive);
+    };
+    applyFilter (filter,  "filterType");
+    applyFilter (filter2, "filter2Type");
 }
 
 void PDHybridEditor::showMatrix (bool shouldShow)

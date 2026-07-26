@@ -65,7 +65,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::ParameterID { id, 1 }, name, range, def, attr));
     };
 
-    const juce::StringArray oscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh" };
+    const juce::StringArray oscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh", "Supersaw", "Harmonic" };
     const juce::StringArray pdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                            "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
 
@@ -139,7 +139,8 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "filterType", 1 }, "Filter Type",
-        juce::StringArray { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }, 0));
+        juce::StringArray { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass",
+                            "Formant", "Diode Ladder" }, 0));
 
     pf ("filterMorph", "Filter Morph", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
@@ -159,7 +160,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     // --- Filter B + routing ---
     const juce::StringArray filterTypeNames { "Ladder", "State Variable", "PD Resonator",
-                                              "Comb", "Allpass" };
+                                              "Comb", "Allpass", "Formant", "Diode Ladder" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "filterRouting", 1 }, "Filter Routing",
         juce::StringArray { "Single", "Series", "Parallel" }, 0));
@@ -476,7 +477,9 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
                                        "Resonance", "Morph", "Drive", "Amplitude", "Pan",
                                        "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
                                        "LFO Rate", "LFO 2 Rate", "Noise Lvl",
-                                       "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ" };
+                                       "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ",
+                                       "Ring Mod", "Cross Mod", "Engine", "PD Amount B",
+                                       "Pluck Decay", "Pluck Damp" };
     for (int i = 1; i <= pdhybrid::ModMatrix::kNumSlots; ++i)
     {
         const auto s = juce::String (i);

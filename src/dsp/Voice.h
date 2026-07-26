@@ -109,6 +109,8 @@ private:
     double oscALevelMod_ = 1.0; // mixer levels after matrix modulation
     double oscBLevelMod_ = 0.0;
     double noiseLevelMod_ = 0.0; // noise level after matrix modulation
+    double ringModMod_  = 0.0;  // ring-mod depth after matrix modulation
+    double crossModMod_ = 0.0;  // cross-mod depth after matrix modulation
     double randomMod_ = 0.0;    // per-note sample & hold random source
     ModSources lastSources_;    // snapshot for the editor's live meters
     double panL_      = 0.70710678;   // equal-power pan gains (default centre)

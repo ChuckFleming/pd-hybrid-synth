@@ -15,6 +15,10 @@ void OscillatorUnit::setSampleRate (double sampleRateHz) noexcept
     vosim_.setOversampling (4);
     walsh_.setSampleRate (sampleRateHz);
     walsh_.setOversampling (4);
+    supersaw_.setSampleRate (sampleRateHz);
+    supersaw_.setOversampling (4);
+    harmonic_.setSampleRate (sampleRateHz);
+    harmonic_.setOversampling (4);
     analog_.setSampleRate (sampleRateHz);
     eq_.setSampleRate (sampleRateHz);
 }
@@ -26,6 +30,8 @@ void OscillatorUnit::reset() noexcept
     scanned_.reset();
     vosim_.reset();
     walsh_.reset();
+    supersaw_.reset();
+    harmonic_.reset();
     analog_.reset();
     eq_.reset();
 }
@@ -43,6 +49,8 @@ void OscillatorUnit::setType (OscType type) noexcept
         case OscType::Scanned:                                              break;   // configured via amount/pulseWidth + excite()
         case OscType::Vosim:                                                break;   // configured via amount/pulseWidth
         case OscType::Walsh:                                                break;   // configured via amount/pulseWidth
+        case OscType::Supersaw:                                             break;   // configured via amount/pulseWidth/engine
+        case OscType::Harmonic:                                             break;   // configured via amount/pulseWidth/engine
         case OscType::PhaseDistortion: default: break;
     }
 }
@@ -67,6 +75,8 @@ void OscillatorUnit::setBaseFrequency (double frequencyHz) noexcept
     scanned_.setFrequency (f);
     vosim_.setFrequency (f);
     walsh_.setFrequency (f);
+    supersaw_.setFrequency (f);
+    harmonic_.setFrequency (f);
     analog_.setFrequency (f);
 }
 
@@ -82,6 +92,8 @@ float OscillatorUnit::processSample() noexcept
                     : (type_ == OscType::Scanned)         ? scanned_.processSample()
                     : (type_ == OscType::Vosim)           ? vosim_.processSample()
                     : (type_ == OscType::Walsh)           ? walsh_.processSample()
+                    : (type_ == OscType::Supersaw)        ? supersaw_.processSample()
+                    : (type_ == OscType::Harmonic)        ? harmonic_.processSample()
                                                           : analog_.processSample();
     return eq_.processSample (raw);
 }

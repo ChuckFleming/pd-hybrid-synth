@@ -217,10 +217,28 @@ void Voice::applyModulation() noexcept
     const double dcwEnvMod = params_.dcwEnvAmount * (dcwEnv_.level() - 0.5) * 2.0;
     const double pdMod = md (ModDest::PdAmount) + driftPdAmt + dcwEnvMod;
     const double pwMod = md (ModDest::PulseWidth) * 0.45;
+    // PdAmountB is an extra offset on slot B only, so the two oscillators can be
+    // swept apart; PdAmount keeps moving both together.
+    const double pdModB = pdMod + md (ModDest::PdAmountB);
     unitA_.setAmount     (std::clamp (params_.oscAAmount + pdMod, 0.0, 1.0));
-    unitB_.setAmount     (std::clamp (params_.oscBAmount + pdMod, 0.0, 1.0));
+    unitB_.setAmount     (std::clamp (params_.oscBAmount + pdModB, 0.0, 1.0));
     unitA_.setPulseWidth (std::clamp (params_.oscAPulseWidth + pwMod, 0.05, 0.95));
     unitB_.setPulseWidth (std::clamp (params_.oscBPulseWidth + pwMod, 0.05, 0.95));
+
+    // Per-engine "extra" knob (VOSIM pulses / Walsh fold / supersaw voices ...).
+    const double engMod = md (ModDest::EngineParam);
+    unitA_.setEngineParam (std::clamp (params_.oscAEngine + engMod, 0.0, 1.0));
+    unitB_.setEngineParam (std::clamp (params_.oscBEngine + engMod, 0.0, 1.0));
+
+    // Karplus-Strong string, when the pluck stage is engaged.
+    if (params_.pluckOn)
+    {
+        pluck_.setDecay (std::clamp (params_.pluckDecay + md (ModDest::PluckDecay), 0.0, 1.0));
+        pluck_.setDamping (std::clamp (params_.pluckDamp + md (ModDest::PluckDamp), 0.0, 1.0));
+    }
+
+    ringModMod_  = std::clamp (params_.ringModLevel + md (ModDest::RingModLevel), 0.0, 1.0);
+    crossModMod_ = std::clamp (params_.crossModAmount + md (ModDest::CrossModAmount), 0.0, 1.0);
 
     // Cutoff: timbre (MPE), matrix, key tracking and the filter envelope all
     // shift the cutoff in octaves. Key tracking follows the note relative to
@@ -367,7 +385,7 @@ float Voice::renderOneSample() noexcept
 {
     // Osc A + Osc B with optional cross-modulation. Osc B runs when it is mixed,
     // ring-modulated, or cross-modulating (hard sync / phase mod).
-    const double ring  = params_.ringModLevel;
+    const double ring  = ringModMod_;
     const int    cross = params_.oscCrossMod;
     const bool   needB = (oscBLevelMod_ > 1.0e-5) || (ring > 1.0e-5) || (cross != 0);
 
@@ -375,7 +393,7 @@ float Voice::renderOneSample() noexcept
     if (cross == 2)          // Phase Mod: Osc B modulates Osc A's phase
     {
         sB = unitB_.processSample();
-        unitA_.setPhaseMod (sB * params_.crossModAmount * 0.5);
+        unitA_.setPhaseMod (sB * crossModMod_ * 0.5);
         sA = unitA_.processSample();
     }
     else if (cross == 1)     // Hard Sync: Osc A masters Osc B (reset on A's wrap)

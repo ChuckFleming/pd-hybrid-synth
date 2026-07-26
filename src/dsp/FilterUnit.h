@@ -5,12 +5,14 @@
 #include "PhaseDistortionResonator.h"
 #include "CombFilter.h"
 #include "AllpassDispersion.h"
+#include "FormantFilter.h"
+#include "DiodeLadderFilter.h"
 #include "SynthParams.h"   // FilterType
 
 namespace pdhybrid {
 
 /**
-    One filter "slot": holds all five filter engines and routes the signal
+    One filter "slot": holds all seven filter engines and routes the signal
     through the currently selected one. A Voice owns two of these so they can be
     run singly, in series (A -> B) or in parallel (A + B), each with its own
     type, cutoff, resonance and morph.
@@ -37,6 +39,8 @@ private:
     PhaseDistortionResonator pdReso_;
     CombFilter               comb_;
     AllpassDispersion        allpass_;
+    FormantFilter            formant_;
+    DiodeLadderFilter        diode_;
 };
 
 } // namespace pdhybrid

@@ -26,6 +26,8 @@ enum class ModSource : int
     Count
 };
 
+// New entries are appended, never inserted: the "modXDest" choice parameter
+// stores these by index, so reordering would silently re-route saved patches.
 enum class ModDest : int
 {
     None = 0,
@@ -49,6 +51,12 @@ enum class ModDest : int
     DelayFeedback,
     MasterPan,
     GlobalEqGain, // master EQ high-shelf gain (dB)
+    RingModLevel,   // CZ ring-modulation depth
+    CrossModAmount, // hard-sync / phase-mod depth
+    EngineParam,    // per-engine "extra" (VOSIM pulses / Walsh fold / supersaw voices)
+    PdAmountB,      // extra DCW on osc B only (PdAmount still moves both slots)
+    PluckDecay,     // Karplus-Strong ring time
+    PluckDamp,      // Karplus-Strong tone
     Count
 };
 

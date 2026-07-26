@@ -4,13 +4,17 @@
 
 namespace pdhybrid {
 
+// New entries are appended, never inserted: these are stored in presets and in
+// host automation by choice index.
 enum class FilterType
 {
     Ladder = 0,     // analog-modeled 4-pole ladder
     StateVariable,  // morphable TPT state-variable (LP/BP/HP)
     PdResonator,    // phase-distortion resonator
     Comb,           // tuned feedback comb / waveguide
-    Allpass         // allpass dispersion
+    Allpass,        // allpass dispersion / phaser
+    Formant,        // three-band vowel filter (A-E-I-O-U morph)
+    DiodeLadder     // spread-pole diode ladder (acid flavour)
 };
 
 enum class OscType
@@ -23,7 +27,9 @@ enum class OscType
     VPS,                   // vector phaseshaping (movable 2D inflection point)
     Scanned,               // scanned synthesis (a plucked mass-spring ring)
     Vosim,                 // VOSIM (bursts of decaying sin^2 pulses -> formants)
-    Walsh                  // Walsh-function synthesis (sum of +/-1 sequency terms)
+    Walsh,                 // Walsh-function synthesis (sum of +/-1 sequency terms)
+    Supersaw,              // stack of detuned PolyBLEP saws
+    Harmonic               // band-limited additive harmonic-window sweep
 };
 
 enum class GlideMode

@@ -6,6 +6,8 @@
 #include "ScannedOscillator.h"
 #include "VosimOscillator.h"
 #include "WalshOscillator.h"
+#include "SupersawOscillator.h"
+#include "HarmonicOscillator.h"
 #include "OscEq.h"
 #include "SynthParams.h"   // OscType
 
@@ -25,7 +27,7 @@ public:
     void reset         () noexcept;
 
     void setType       (OscType type) noexcept;
-    void setOversampling (int factor) noexcept  { pd_.setOversampling (factor); vps_.setOversampling (factor); scanned_.setOversampling (factor); vosim_.setOversampling (factor); walsh_.setOversampling (factor); }
+    void setOversampling (int factor) noexcept  { pd_.setOversampling (factor); vps_.setOversampling (factor); scanned_.setOversampling (factor); vosim_.setOversampling (factor); walsh_.setOversampling (factor); supersaw_.setOversampling (factor); harmonic_.setOversampling (factor); }
     void setPdWave     (PdWave wave) noexcept   { pd_.setWave (wave); }
     void setPdWaveB    (PdWave wave) noexcept   { pd_.setWaveB (wave); }
     void setPdCombine  (bool on) noexcept       { pd_.setCombine (on); }
@@ -35,13 +37,15 @@ public:
 
     // Cross-modulation (hard sync + phase mod). Dispatch to the active engine.
     void setPhaseMod (double offset) noexcept
-    { pd_.setPhaseMod (offset); vps_.setPhaseMod (offset); scanned_.setPhaseMod (offset); vosim_.setPhaseMod (offset); walsh_.setPhaseMod (offset); analog_.setPhaseMod (offset); }
+    { pd_.setPhaseMod (offset); vps_.setPhaseMod (offset); scanned_.setPhaseMod (offset); vosim_.setPhaseMod (offset); walsh_.setPhaseMod (offset); supersaw_.setPhaseMod (offset); harmonic_.setPhaseMod (offset); analog_.setPhaseMod (offset); }
     bool wrapped     () const noexcept
     { return (type_ == OscType::PhaseDistortion) ? pd_.wrapped()
            : (type_ == OscType::VPS)             ? vps_.wrapped()
            : (type_ == OscType::Scanned)         ? scanned_.wrapped()
            : (type_ == OscType::Vosim)           ? vosim_.wrapped()
            : (type_ == OscType::Walsh)           ? walsh_.wrapped()
+           : (type_ == OscType::Supersaw)        ? supersaw_.wrapped()
+           : (type_ == OscType::Harmonic)        ? harmonic_.wrapped()
                                                  : analog_.wrapped(); }
     void syncReset   () noexcept
     { if      (type_ == OscType::PhaseDistortion) pd_.syncReset();
@@ -49,6 +53,8 @@ public:
       else if (type_ == OscType::Scanned)         scanned_.syncReset();
       else if (type_ == OscType::Vosim)           vosim_.syncReset();
       else if (type_ == OscType::Walsh)           walsh_.syncReset();
+      else if (type_ == OscType::Supersaw)        supersaw_.syncReset();
+      else if (type_ == OscType::Harmonic)        harmonic_.syncReset();
       else                                        analog_.syncReset(); }
     void setEq         (double lowDb, double midDb, double highDb) noexcept
     { eq_.setGains (lowDb, midDb, highDb); }
@@ -58,14 +64,15 @@ public:
     // decay. So both stay mod-matrix destinations and the DCW envelope sweeps
     // them, whatever the engine.
     void setAmount     (double amount01) noexcept
-    { pd_.setAmount (amount01); vps_.setVertical (amount01 * kVpsVMax); scanned_.setStiffness (amount01); vosim_.setFormant (amount01); walsh_.setTilt (amount01); }
+    { pd_.setAmount (amount01); vps_.setVertical (amount01 * kVpsVMax); scanned_.setStiffness (amount01); vosim_.setFormant (amount01); walsh_.setTilt (amount01); supersaw_.setDetune (amount01); harmonic_.setCentroid (amount01); }
     void setPulseWidth (double pulseWidth01) noexcept
-    { analog_.setPulseWidth (pulseWidth01); vps_.setHorizontal (pulseWidth01); scanned_.setDamping (pulseWidth01); vosim_.setDecay (pulseWidth01); walsh_.setOddness (pulseWidth01); }
+    { analog_.setPulseWidth (pulseWidth01); vps_.setHorizontal (pulseWidth01); scanned_.setDamping (pulseWidth01); vosim_.setDecay (pulseWidth01); walsh_.setOddness (pulseWidth01); supersaw_.setMix (pulseWidth01); harmonic_.setOddEven (pulseWidth01); }
 
     // A third per-engine "extra" control, meaning VOSIM pulse count / Scanned
-    // morph rate / Walsh fold depending on the active engine (unused by others).
+    // morph rate / Walsh fold / supersaw voice count / harmonic window width
+    // depending on the active engine (unused by the analog and PD waveforms).
     void setEngineParam (double value01) noexcept
-    { vosim_.setPulseCount (1 + (int) (value01 * 7.0 + 0.5)); scanned_.setMorphRate (value01); walsh_.setFold (value01); }
+    { vosim_.setPulseCount (1 + (int) (value01 * 7.0 + 0.5)); scanned_.setMorphRate (value01); walsh_.setFold (value01); supersaw_.setVoices (value01); harmonic_.setWidth (value01); }
     // Scanned excitation shape (0=pluck 1=impulse 2=noise 3=triangle).
     void setExcite (int shape) noexcept { scanned_.setExciteShape (shape); }
 
@@ -85,6 +92,8 @@ private:
     ScannedOscillator         scanned_;
     VosimOscillator           vosim_;
     WalshOscillator           walsh_;
+    SupersawOscillator        supersaw_;
+    HarmonicOscillator        harmonic_;
     OscEq                     eq_;
     OscType type_    = OscType::PhaseDistortion;
     double  tuneMul_ = 1.0;

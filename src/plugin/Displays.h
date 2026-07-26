@@ -17,9 +17,11 @@
     Small green-phosphor readouts used throughout the editor: an ADSR curve, an
     LFO waveform with a running playhead, and the signal-routing diagram.
 
-    All three poll their parameters on a timer rather than listening to them, so
-    automation and preset loads move them without any audio-thread callbacks,
-    and none of them ever touch a parameter (they are read-only displays).
+    They poll their parameters on a timer rather than listening to them, so
+    automation and preset loads move them without any audio-thread callbacks.
+    All are read-only except EnvelopeCurve, whose breakpoints can be dragged --
+    it writes through proper begin/endChangeGesture pairs so a host records the
+    move as automation.
 */
 namespace pdui {
 
@@ -52,7 +54,13 @@ inline juce::Rectangle<float> drawFrame (juce::Graphics& g, juce::Rectangle<floa
 
 //==============================================================================
 /** ADSR curve. Segment widths follow the real times, with a fixed sustain hold
-    so the sustain level is always visible. */
+    so the sustain level is always visible.
+
+    The breakpoints are draggable: the attack corner sets A, the sustain corner
+    sets D and S together, the plateau end sets S, and the midpoint of the
+    release ramp sets R. As in the 8-stage editor, the horizontal time base is
+    frozen for the duration of a gesture -- otherwise editing a time rescales
+    the x axis under the cursor and the drag fights itself. */
 class EnvelopeCurve : public juce::Component,
                       private juce::Timer
 {
@@ -60,7 +68,6 @@ public:
     EnvelopeCurve (juce::String caption, juce::Colour colour = kTrace)
         : caption_ (std::move (caption)), colour_ (colour)
     {
-        setInterceptsMouseClicks (false, false);
     }
     ~EnvelopeCurve() override { stopTimer(); }
 
@@ -78,6 +85,168 @@ public:
         auto in = drawFrame (g, getLocalBounds().toFloat(), caption_);
         if (a_ == nullptr) return;
 
+        const auto geo = geometry (in);
+
+        juce::Path p;
+        p.startNewSubPath (in.getX(), geo.yb);
+        p.lineTo (geo.xA, geo.yb - geo.h);        // attack to full
+        p.lineTo (geo.xD, geo.yS);                // decay to sustain
+        p.lineTo (geo.xS, geo.yS);                // hold
+        p.lineTo (geo.xR, geo.yb);                // release
+
+        auto fill = p;
+        fill.lineTo (geo.xR, geo.yb);
+        fill.lineTo (in.getX(), geo.yb);
+        fill.closeSubPath();
+        g.setColour (colour_.withAlpha (0.12f));
+        g.fillPath (fill);
+
+        g.setColour (kGrid);
+        g.fillRect (in.getX(), geo.yS, in.getWidth(), 1.0f);
+
+        g.setColour (colour_.withAlpha (0.25f));
+        g.strokePath (p, juce::PathStrokeType (3.0f));
+        g.setColour (colour_);
+        g.strokePath (p, juce::PathStrokeType (1.5f));
+
+        // Breakpoint handles. The hovered or dragged one lights up amber so it
+        // reads as grabbable rather than as decoration.
+        for (int i = 0; i < kNumNodes; ++i)
+        {
+            const auto pt  = nodePos (geo, i);
+            const bool lit = (i == dragNode_) || (i == hoverNode_);
+            const float rad = lit ? 3.5f : 2.5f;
+            g.setColour (kBg);
+            g.fillRect (pt.x - rad, pt.y - rad, rad * 2.0f, rad * 2.0f);
+            g.setColour (lit ? kAmber : colour_);
+            g.drawRect (juce::Rectangle<float> (pt.x - rad, pt.y - rad, rad * 2.0f, rad * 2.0f), 1.0f);
+        }
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        const int h = hitNode (e.position);
+        if (h != hoverNode_)
+        {
+            hoverNode_ = h;
+            setMouseCursor (h >= 0 ? juce::MouseCursor::DraggingHandCursor
+                                   : juce::MouseCursor::NormalCursor);
+            repaint();
+        }
+    }
+
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        if (hoverNode_ != -1) { hoverNode_ = -1; repaint(); }
+        setMouseCursor (juce::MouseCursor::NormalCursor);
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (a_ == nullptr) return;
+
+        dragNode_ = hitNode (e.position);
+        if (dragNode_ < 0) return;
+
+        // Freeze the time base for the gesture (see the class comment).
+        const auto geo = geometry (interior());
+        dragScale_ = geo.sc;
+
+        for (auto* p : gestureParams (dragNode_))
+            if (p != nullptr) p->beginChangeGesture();
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (dragNode_ < 0) return;
+
+        const auto in = interior();
+        const float w  = in.getWidth();
+        const float yb = in.getBottom(), h = juce::jmax (1.0f, in.getHeight());
+
+        // Time in seconds from a horizontal position, using the frozen scale.
+        auto timeAt = [&] (float x, float startX)
+        {
+            const float dx = juce::jmax (0.0f, x - startX);
+            return dragScale_ > 1.0e-6f ? dx / (w * dragScale_) : 0.0f;
+        };
+        auto setLevel = [&] (juce::RangedAudioParameter* p, float y)
+        {
+            const float v = juce::jlimit (0.0f, 1.0f, (yb - y) / h);
+            p->setValueNotifyingHost (p->convertTo0to1 (v));
+        };
+        auto setTime = [&] (juce::RangedAudioParameter* p, float seconds)
+        {
+            const auto range = p->getNormalisableRange();
+            p->setValueNotifyingHost (p->convertTo0to1 (juce::jlimit (range.start, range.end, seconds)));
+        };
+
+        const float A = a_->convertFrom0to1 (a_->getValue());
+
+        switch (dragNode_)
+        {
+            case 0:   // attack corner: x -> A
+                setTime (a_, timeAt (e.position.x, in.getX()));
+                break;
+
+            case 1:   // sustain corner: x -> D (measured from the attack peak), y -> S
+            {
+                const float xA = in.getX() + w * A * dragScale_;
+                setTime (d_, timeAt (e.position.x, xA));
+                setLevel (s_, e.position.y);
+                break;
+            }
+
+            case 2:   // plateau end: y -> S only (its x is the fixed hold width)
+                setLevel (s_, e.position.y);
+                break;
+
+            case 3:   // release handle sits at the ramp's midpoint, so x -> 2 * R
+            {
+                const float D  = d_->convertFrom0to1 (d_->getValue());
+                const float xS = in.getX() + w * (A + D) * dragScale_ + w * kHold;
+                setTime (r_, 2.0f * timeAt (e.position.x, xS));
+                break;
+            }
+
+            default: break;
+        }
+
+        repaint();
+    }
+
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        if (dragNode_ < 0) return;
+        for (auto* p : gestureParams (dragNode_))
+            if (p != nullptr) p->endChangeGesture();
+        dragNode_ = -1;
+        repaint();
+    }
+
+private:
+    static constexpr int   kNumNodes = 4;
+    static constexpr float kHold     = 0.22f;   // fixed slice given to the sustain hold
+    static constexpr float kHitR     = 6.0f;
+
+    struct Geometry
+    {
+        float sc = 0.0f;                  // seconds -> fraction of width
+        float xA = 0.0f, xD = 0.0f, xS = 0.0f, xR = 0.0f;
+        float yb = 0.0f, yS = 0.0f, h = 0.0f;
+    };
+
+    juce::Rectangle<float> interior() const
+    {
+        // Mirrors drawFrame's inset so hit-testing lines up with what is drawn.
+        return getLocalBounds().toFloat().reduced (5.0f, 6.0f);
+    }
+
+    Geometry geometry (juce::Rectangle<float> in) const
+    {
+        Geometry g;
+        if (a_ == nullptr) return g;
+
         const float A = a_->convertFrom0to1 (a_->getValue());
         const float D = d_->convertFrom0to1 (d_->getValue());
         const float S = juce::jlimit (0.0f, 1.0f, s_->convertFrom0to1 (s_->getValue()));
@@ -85,50 +254,52 @@ public:
 
         // The held section is a fixed slice of the width; the three timed
         // sections share the rest in proportion to their real durations.
-        const float hold  = 0.22f;
         const float timed = juce::jmax (1.0e-4f, A + D + R);
-        const float sc    = (1.0f - hold) / timed;
+        g.sc = (1.0f - kHold) / timed;
 
-        const float x0 = in.getX(), w = in.getWidth();
-        const float yb = in.getBottom(), h = in.getHeight();
-        const float xA = x0 + w * A * sc;
-        const float xD = xA + w * D * sc;
-        const float xS = xD + w * hold;
+        const float w = in.getWidth();
+        g.yb = in.getBottom();
+        g.h  = in.getHeight();
+        g.yS = g.yb - g.h * S;
+        g.xA = in.getX() + w * A * g.sc;
+        g.xD = g.xA + w * D * g.sc;
+        g.xS = g.xD + w * kHold;
+        g.xR = in.getRight();
+        return g;
+    }
 
-        juce::Path p;
-        p.startNewSubPath (x0, yb);
-        p.lineTo (xA, yb - h);              // attack to full
-        p.lineTo (xD, yb - h * S);          // decay to sustain
-        p.lineTo (xS, yb - h * S);          // hold
-        p.lineTo (in.getRight(), yb);       // release
-
-        auto fill = p;
-        fill.lineTo (in.getRight(), yb);
-        fill.lineTo (x0, yb);
-        fill.closeSubPath();
-        g.setColour (colour_.withAlpha (0.12f));
-        g.fillPath (fill);
-
-        g.setColour (kGrid);
-        g.fillRect (x0, yb - h * S, w, 1.0f);
-
-        g.setColour (colour_.withAlpha (0.25f));
-        g.strokePath (p, juce::PathStrokeType (3.0f));
-        g.setColour (colour_);
-        g.strokePath (p, juce::PathStrokeType (1.5f));
-
-        // Breakpoint markers at the three corners.
-        g.setColour (kBg);
-        for (auto pt : { juce::Point<float> (xA, yb - h),
-                         juce::Point<float> (xD, yb - h * S),
-                         juce::Point<float> (xS, yb - h * S) })
+    juce::Point<float> nodePos (const Geometry& g, int i) const
+    {
+        switch (i)
         {
-            g.setColour (kBg);     g.fillRect (pt.x - 2.5f, pt.y - 2.5f, 5.0f, 5.0f);
-            g.setColour (colour_); g.drawRect (juce::Rectangle<float> (pt.x - 2.5f, pt.y - 2.5f, 5.0f, 5.0f), 1.0f);
+            case 0:  return { g.xA, g.yb - g.h };
+            case 1:  return { g.xD, g.yS };
+            case 2:  return { g.xS, g.yS };
+            default: return { (g.xS + g.xR) * 0.5f, (g.yS + g.yb) * 0.5f };
         }
     }
 
-private:
+    int hitNode (juce::Point<float> p) const
+    {
+        if (a_ == nullptr) return -1;
+        const auto g = geometry (interior());
+        for (int i = 0; i < kNumNodes; ++i)
+            if (nodePos (g, i).getDistanceFrom (p) <= kHitR)
+                return i;
+        return -1;
+    }
+
+    std::array<juce::RangedAudioParameter*, 2> gestureParams (int node) const
+    {
+        switch (node)
+        {
+            case 0:  return { a_, nullptr };
+            case 1:  return { d_, s_ };
+            case 2:  return { s_, nullptr };
+            default: return { r_, nullptr };
+        }
+    }
+
     void timerCallback() override
     {
         if (a_ == nullptr) return;
@@ -141,6 +312,10 @@ private:
     juce::Colour colour_;
     juce::RangedAudioParameter *a_ = nullptr, *d_ = nullptr, *s_ = nullptr, *r_ = nullptr;
     float last_[4] { -1.0f, -1.0f, -1.0f, -1.0f };
+
+    int   dragNode_  = -1;
+    int   hoverNode_ = -1;
+    float dragScale_ = 0.0f;   // x scale frozen for the duration of a drag
 };
 
 //==============================================================================

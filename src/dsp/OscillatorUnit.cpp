@@ -38,21 +38,28 @@ void OscillatorUnit::reset() noexcept
 
 void OscillatorUnit::setType (OscType type) noexcept
 {
-    type_ = type;
     switch (type)
     {
         case OscType::Saw:      analog_.setWaveform (AnalogWave::Saw);      break;
         case OscType::Square:   analog_.setWaveform (AnalogWave::Square);   break;
         case OscType::Triangle: analog_.setWaveform (AnalogWave::Triangle); break;
         case OscType::Pulse:    analog_.setWaveform (AnalogWave::Pulse);    break;
-        case OscType::VPS:                                                  break;   // configured via amount/pulseWidth
-        case OscType::Scanned:                                              break;   // configured via amount/pulseWidth + excite()
-        case OscType::Vosim:                                                break;   // configured via amount/pulseWidth
-        case OscType::Walsh:                                                break;   // configured via amount/pulseWidth
-        case OscType::Supersaw:                                             break;   // configured via amount/pulseWidth/engine
-        case OscType::Harmonic:                                             break;   // configured via amount/pulseWidth/engine
-        case OscType::PhaseDistortion: default: break;
+        default: break;   // the rest are configured through the shared controls
     }
+
+    if (type == type_)
+        return;   // setParams runs every block; only a real change needs the rest
+
+    type_ = type;
+
+    // The shared controls only ever reached the previously selected engine, so
+    // hand the newly selected one the current values before it is asked for a
+    // sample. Order matters no more than it does on the normal path.
+    setAmount      (amount_);
+    setPulseWidth  (pulseWidth_);
+    setEngineParam (engineParam_);
+    setPhaseMod    (phaseMod_);
+    setBaseFrequency (baseHz_);
 }
 
 void OscillatorUnit::setTuning (int octave, int semitone, double fineCents) noexcept
@@ -70,14 +77,20 @@ void OscillatorUnit::setBaseFrequency (double frequencyHz) noexcept
 {
     baseHz_ = frequencyHz;
     const double f = frequencyHz * tuneMul_;
-    pd_.setFrequency (f);
-    vps_.setFrequency (f);
-    scanned_.setFrequency (f);
-    vosim_.setFrequency (f);
-    walsh_.setFrequency (f);
-    supersaw_.setFrequency (f);
-    harmonic_.setFrequency (f);
-    analog_.setFrequency (f);
+
+    // Selected engine only: this runs every control chunk, and the additive
+    // engine re-derives its harmonic ceiling (and so its table) from pitch.
+    switch (type_)
+    {
+        case OscType::PhaseDistortion: pd_.setFrequency (f);       break;
+        case OscType::VPS:             vps_.setFrequency (f);      break;
+        case OscType::Scanned:         scanned_.setFrequency (f);  break;
+        case OscType::Vosim:           vosim_.setFrequency (f);    break;
+        case OscType::Walsh:           walsh_.setFrequency (f);    break;
+        case OscType::Supersaw:        supersaw_.setFrequency (f); break;
+        case OscType::Harmonic:        harmonic_.setFrequency (f); break;
+        default:                       analog_.setFrequency (f);   break;
+    }
 }
 
 float OscillatorUnit::processSample() noexcept

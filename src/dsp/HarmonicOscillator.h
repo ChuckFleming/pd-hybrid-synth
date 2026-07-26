@@ -50,8 +50,16 @@ public:
     void  processBlock  (float* out, int numSamples) noexcept;
 
 private:
+    // The table is rebuilt lazily and no more often than kRebuildInterval
+    // samples. Four setters feed it and all of them can move every control
+    // chunk (drift, the DCW envelope, a modulated centroid), so rebuilding
+    // eagerly inside each setter meant several full rebuilds per chunk per
+    // voice. ~94 Hz is far finer than the ear resolves on a timbre sweep.
+    static constexpr int kRebuildInterval = 512;
+
+    void   markDirty   () noexcept { dirty_ = true; }
     void   rebuildTable() noexcept;
-    void   rebuildIfNeeded() noexcept;
+    void   serviceRebuild (int elapsedSamples) noexcept;
     double coreSample  () noexcept;
 
     double sampleRate_ = 44100.0;
@@ -72,6 +80,10 @@ private:
     double widthBuilt_    = -1.0;
     int    ceilingBuilt_  = -1;
     int    ceiling_       = kMaxHarmonic;
+
+    bool dirty_ = true;          // a control moved; table not yet caught up
+    bool everBuilt_ = false;     // first build is never deferred
+    int  sinceRebuild_ = 0;      // samples since the last rebuild
 
     float  table_[kTableLen] = { 0.0f };
     bool   wrapped_ = false;

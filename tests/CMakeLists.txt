@@ -7,6 +7,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Catch2)
 
+# Offline CPU benchmark (not part of ctest): used to chase glitching.
+add_executable(pdhybrid_bench bench/bench_main.cpp)
+target_include_directories(pdhybrid_bench PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(pdhybrid_bench PRIVATE pdhybrid_dsp)
+target_compile_features(pdhybrid_bench PRIVATE cxx_std_17)
+
 add_executable(pdhybrid_tests
     dsp/oscillator_tests.cpp
     dsp/analog_oscillator_tests.cpp

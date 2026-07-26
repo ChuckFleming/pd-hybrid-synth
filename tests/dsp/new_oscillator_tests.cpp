@@ -3,6 +3,7 @@
 
 #include "dsp/SupersawOscillator.h"
 #include "dsp/HarmonicOscillator.h"
+#include "dsp/OscillatorUnit.h"
 #include "harness/Spectrum.h"
 #include "harness/SignalStats.h"
 
@@ -236,6 +237,98 @@ TEST_CASE ("Harmonic odd/even balance changes the waveform", "[osc][harmonic]")
     };
 
     REQUIRE (evenOddRatio (1.0) > evenOddRatio (0.0) * 2.0);
+}
+
+// ---------------------------------------------------------------------------
+// OscillatorUnit dispatch
+// ---------------------------------------------------------------------------
+
+TEST_CASE ("Switching engine applies the controls set while it was inactive",
+           "[osc][unit]")
+{
+    // The unit drives only the selected engine -- broadcasting the shared
+    // timbre controls to all of them made a modulated DCW envelope rebuild
+    // wavetables for engines that were not even playing, which cost ~90% of
+    // real time on a six-note chord. The price of that fix is that an engine
+    // hears nothing while inactive, so setType has to hand it the current
+    // values. This checks that a late switch lands on the same sound as
+    // selecting the engine up front.
+    const double sr = 48000.0;
+
+    auto render = [&] (bool switchLate, pdhybrid::OscType target)
+    {
+        pdhybrid::OscillatorUnit u;
+        u.setSampleRate (sr);
+
+        if (! switchLate)
+            u.setType (target);
+        else
+            u.setType (pdhybrid::OscType::Saw);   // some other engine first
+
+        u.setAmount (0.72);
+        u.setPulseWidth (0.31);
+        u.setEngineParam (0.85);
+        u.setTuning (0, 0, 0.0);
+        u.setBaseFrequency (220.0);
+
+        if (switchLate)
+            u.setType (target);
+
+        u.reset();
+        u.excite();
+
+        std::vector<float> buf (4096);
+        for (auto& s : buf) s = u.processSample();
+        return buf;
+    };
+
+    for (auto target : { pdhybrid::OscType::Harmonic, pdhybrid::OscType::Supersaw,
+                         pdhybrid::OscType::Walsh,    pdhybrid::OscType::Vosim,
+                         pdhybrid::OscType::VPS,      pdhybrid::OscType::PhaseDistortion,
+                         pdhybrid::OscType::Pulse })
+    {
+        const auto upFront   = render (false, target);
+        const auto switchedTo = render (true,  target);
+
+        INFO ("engine " << static_cast<int> (target));
+        REQUIRE_FALSE (hasBadValues (switchedTo));
+        REQUIRE (switchedTo == upFront);
+    }
+}
+
+TEST_CASE ("Harmonic table keeps up with a swept centroid", "[osc][harmonic]")
+{
+    // Rebuilds are deferred and rate-limited, so confirm a sweep still actually
+    // changes the waveform rather than freezing on a stale table.
+    const double sr = 48000.0;
+    HarmonicOscillator o;
+    o.setSampleRate (sr);
+    o.setFrequency (200.0);
+    o.setWidth (0.2);
+    o.setOddEven (0.5);
+    o.setCentroid (0.0);
+    o.reset();
+
+    // Sweep the centroid the way a DCW envelope would, then check the spectrum
+    // really has moved up the series.
+    std::vector<float> buf;
+    buf.reserve (32768);
+    for (int i = 0; i < 32768; ++i)
+    {
+        if ((i % 32) == 0)
+            o.setCentroid (std::min (0.85, 0.85 * i / 16000.0));
+        buf.push_back (o.processSample());
+    }
+    REQUIRE_FALSE (hasBadValues (buf));
+
+    // Compare the first and last quarter: the peak partial must have climbed.
+    std::vector<float> early (buf.begin(), buf.begin() + 8192);
+    std::vector<float> late  (buf.end() - 8192, buf.end());
+    const double earlyPeak = computeSpectrum (early, sr).peakFrequency();
+    const double latePeak  = computeSpectrum (late,  sr).peakFrequency();
+
+    INFO ("peak moved " << earlyPeak << " Hz -> " << latePeak << " Hz");
+    REQUIRE (latePeak > earlyPeak * 2.0);
 }
 
 TEST_CASE ("Harmonic oscillator stays bounded across the keyboard", "[osc][harmonic][stability]")

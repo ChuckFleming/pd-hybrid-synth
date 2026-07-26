@@ -12,7 +12,7 @@ void HarmonicOscillator::setSampleRate (double sampleRateHz) noexcept
     {
         sampleRate_ = sampleRateHz;
         phaseInc_ = frequency_ / sampleRate_;
-        rebuildIfNeeded();
+        markDirty();
     }
 }
 
@@ -26,25 +26,25 @@ void HarmonicOscillator::setFrequency (double frequencyHz) noexcept
     const double top = 0.45 * sampleRate_;
     const int    c   = frequency_ > 1.0 ? static_cast<int> (top / frequency_) : kMaxHarmonic;
     ceiling_ = std::clamp (c, 1, kMaxHarmonic);
-    rebuildIfNeeded();
+    if (ceiling_ != ceilingBuilt_) markDirty();
 }
 
 void HarmonicOscillator::setCentroid (double amount01) noexcept
 {
     centroid_ = std::clamp (amount01, 0.0, 1.0);
-    rebuildIfNeeded();
+    if (centroid_ != centroidBuilt_) markDirty();
 }
 
 void HarmonicOscillator::setOddEven (double pulseWidth01) noexcept
 {
     oddEven_ = std::clamp (pulseWidth01, 0.0, 1.0);
-    rebuildIfNeeded();
+    if (oddEven_ != oddEvenBuilt_) markDirty();
 }
 
 void HarmonicOscillator::setWidth (double width01) noexcept
 {
     width_ = std::clamp (width01, 0.0, 1.0);
-    rebuildIfNeeded();
+    if (width_ != widthBuilt_) markDirty();
 }
 
 void HarmonicOscillator::setOversampling (int factor) noexcept
@@ -60,17 +60,26 @@ void HarmonicOscillator::reset() noexcept
 {
     phase_ = 0.0;
     wrapped_ = false;
+    dirty_ = true;
     rebuildTable();
     if (os_.factor() != osFactor_)
         os_.prepare (osFactor_);
     os_.reset();
 }
 
-void HarmonicOscillator::rebuildIfNeeded() noexcept
+void HarmonicOscillator::serviceRebuild (int elapsedSamples) noexcept
 {
-    if (centroid_ != centroidBuilt_ || oddEven_ != oddEvenBuilt_
-        || width_ != widthBuilt_ || ceiling_ != ceilingBuilt_)
-        rebuildTable();
+    sinceRebuild_ += elapsedSamples;
+    if (! dirty_)
+        return;
+
+    // The very first build has to happen before any sample is produced;
+    // afterwards a pending change waits for the rebuild interval so a
+    // continuously modulated centroid cannot rebuild every control chunk.
+    if (everBuilt_ && sinceRebuild_ < kRebuildInterval)
+        return;
+
+    rebuildTable();
 }
 
 void HarmonicOscillator::rebuildTable() noexcept
@@ -102,9 +111,28 @@ void HarmonicOscillator::rebuildTable() noexcept
     {
         if (amp[k] < 1.0e-4)
             continue;
-        const double w = kTwoPi * k / kTableLen;
-        for (int n = 0; n < kTableLen; ++n)
-            acc[n] += amp[k] * std::sin (w * n);
+
+        // sin(w*n) by recurrence rather than a std::sin per sample:
+        //   s[n] = 2cos(w) * s[n-1] - s[n-2]
+        // Same values to well past float precision over one table, and it
+        // turns the inner loop into a multiply-add. This build sits on the
+        // audio thread, so the difference is the difference between a
+        // modulated harmonic sweep costing 1% and costing 90%.
+        const double w  = kTwoPi * k / kTableLen;
+        const double c2 = 2.0 * std::cos (w);
+        double sPrev = 0.0;                 // sin(0)
+        double sCur  = std::sin (w);        // sin(w)
+        const double a = amp[k];
+
+        acc[0] += a * sPrev;
+        if (kTableLen > 1) acc[1] += a * sCur;
+        for (int n = 2; n < kTableLen; ++n)
+        {
+            const double sNext = c2 * sCur - sPrev;
+            acc[n] += a * sNext;
+            sPrev = sCur;
+            sCur  = sNext;
+        }
     }
 
     double peak = 0.0;
@@ -118,6 +146,10 @@ void HarmonicOscillator::rebuildTable() noexcept
     oddEvenBuilt_  = oddEven_;
     widthBuilt_    = width_;
     ceilingBuilt_  = ceiling_;
+
+    dirty_        = false;
+    everBuilt_    = true;
+    sinceRebuild_ = 0;
 }
 
 double HarmonicOscillator::coreSample() noexcept
@@ -143,6 +175,8 @@ double HarmonicOscillator::coreSample() noexcept
 
 float HarmonicOscillator::processSample() noexcept
 {
+    serviceRebuild (1);
+
     wrapped_ = false;
     float high[8];
     for (int j = 0; j < osFactor_; ++j)

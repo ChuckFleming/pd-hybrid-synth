@@ -32,6 +32,13 @@ public:
     // Processes `numSamples` of stereo audio in place.
     void processStereo (float* left, float* right, int numSamples) noexcept;
 
+    // As above, but also writes the linear gain applied to each sample. The
+    // processor's FX-send bus needs the *same* gain curve as the main mix,
+    // otherwise the two buses drift apart and the send routing stops summing
+    // back to the original signal. Writes 1.0 while the compressor is bypassed.
+    void processStereo (float* left, float* right, int numSamples,
+                        float* gainOut) noexcept;
+
     // Current smoothed gain reduction in dB (<= 0), for metering/tests.
     double gainReductionDb() const noexcept { return gainDb_; }
 

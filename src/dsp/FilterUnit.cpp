@@ -11,6 +11,7 @@ void FilterUnit::setSampleRate (double sampleRateHz) noexcept
     allpass_.setSampleRate (sampleRateHz);
     formant_.setSampleRate (sampleRateHz);
     diode_.setSampleRate (sampleRateHz);
+    bandSplit_.setSampleRate (sampleRateHz);
 }
 
 void FilterUnit::reset() noexcept
@@ -22,9 +23,11 @@ void FilterUnit::reset() noexcept
     allpass_.reset();
     formant_.reset();
     diode_.reset();
+    bandSplit_.reset();
 }
 
-void FilterUnit::configure (double cutoffHz, double resonance, double morph) noexcept
+void FilterUnit::configure (double cutoffHz, double resonance, double morph,
+                            double noteHz) noexcept
 {
     switch (type_)
     {
@@ -34,6 +37,7 @@ void FilterUnit::configure (double cutoffHz, double resonance, double morph) noe
             svf_.setMorph (morph);
             break;
         case FilterType::PdResonator:
+            pdReso_.setNoteFrequency (noteHz);
             pdReso_.setFrequency (cutoffHz);
             pdReso_.setResonance (resonance);
             pdReso_.setAmount (morph);
@@ -63,6 +67,11 @@ void FilterUnit::configure (double cutoffHz, double resonance, double morph) noe
             diode_.setCutoff (cutoffHz);
             diode_.setResonance (resonance);
             break;
+        case FilterType::BandSplit:
+            bandSplit_.setFrequency (cutoffHz);
+            bandSplit_.setResonance (resonance);
+            bandSplit_.setTilt (morph);
+            break;
         case FilterType::Ladder:
         default:
             ladder_.setCutoff (cutoffHz);
@@ -85,6 +94,7 @@ float FilterUnit::processSample (float x) noexcept
             return 0.5f * (x + allpass_.processSample (x));
         case FilterType::Formant:       return formant_.processSample (x);
         case FilterType::DiodeLadder:   return diode_.processSample (x);
+        case FilterType::BandSplit:     return bandSplit_.processSample (x);
         case FilterType::Ladder:
         default:                        return ladder_.processSample (x);
     }

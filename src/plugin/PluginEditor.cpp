@@ -38,12 +38,12 @@ juce::Font monoFont (float height, bool bold = false)
                        bold ? juce::Font::bold : juce::Font::plain);
 }
 
-const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh", "Supersaw", "Harmonic" };
+const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh", "Supersaw", "Harmonic", "PAF", "Granular", "Wavetable" };
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                         "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
 // Must match the "filterType" / "filter2Type" choice parameters exactly.
 const juce::StringArray kFilterTypeNames { "Ladder", "State Variable", "PD Resonator",
-                                           "Comb", "Allpass", "Formant", "Diode Ladder" };
+                                           "Comb", "Allpass", "Formant", "Diode Ladder", "Band Split" };
 
 // Per-type role of the filter MORPH knob. Every engine reads it differently and
 // two ignore it entirely, so the editor relabels it and greys it out when dead.
@@ -60,6 +60,7 @@ FilterKnobRoles filterKnobRoles (int type)
         case pdhybrid::FilterType::Comb:          return { "Damp",     true };
         case pdhybrid::FilterType::Allpass:       return { "Stages",   true };
         case pdhybrid::FilterType::Formant:       return { "Vowel",    true };
+        case pdhybrid::FilterType::BandSplit:     return { "Tilt",     true };
         case pdhybrid::FilterType::DiodeLadder:   return { "Morph",    false };  // 24 dB LP only
         case pdhybrid::FilterType::Ladder:
         default:                                  return { "Morph",    false };  // 24 dB LP only
@@ -91,6 +92,9 @@ OscKnobRoles oscKnobRoles (int type)
         case pdhybrid::OscType::Walsh:           return { "Tilt",   true,  "Odd",   true,  "Fold",    true,  false };  // engine = wavefold
         case pdhybrid::OscType::Supersaw:        return { "Detune", true,  "Mix",   true,  "Voices",  true,  false };  // engine = saw count
         case pdhybrid::OscType::Harmonic:        return { "Partial", true, "Odd/Ev", true, "Width",   true,  false };  // engine = window width
+        case pdhybrid::OscType::Paf:             return { "Formant", true, "Band",  true,  "Shape",   true,  false };  // phase-aligned formant
+        case pdhybrid::OscType::Granular:        return { "Scatter", true, "Size",  true,  "Density", true,  false };  // grain cloud
+        case pdhybrid::OscType::Wavetable:       return { "Pos",    true,  "Warp",  true,  "Fmnt",    true,  false };  // engine = formant shift
         default:                                 return { "PD Amt", true,  "Width", true,  "Engine",  true,  false };
     }
 }
@@ -110,7 +114,7 @@ const juce::StringArray kDstNames { "None", "Pitch", "PD Amount", "Pulse Width",
                                     "LFO Rate", "LFO 2 Rate", "Noise Lvl",
                                     "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ",
                                     "Ring Mod", "Cross Mod", "Engine", "PD Amount B",
-                                    "Pluck Decay", "Pluck Damp" };
+                                    "Pluck Decay", "Pluck Damp", "Chorus Depth", "Reverb Mix", "FX Send" };
 }
 
 //==============================================================================
@@ -975,6 +979,11 @@ void PDHybridEditor::buildSections()
     mixer.combos = { &addCombo ("oscCrossMod", { "No Cross Mod", "Hard Sync", "Phase Mod" }) };
     mixer.knobs  = { &addKnob ("noiseLevel", "Noise"), &addKnob ("ringMod", "Ring"),
                      &addKnob ("noiseMod", "N.Mod"), &addKnob ("crossModAmount", "X-Amt") };
+    // The wavetable is shared by both oscillator slots, so it belongs with the
+    // mixer rather than inside either Osc card.
+    wavetableButton.onClick = [this] { chooseWavetable(); };
+    refreshWavetableButton();
+    mixer.toggles = { &wavetableButton };
 
     bassCurve.attach (proc.apvts, "bassAttack", "bassDecay", "bassSustain", "bassRelease");
     bassSec.title   = "Mono Bass";
@@ -995,7 +1004,8 @@ void PDHybridEditor::buildSections()
     unison.cols  = 4;
     unison.span  = 2;
     unison.knobs = { &addKnob ("unisonVoices", "Voices", 0), &addKnob ("unisonDetune", "Detune"),
-                     &addKnob ("unisonWidth", "Width"), &addKnob ("drift", "Drift") };
+                     &addKnob ("unisonWidth", "Width"), &addKnob ("unisonSpread", "Spread"),
+                     &addKnob ("drift", "Drift"), &addKnob ("fxSend", "FX Send") };
 
     glideSec.title  = "Glide";
     glideSec.cols   = 2;
@@ -1184,7 +1194,8 @@ void PDHybridEditor::buildSections()
     arpSec.span    = 2;
     arpSec.toggles = { &addToggle ("arpOn", "ON"), &addToggle ("arpLatch", "LATCH") };
     arpSec.combos  = { &addCombo ("arpMode", { "Up", "Down", "Up-Down", "Random", "As Played" }),
-                       &addCombo ("arpRate", { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8.", "1/4T", "1/8T" }) };
+                       &addCombo ("arpRate", { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8.", "1/4T", "1/8T" }),
+                       &addCombo ("arpTarget", { "Arp: Poly + Bass", "Arp: Poly Only", "Arp: Bass Only" }) };
     arpSec.knobs   = { &addKnob ("arpOctaves", "Oct", 0), &addKnob ("arpGate", "Gate") };
 
     // ------------------------------------------------------------------ OUT --
@@ -2349,6 +2360,43 @@ void PDHybridEditor::showPresetMenu()
                                 refreshPresetList();
                             }
                         });
+}
+
+void PDHybridEditor::refreshWavetableButton()
+{
+    const auto name = proc.wavetableName();
+    wavetableButton.setButtonText ("WT: " + (name.isEmpty() ? juce::String ("default") : name));
+}
+
+void PDHybridEditor::chooseWavetable()
+{
+    wavetableChooser = std::make_unique<juce::FileChooser> (
+        "Load a wavetable (single-cycle frames, 2048 samples each)",
+        juce::File::getSpecialLocation (juce::File::userMusicDirectory),
+        "*.wav;*.aif;*.aiff");
+
+    wavetableChooser->launchAsync (juce::FileBrowserComponent::openMode
+                                   | juce::FileBrowserComponent::canSelectFiles,
+        [this] (const juce::FileChooser& fc)
+        {
+            const auto file = fc.getResult();
+            if (file == juce::File{})
+                return;   // cancelled
+
+            if (proc.loadWavetable (file))
+            {
+                refreshWavetableButton();
+                oscACycle.setWavetable (proc.wavetableSet());
+                oscBCycle.setWavetable (proc.wavetableSet());
+            }
+            else
+            {
+                juce::NativeMessageBox::showMessageBoxAsync (
+                    juce::MessageBoxIconType::WarningIcon, "Wavetable",
+                    "Could not read " + file.getFileName()
+                        + ".\nThe previous table is still loaded.");
+            }
+        });
 }
 
 void PDHybridEditor::randomizePatch()

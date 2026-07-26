@@ -43,12 +43,19 @@ void PhaseDistortionResonator::setAmount (double amount01) noexcept
     updateCoefficients();
 }
 
+void PhaseDistortionResonator::setNoteFrequency (double noteHz) noexcept
+{
+    noteHz_ = noteHz > 0.0 ? noteHz : 0.0;
+    updateCoefficients();
+}
+
 void PhaseDistortionResonator::reset() noexcept
 {
     ic1_ = 0.0;
     ic2_ = 0.0;
     phase_ = 0.0;
     env_   = 0.0;
+    fundPhase_ = 0.0;
 }
 
 void PhaseDistortionResonator::updateCoefficients() noexcept
@@ -75,6 +82,18 @@ void PhaseDistortionResonator::updateCoefficients() noexcept
     ringGain_ = resonance_;
 
     phaseInc_ = fc / sampleRate_;
+
+    // CZ sync mode: the ring runs at a whole-ish multiple of the fundamental
+    // so the formant tracks the keyboard, and the fundamental drives the
+    // once-per-period window.
+    if (noteHz_ > 0.0)
+    {
+        fundInc_ = noteHz_ / sampleRate_;
+    }
+    else
+    {
+        fundInc_ = 0.0;
+    }
 
     // Fade the warp out between fs/24 and fs/8: the distorted sine carries a
     // few dozen harmonics and the filter stage is not oversampled.
@@ -110,21 +129,45 @@ float PhaseDistortionResonator::processSample (float xin) noexcept
     // lowpass. Matches the peak height an ordinary resonant SVF would give.
     const double bp = v1;
 
-    // --- Ring: a free-running phase accumulator at the resonant frequency ---
-    // Deliberately not re-synced to the bandpass. Locking to its zero crossings
-    // is clean while the input is periodic, but a broadband input crosses zero
-    // irregularly, the phase jitters, and the warp then yields noise instead of
-    // a harmonic series -- which is the failure the original design had. The
-    // envelope below is what ties the ring to the signal.
-    phase_ += phaseInc_;
-    if (phase_ >= 1.0) phase_ -= 1.0;
-
     const double mag = std::abs (bp);
     env_ = mag > env_ ? envAtk_ * env_ + (1.0 - envAtk_) * mag
                       : envRel_ * env_ + (1.0 - envRel_) * mag;
 
-    const double warped = distortPhase (phase_, effAmount_);
-    const double ring   = env_ * std::sin (kTwoPi * warped);
+    double ring;
+    if (fundInc_ > 0.0)
+    {
+        // --- CZ resonance: hard sync + once-per-period window ---
+        // The fundamental's phase both resets the ring (so the formant sits at
+        // a fixed ratio above the note and the sync edge buzzes) and provides
+        // the falling window that makes each period decay into the next reset.
+        fundPhase_ += fundInc_;
+        if (fundPhase_ >= 1.0)
+        {
+            fundPhase_ -= 1.0;
+            phase_ = 0.0;              // hard sync
+        }
+
+        phase_ += phaseInc_;
+        if (phase_ >= 1.0) phase_ -= 1.0;
+
+        const double warped = distortPhase (phase_, effAmount_);
+        const double window = 1.0 - fundPhase_;   // CZ's falling saw window
+        ring = env_ * window * std::sin (kTwoPi * warped);
+    }
+    else
+    {
+        // --- Free-running ring at the resonant frequency ---
+        // Deliberately not re-synced to the bandpass. Locking to its zero
+        // crossings is clean while the input is periodic, but a broadband input
+        // crosses zero irregularly, the phase jitters, and the warp then yields
+        // noise instead of a harmonic series -- the failure the original design
+        // had. The envelope is what ties the ring to the signal.
+        phase_ += phaseInc_;
+        if (phase_ >= 1.0) phase_ -= 1.0;
+
+        const double warped = distortPhase (phase_, effAmount_);
+        ring = env_ * std::sin (kTwoPi * warped);
+    }
 
     return static_cast<float> (lp + ringGain_ * ring);
 }

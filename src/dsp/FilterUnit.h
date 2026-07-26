@@ -7,12 +7,13 @@
 #include "AllpassDispersion.h"
 #include "FormantFilter.h"
 #include "DiodeLadderFilter.h"
+#include "BandSplitFilter.h"
 #include "SynthParams.h"   // FilterType
 
 namespace pdhybrid {
 
 /**
-    One filter "slot": holds all seven filter engines and routes the signal
+    One filter "slot": holds all eight filter engines and routes the signal
     through the currently selected one. A Voice owns two of these so they can be
     run singly, in series (A -> B) or in parallel (A + B), each with its own
     type, cutoff, resonance and morph.
@@ -26,8 +27,11 @@ public:
     void setType (FilterType type) noexcept { type_ = type; }
 
     // Applies the (already modulated) cutoff / resonance / morph to whichever
-    // filter type is selected.
-    void configure (double cutoffHz, double resonance, double morph) noexcept;
+    // filter type is selected. `noteHz` is the pitch of the note being filtered
+    // (0 = unknown); only the PD resonator uses it, to sync its ring to the
+    // fundamental the way the CZ's resonant waves do.
+    void configure (double cutoffHz, double resonance, double morph,
+                    double noteHz = 0.0) noexcept;
 
     float processSample (float x) noexcept;
 
@@ -41,6 +45,7 @@ private:
     AllpassDispersion        allpass_;
     FormantFilter            formant_;
     DiodeLadderFilter        diode_;
+    BandSplitFilter          bandSplit_;
 };
 
 } // namespace pdhybrid

@@ -57,6 +57,9 @@ enum class ModDest : int
     PdAmountB,      // extra DCW on osc B only (PdAmount still moves both slots)
     PluckDecay,     // Karplus-Strong ring time
     PluckDamp,      // Karplus-Strong tone
+    ChorusDepth,    // global chorus depth
+    ReverbMix,      // global reverb wet mix
+    FxSend,         // per-voice send level into the global FX chain
     Count
 };
 

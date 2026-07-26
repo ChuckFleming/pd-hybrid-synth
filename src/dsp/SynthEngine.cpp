@@ -63,6 +63,25 @@ int SynthEngine::allocateVoice (int limit) noexcept
     return best;
 }
 
+double SynthEngine::unisonSpreadAt (int k, int n) const noexcept
+{
+    if (n <= 1)
+        return 0.0;
+
+    const double t = 2.0 * k / (n - 1) - 1.0;   // even placement, -1..1
+
+    // Spread shape: 0.5 is the even distribution (gamma 1). Below that the
+    // stack bunches toward the centre pitch (tight chorus, one clear pitch);
+    // above it the outer voices are pushed to the edges of the detune range,
+    // which is the wide, hollow supersaw character.
+    const double shape = params_.unisonSpread;
+    if (std::abs (shape - 0.5) < 1.0e-6)
+        return t;
+
+    const double gamma = std::pow (2.0, 1.0 - 2.0 * shape);   // 2 .. 0.5
+    return (t < 0.0 ? -1.0 : 1.0) * std::pow (std::abs (t), gamma);
+}
+
 void SynthEngine::startVoice (int v, int note, float velocity, int noteId,
                               double spread, double fromHz, double glideSamples) noexcept
 {
@@ -119,7 +138,7 @@ void SynthEngine::polyNoteOn (int note, float velocity, int noteId)
     for (int k = 0; k < n; ++k)
     {
         const int    v      = allocateVoice (lim);
-        const double spread = (n == 1) ? 0.0 : (2.0 * k / (n - 1) - 1.0);   // -1..1
+        const double spread = unisonSpreadAt (k, n);
         startVoice (v, note, velocity, noteId, spread, fromHz, glideSamples);
     }
 
@@ -241,7 +260,7 @@ void SynthEngine::updateMono()
         {
             const int    v      = allocateVoice (lim);
             monoVoices_[k]      = v;
-            const double spread = (n == 1) ? 0.0 : (2.0 * k / (n - 1) - 1.0);
+            const double spread = unisonSpreadAt (k, n);
             startVoice (v, sel->note, sel->velocity, sel->noteId, spread, fromHz, glideSamples);
         }
         monoNote_   = sel->note;
@@ -333,11 +352,25 @@ void SynthEngine::setNoteTimbre (int noteId, double timbre01) noexcept
 
 void SynthEngine::renderBlock (float* left, float* right, int numSamples)
 {
+    renderBlock (left, right, nullptr, nullptr, numSamples);
+}
+
+void SynthEngine::renderBlock (float* left, float* right,
+                               float* sendL, float* sendR, int numSamples)
+{
+    const bool wantSend = (sendL != nullptr && sendR != nullptr);
+
     for (int j = 0; j < numSamples; ++j)
     {
         left[j]  = 0.0f;
         right[j] = 0.0f;
     }
+    if (wantSend)
+        for (int j = 0; j < numSamples; ++j)
+        {
+            sendL[j] = 0.0f;
+            sendR[j] = 0.0f;
+        }
 
     for (int i = 0; i < kMaxVoices; ++i)
     {
@@ -349,7 +382,7 @@ void SynthEngine::renderBlock (float* left, float* right, int numSamples)
         voices_[i].setPressure (voicePressure_[i]);
         voices_[i].setTimbre (voiceTimbre_[i]);
         voices_[i].setModWheel (modWheel_);
-        voices_[i].renderBlock (left, right, numSamples);
+        voices_[i].renderBlock (left, right, sendL, sendR, numSamples);
     }
 }
 

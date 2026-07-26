@@ -47,7 +47,18 @@ public:
     void setModWheel      (double modWheel01) noexcept { modWheel_ = modWheel01; }
 
     // Renders `numSamples` of summed stereo output (overwrites `left`/`right`).
+    // Detune/pan offset (-1..1) for sub-voice k of an n-voice unison stack,
+    // shaped by params_.unisonSpread. Public because it is a pure function of
+    // the parameters and the only honest way to test the spread shape: read
+    // back off a rendered spectrum, near-coincident detuned voices interfere
+    // and the measurement says more about beat phase than about distribution.
+    double unisonSpreadAt (int k, int n) const noexcept;
+
     void renderBlock (float* left, float* right, int numSamples);
+    // Also fills a send bus with each voice scaled by its FX send level, for
+    // the processor's send-style FX routing.
+    void renderBlock (float* left, float* right,
+                      float* sendL, float* sendR, int numSamples);
 
     int activeVoiceCount() const noexcept;
 

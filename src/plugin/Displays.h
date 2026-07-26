@@ -483,6 +483,15 @@ public:
         rebuild();
     }
 
+    /** Point the preview at the loaded wavetable and redraw. Called when a new
+        table is imported; the parameter timer cannot see that change. */
+    void setWavetable (std::shared_ptr<pdhybrid::WavetableOscillator::WavetableSet> t)
+    {
+        osc_.setWavetable (std::move (t));
+        if (apvts_ != nullptr)
+            rebuild();
+    }
+
     void paint (juce::Graphics& g) override
     {
         auto in = drawFrame (g, getLocalBounds().toFloat(), "CYCLE");

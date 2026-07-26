@@ -8,6 +8,9 @@
 #include "WalshOscillator.h"
 #include "SupersawOscillator.h"
 #include "HarmonicOscillator.h"
+#include "PafOscillator.h"
+#include "GranularOscillator.h"
+#include "WavetableOscillator.h"
 #include "OscEq.h"
 #include "SynthParams.h"   // OscType
 
@@ -35,7 +38,7 @@ public:
     void reset         () noexcept;
 
     void setType       (OscType type) noexcept;
-    void setOversampling (int factor) noexcept  { pd_.setOversampling (factor); vps_.setOversampling (factor); scanned_.setOversampling (factor); vosim_.setOversampling (factor); walsh_.setOversampling (factor); supersaw_.setOversampling (factor); harmonic_.setOversampling (factor); }
+    void setOversampling (int factor) noexcept  { pd_.setOversampling (factor); vps_.setOversampling (factor); scanned_.setOversampling (factor); vosim_.setOversampling (factor); walsh_.setOversampling (factor); supersaw_.setOversampling (factor); harmonic_.setOversampling (factor); paf_.setOversampling (factor); granular_.setOversampling (factor); wavetable_.setOversampling (factor); }
     void setPdWave     (PdWave wave) noexcept   { pd_.setWave (wave); }
     void setPdWaveB    (PdWave wave) noexcept   { pd_.setWaveB (wave); }
     void setPdCombine  (bool on) noexcept       { pd_.setCombine (on); }
@@ -57,6 +60,9 @@ public:
             case OscType::Walsh:           walsh_.setPhaseMod (offset);    break;
             case OscType::Supersaw:        supersaw_.setPhaseMod (offset); break;
             case OscType::Harmonic:        harmonic_.setPhaseMod (offset); break;
+            case OscType::Paf:             paf_.setPhaseMod (offset);      break;
+            case OscType::Granular:        granular_.setPhaseMod (offset); break;
+            case OscType::Wavetable:       wavetable_.setPhaseMod (offset); break;
             default:                       analog_.setPhaseMod (offset);   break;
         }
     }
@@ -68,6 +74,9 @@ public:
            : (type_ == OscType::Walsh)           ? walsh_.wrapped()
            : (type_ == OscType::Supersaw)        ? supersaw_.wrapped()
            : (type_ == OscType::Harmonic)        ? harmonic_.wrapped()
+           : (type_ == OscType::Paf)             ? paf_.wrapped()
+           : (type_ == OscType::Granular)        ? granular_.wrapped()
+           : (type_ == OscType::Wavetable)       ? wavetable_.wrapped()
                                                  : analog_.wrapped(); }
     void syncReset   () noexcept
     { if      (type_ == OscType::PhaseDistortion) pd_.syncReset();
@@ -77,6 +86,9 @@ public:
       else if (type_ == OscType::Walsh)           walsh_.syncReset();
       else if (type_ == OscType::Supersaw)        supersaw_.syncReset();
       else if (type_ == OscType::Harmonic)        harmonic_.syncReset();
+      else if (type_ == OscType::Paf)             paf_.syncReset();
+      else if (type_ == OscType::Granular)        granular_.syncReset();
+      else if (type_ == OscType::Wavetable)       wavetable_.syncReset();
       else                                        analog_.syncReset(); }
     void setEq         (double lowDb, double midDb, double highDb) noexcept
     { eq_.setGains (lowDb, midDb, highDb); }
@@ -97,6 +109,9 @@ public:
             case OscType::Walsh:           walsh_.setTilt (amount01);               break;
             case OscType::Supersaw:        supersaw_.setDetune (amount01);          break;
             case OscType::Harmonic:        harmonic_.setCentroid (amount01);        break;
+            case OscType::Paf:             paf_.setFormant (amount01);              break;
+            case OscType::Granular:        granular_.setScatter (amount01);         break;
+            case OscType::Wavetable:       wavetable_.setPosition (amount01);       break;
             default: break;   // the analog waveforms ignore the amount knob
         }
     }
@@ -111,6 +126,9 @@ public:
             case OscType::Walsh:           walsh_.setOddness (pulseWidth01);    break;
             case OscType::Supersaw:        supersaw_.setMix (pulseWidth01);     break;
             case OscType::Harmonic:        harmonic_.setOddEven (pulseWidth01); break;
+            case OscType::Paf:             paf_.setBandwidth (pulseWidth01);    break;
+            case OscType::Granular:        granular_.setSize (pulseWidth01);    break;
+            case OscType::Wavetable:       wavetable_.setWarp (pulseWidth01);   break;
             case OscType::PhaseDistortion: break;   // PD ignores pulse width
             default:                       analog_.setPulseWidth (pulseWidth01); break;
         }
@@ -128,12 +146,19 @@ public:
             case OscType::Scanned:  scanned_.setMorphRate (value01); break;
             case OscType::Walsh:    walsh_.setFold (value01);        break;
             case OscType::Supersaw: supersaw_.setVoices (value01);   break;
-            case OscType::Harmonic: harmonic_.setWidth (value01);    break;
+            case OscType::Harmonic:  harmonic_.setWidth (value01);   break;
+            case OscType::Paf:       paf_.setShape (value01);        break;
+            case OscType::Granular:  granular_.setDensity (value01); break;
+            case OscType::Wavetable: wavetable_.setFormant (value01); break;
             default: break;
         }
     }
     // Scanned excitation shape (0=pluck 1=impulse 2=noise 3=triangle).
     void setExcite (int shape) noexcept { exciteShape_ = shape; scanned_.setExciteShape (shape); }
+
+    // Analysed wavetable set (null keeps the engine's built-in default).
+    void setWavetable (std::shared_ptr<WavetableOscillator::WavetableSet> t) noexcept
+    { if (t != nullptr) wavetable_.setTable (std::move (t)); }
 
     // Octave (whole octaves), semitone offset, and fine detune in cents.
     void setTuning        (int octave, int semitone, double fineCents) noexcept;
@@ -153,6 +178,9 @@ private:
     WalshOscillator           walsh_;
     SupersawOscillator        supersaw_;
     HarmonicOscillator        harmonic_;
+    PafOscillator             paf_;
+    GranularOscillator        granular_;
+    WavetableOscillator       wavetable_;
     OscEq                     eq_;
     OscType type_    = OscType::PhaseDistortion;
     double  tuneMul_ = 1.0;

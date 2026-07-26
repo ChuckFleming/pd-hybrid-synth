@@ -1,6 +1,8 @@
 #pragma once
 
 #include "ModMatrix.h"
+#include "WavetableOscillator.h"
+#include <memory>
 
 namespace pdhybrid {
 
@@ -14,7 +16,8 @@ enum class FilterType
     Comb,           // tuned feedback comb / waveguide
     Allpass,        // allpass dispersion / phaser
     Formant,        // three-band vowel filter (A-E-I-O-U morph)
-    DiodeLadder     // spread-pole diode ladder (acid flavour)
+    DiodeLadder,    // spread-pole diode ladder (acid flavour)
+    BandSplit       // vocoder-style band splitter
 };
 
 enum class OscType
@@ -29,7 +32,10 @@ enum class OscType
     Vosim,                 // VOSIM (bursts of decaying sin^2 pulses -> formants)
     Walsh,                 // Walsh-function synthesis (sum of +/-1 sequency terms)
     Supersaw,              // stack of detuned PolyBLEP saws
-    Harmonic               // band-limited additive harmonic-window sweep
+    Harmonic,              // band-limited additive harmonic-window sweep
+    Paf,                   // phase-aligned formant (Puckette)
+    Granular,              // windowed sine grain cloud
+    Wavetable              // morphing wavetable with mip-mapped frames
 };
 
 enum class GlideMode
@@ -97,6 +103,10 @@ struct SynthParams
     double  oscAPulseWidth = 0.5;
     double  oscAEngine     = 0.4;    // per-engine extra (VOSIM pulses / Scanned morph / Walsh fold)
     int     oscAExcite     = 0;      // Scanned excite shape
+    // Analysed wavetable, shared by every voice. Null = the engine's built-in
+    // default set. Never reassigned on the audio thread: the processor swaps it
+    // on the message thread and retains the old one so nothing is freed here.
+    std::shared_ptr<WavetableOscillator::WavetableSet> wavetable;
     int     oscAOctave     = 0;
     int     oscASemi       = 0;
     double  oscAFine       = 0.0;    // cents
@@ -191,6 +201,13 @@ struct SynthParams
     int    unisonVoices = 1;    // 1..6 (1 = off)
     double unisonDetune = 15.0; // max detune in cents
     double unisonWidth  = 0.5;  // 0..1 stereo spread of the stack
+    // How the stack is distributed across the detune range: 0.5 = even,
+    // < 0.5 bunches toward the centre pitch, > 0.5 pushes to the edges.
+    double unisonSpread = 0.5;
+
+    // Per-voice send level into the global FX chain (0 = fully dry, 1 = the
+    // whole voice goes through the chain, which is the historical behaviour).
+    double fxSend = 1.0;
 
     // Glide / portamento.
     GlideMode glideMode  = GlideMode::Off;

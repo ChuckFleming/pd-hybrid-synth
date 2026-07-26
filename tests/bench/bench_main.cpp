@@ -100,9 +100,10 @@ SynthParams baseParams()
 }
 
 const char* kOscNames[] = { "PhaseDistortion", "Saw", "Square", "Triangle", "Pulse",
-                            "VPS", "Scanned", "VOSIM", "Walsh", "Supersaw", "Harmonic" };
+                            "VPS", "Scanned", "VOSIM", "Walsh", "Supersaw", "Harmonic",
+                            "PAF", "Granular", "Wavetable" };
 const char* kFiltNames[] = { "Ladder", "StateVariable", "PdResonator", "Comb",
-                             "Allpass", "Formant", "DiodeLadder" };
+                             "Allpass", "Formant", "DiodeLadder", "BandSplit" };
 
 } // namespace
 
@@ -154,7 +155,7 @@ int main (int argc, char** argv)
                  notes, kBlock, kSampleRate, kBudgetMs);
 
     std::printf ("--- Oscillator engines, sustained (Ladder filter) ---\n");
-    for (int t = 0; t <= static_cast<int> (OscType::Harmonic); ++t)
+    for (int t = 0; t <= static_cast<int> (OscType::Wavetable); ++t)
     {
         auto p = baseParams();
         p.oscAType   = static_cast<OscType> (t);
@@ -164,7 +165,7 @@ int main (int argc, char** argv)
     }
 
     std::printf ("\n--- Filter types, sustained (Saw oscillator) ---\n");
-    for (int t = 0; t <= static_cast<int> (FilterType::DiodeLadder); ++t)
+    for (int t = 0; t <= static_cast<int> (FilterType::BandSplit); ++t)
     {
         auto p = baseParams();
         p.oscAType   = OscType::Saw;
@@ -176,7 +177,7 @@ int main (int argc, char** argv)
 
     // Re-striking the chord ~10x/second: this is the reported failure case.
     std::printf ("\n--- Repeated chord strikes (note-on cost) ---\n");
-    for (int t = 0; t <= static_cast<int> (OscType::Harmonic); ++t)
+    for (int t = 0; t <= static_cast<int> (OscType::Wavetable); ++t)
     {
         auto p = baseParams();
         p.oscAType   = static_cast<OscType> (t);
@@ -191,7 +192,7 @@ int main (int argc, char** argv)
     for (int t : { static_cast<int> (OscType::Saw),
                    static_cast<int> (OscType::Walsh),
                    static_cast<int> (OscType::Supersaw),
-                   static_cast<int> (OscType::Harmonic) })
+                   static_cast<int> (OscType::Wavetable) })
     {
         auto p = baseParams();
         p.oscAType     = static_cast<OscType> (t);
@@ -209,7 +210,7 @@ int main (int argc, char** argv)
     // OscillatorUnit dispatches those to *every* engine, so a table-building
     // engine can be rebuilding constantly even when it is not the selected one.
     std::printf ("\n--- Modulated timbre (drift on) — note the *unselected* engines ---\n");
-    for (int t = 0; t <= static_cast<int> (OscType::Harmonic); ++t)
+    for (int t = 0; t <= static_cast<int> (OscType::Wavetable); ++t)
     {
         auto p = baseParams();
         p.oscAType   = static_cast<OscType> (t);
@@ -220,7 +221,7 @@ int main (int argc, char** argv)
     }
 
     std::printf ("\n--- Modulated timbre (DCW envelope sweeping the amount) ---\n");
-    for (int t = 0; t <= static_cast<int> (OscType::Harmonic); ++t)
+    for (int t = 0; t <= static_cast<int> (OscType::Wavetable); ++t)
     {
         auto p = baseParams();
         p.oscAType     = static_cast<OscType> (t);
@@ -235,7 +236,7 @@ int main (int argc, char** argv)
     for (double res : { 0.3, 0.7, 1.0 })
     {
         std::printf ("  resonance %.1f\n", res);
-        for (int t = 0; t <= static_cast<int> (FilterType::DiodeLadder); ++t)
+        for (int t = 0; t <= static_cast<int> (FilterType::BandSplit); ++t)
         {
             auto p = baseParams();
             p.oscAType   = OscType::Saw;

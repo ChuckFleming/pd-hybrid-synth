@@ -65,7 +65,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::ParameterID { id, 1 }, name, range, def, attr));
     };
 
-    const juce::StringArray oscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh", "Supersaw", "Harmonic" };
+    const juce::StringArray oscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh", "Supersaw", "Harmonic", "PAF", "Granular", "Wavetable" };
     const juce::StringArray pdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                            "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
 
@@ -140,7 +140,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "filterType", 1 }, "Filter Type",
         juce::StringArray { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass",
-                            "Formant", "Diode Ladder" }, 0));
+                            "Formant", "Diode Ladder", "Band Split" }, 0));
 
     pf ("filterMorph", "Filter Morph", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
@@ -160,7 +160,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     // --- Filter B + routing ---
     const juce::StringArray filterTypeNames { "Ladder", "State Variable", "PD Resonator",
-                                              "Comb", "Allpass", "Formant", "Diode Ladder" };
+                                              "Comb", "Allpass", "Formant", "Diode Ladder", "Band Split" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "filterRouting", 1 }, "Filter Routing",
         juce::StringArray { "Single", "Series", "Parallel" }, 0));
@@ -214,6 +214,12 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     // --- Unison ---
     params.push_back (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { "unisonVoices", 1 }, "Unison Voices", 1, 6, 1));
+    // 0.5 = even spacing (the historical distribution); below bunches toward
+    // the centre pitch, above pushes the stack to the edges of the detune range.
+    pf ("unisonSpread", "Unison Spread", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
+    // Per-voice send into the chorus/delay/reverb group. 1 = the whole voice
+    // goes through them, which is what the chain did before it became a send.
+    pf ("fxSend", "FX Send", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f, pct);
     pf ("unisonDetune", "Unison Detune", juce::NormalisableRange<float> (0.0f, 50.0f), 15.0f, cnt);
     pf ("unisonWidth", "Unison Width", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
 
@@ -242,6 +248,13 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("arpGate", "Arp Gate", juce::NormalisableRange<float> (0.05f, 1.0f), 0.5f, pct);
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "arpLatch", 1 }, "Arp Latch", false));
+    // Which layer the arp drives. "Both" is index 0 so existing patches keep
+    // their behaviour. A layer the arp does not target still receives the held
+    // notes directly, so e.g. Bass Only arpeggiates the sub while the poly
+    // voices hold the chord.
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "arpTarget", 1 }, "Arp Target",
+        juce::StringArray { "Arp: Poly + Bass", "Arp: Poly Only", "Arp: Bass Only" }, 0));
 
     // --- Chorus / ensemble ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (
@@ -479,7 +492,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
                                        "LFO Rate", "LFO 2 Rate", "Noise Lvl",
                                        "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ",
                                        "Ring Mod", "Cross Mod", "Engine", "PD Amount B",
-                                       "Pluck Decay", "Pluck Damp" };
+                                       "Pluck Decay", "Pluck Damp", "Chorus Depth", "Reverb Mix", "FX Send" };
     for (int i = 1; i <= pdhybrid::ModMatrix::kNumSlots; ++i)
     {
         const auto s = juce::String (i);
@@ -642,6 +655,9 @@ void PDHybridAudioProcessor::pushParams()
     p.unisonVoices = static_cast<int> (apvts.getRawParameterValue ("unisonVoices")->load());
     p.unisonDetune = apvts.getRawParameterValue ("unisonDetune")->load();
     p.unisonWidth  = apvts.getRawParameterValue ("unisonWidth")->load();
+    p.wavetable    = wavetable_;   // shared; null keeps the built-in default set
+    p.unisonSpread = apvts.getRawParameterValue ("unisonSpread")->load();
+    p.fxSend       = apvts.getRawParameterValue ("fxSend")->load();
     p.glideMode = static_cast<pdhybrid::GlideMode> (
         static_cast<int> (apvts.getRawParameterValue ("glideMode")->load()));
     p.glideTime  = apvts.getRawParameterValue ("glideTime")->load();
@@ -662,6 +678,7 @@ void PDHybridAudioProcessor::pushParams()
 
     // Arpeggiator (step length from tempo; note events generated in processBlock).
     arpOn_ = apvts.getRawParameterValue ("arpOn")->load() > 0.5f;
+    arpTarget_ = static_cast<int> (apvts.getRawParameterValue ("arpTarget")->load());
     {
         const int arpRate = static_cast<int> (apvts.getRawParameterValue ("arpRate")->load());
         arp_.setStepSamples (pdhybrid::syncedDelaySeconds (bpm, arpRate) * getSampleRate());
@@ -821,9 +838,62 @@ void PDHybridAudioProcessor::pushParams()
     macro2_       = p.macro2;
     delayMixBase_ = apvts.getRawParameterValue ("delayMix")->load();
     delayFbBase_  = apvts.getRawParameterValue ("delayFeedback")->load();
+    chorusDepthBase_ = apvts.getRawParameterValue ("chorusDepth")->load();
+    reverbMixBase_   = apvts.getRawParameterValue ("reverbMix")->load();
     globalLfo.setFrequency (apvts.getRawParameterValue ("globalLfoRate")->load());
     globalLfo.setWaveform (static_cast<pdhybrid::LfoWave> (
         static_cast<int> (apvts.getRawParameterValue ("globalLfoWave")->load())));
+}
+
+bool PDHybridAudioProcessor::loadWavetable (const juce::File& file)
+{
+    if (! file.existsAsFile())
+        return false;
+
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (file));
+    if (reader == nullptr || reader->lengthInSamples < 2)
+        return false;
+
+    const int total = static_cast<int> (juce::jmin (reader->lengthInSamples,
+                                                    (juce::int64) (2048 * 256)));
+    juce::AudioBuffer<float> buf (static_cast<int> (reader->numChannels), total);
+    reader->read (&buf, 0, total, 0, true, reader->numChannels > 1);
+
+    // Mono sum: a wavetable is a waveform, not a stereo image.
+    std::vector<float> mono (static_cast<std::size_t> (total), 0.0f);
+    for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+    {
+        const float* src = buf.getReadPointer (ch);
+        for (int i = 0; i < total; ++i)
+            mono[static_cast<std::size_t> (i)] += src[i];
+    }
+    if (buf.getNumChannels() > 1)
+        for (auto& s : mono)
+            s /= static_cast<float> (buf.getNumChannels());
+
+    // The near-universal convention is 2048-sample single-cycle frames; a file
+    // that is not a whole number of those is treated as one cycle and resampled.
+    constexpr int kFrame = pdhybrid::WavetableOscillator::kFrameLen;
+    int frameLen  = kFrame;
+    int numFrames = total / kFrame;
+    if (numFrames < 1 || (total % kFrame) != 0)
+    {
+        frameLen  = total;
+        numFrames = 1;
+    }
+
+    auto set = pdhybrid::WavetableOscillator::makeWavetableSet (mono.data(), numFrames, frameLen);
+    if (set == nullptr || set->numFrames <= 0)
+        return false;
+
+    if (wavetable_ != nullptr)
+        retiredWavetables_.push_back (wavetable_);   // never freed on the audio thread
+    wavetable_     = std::move (set);
+    wavetableName_ = file.getFileNameWithoutExtension();
+    wavetablePath_ = file.getFullPathName();
+    return true;
 }
 
 void PDHybridAudioProcessor::applyGlobalModulation (juce::AudioBuffer<float>& buffer, int numSamples)
@@ -842,6 +912,9 @@ void PDHybridAudioProcessor::applyGlobalModulation (juce::AudioBuffer<float>& bu
     delay.setMix      (juce::jlimit (0.0, 1.0,  delayMixBase_ + md (pdhybrid::ModDest::DelayMix)));
     delay.setFeedback (juce::jlimit (0.0, 0.95, delayFbBase_  + md (pdhybrid::ModDest::DelayFeedback)));
 
+    chorus.setDepth (juce::jlimit (0.0, 1.0, chorusDepthBase_ + md (pdhybrid::ModDest::ChorusDepth)));
+    reverb.setMix   (juce::jlimit (0.0, 1.0, reverbMixBase_   + md (pdhybrid::ModDest::ReverbMix)));
+
     // Modulate the master EQ high-shelf gain (matrix output scaled to dB).
     const double eqGain = juce::jlimit (-24.0, 24.0,
         eqHighGainBase_ + 12.0 * md (pdhybrid::ModDest::GlobalEqGain));
@@ -857,7 +930,8 @@ void PDHybridAudioProcessor::applyGlobalModulation (juce::AudioBuffer<float>& bu
     }
 }
 
-void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
+void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg,
+                                                bool toPoly, bool toBass)
 {
     const int channel = msg.getChannel();   // used as the per-note expression id
 
@@ -871,13 +945,13 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
             case 3: vel = 1.0f;                  break;   // Fixed
             default:                             break;   // Linear
         }
-        engine.noteOn (msg.getNoteNumber(), vel, channel);
-        monoBass.noteOn (msg.getNoteNumber(), vel);
+        if (toPoly) engine.noteOn (msg.getNoteNumber(), vel, channel);
+        if (toBass) monoBass.noteOn (msg.getNoteNumber(), vel);
     }
     else if (msg.isNoteOff())
     {
-        engine.noteOff (msg.getNoteNumber(), channel);
-        monoBass.noteOff (msg.getNoteNumber());
+        if (toPoly) engine.noteOff (msg.getNoteNumber(), channel);
+        if (toBass) monoBass.noteOff (msg.getNoteNumber());
     }
     else if (msg.isPitchWheel())
         engine.setNotePitchBend (channel,
@@ -916,7 +990,13 @@ void PDHybridAudioProcessor::renderSegment (juce::AudioBuffer<float>& buffer,
         scratchBass.resize (static_cast<std::size_t> (numSamples));
     }
 
-    engine.renderBlock (scratchL.data(), scratchR.data(), numSamples);
+    // Segments cover disjoint ranges of the block, so the engine can fill this
+    // segment's slice of the block-wide send bus directly (it zero-fills what
+    // it is given). No scratch, no copy.
+    float* segSendL = fxSendActive_ ? sendL_.data() + startSample : nullptr;
+    float* segSendR = fxSendActive_ ? sendR_.data() + startSample : nullptr;
+
+    engine.renderBlock (scratchL.data(), scratchR.data(), segSendL, segSendR, numSamples);
 
     // Mono sub-bass, summed at centre into both oscillator channels (pre-FX).
     // Skipped entirely when the layer is off (its default) to avoid the scratch
@@ -931,6 +1011,14 @@ void PDHybridAudioProcessor::renderSegment (juce::AudioBuffer<float>& buffer,
             scratchL[i] += scratchBass[i];
             scratchR[i] += scratchBass[i];
         }
+        // The bass layer has no send control of its own, so it goes through the
+        // FX group in full -- exactly as it did when the chain was an insert.
+        if (fxSendActive_)
+            for (int i = 0; i < numSamples; ++i)
+            {
+                segSendL[i] += scratchBass[i];
+                segSendR[i] += scratchBass[i];
+            }
     }
 
     const int numCh = buffer.getNumChannels();
@@ -949,6 +1037,33 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     pushParams();
 
+    // Only pay for the send bus when something actually sends less than fully:
+    // an unmodulated send of 1 is the historical insert chain, and the plain
+    // two-bus render path stays byte-identical.
+    {
+        const double sendParam = apvts.getRawParameterValue ("fxSend")->load();
+        bool sendRouted = false;
+        for (int i = 0; i < pdhybrid::ModMatrix::kNumSlots && ! sendRouted; ++i)
+        {
+            const auto r = globalMatrix.route (i);
+            sendRouted = (r.dest == pdhybrid::ModDest::FxSend
+                          && r.source != pdhybrid::ModSource::None
+                          && std::abs (r.depth) > 1.0e-6);
+        }
+
+        fxSendActive_ = (sendParam < 0.999) || sendRouted;
+        if (fxSendActive_)
+        {
+            const auto n = static_cast<std::size_t> (buffer.getNumSamples());
+            if (sendL_.size() < n)
+            {
+                sendL_.resize (n);
+                sendR_.resize (n);
+                compGain_.resize (n);
+            }
+        }
+    }
+
     if (panic_.exchange (false))   // editor "Panic": kill all sounding notes
     {
         engine.allNotesOff();
@@ -959,24 +1074,42 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const int numSamples = buffer.getNumSamples();
     int cursor = 0;
 
-    // Flush hanging notes when the arpeggiator is switched on or off.
-    if (arpOn_ != arpWasOn_)
+    // Flush hanging notes when the arpeggiator is switched on or off, or when
+    // it is re-pointed at a different layer (the layer it just stopped driving
+    // would otherwise be left holding a note nothing will release).
+    if (arpOn_ != arpWasOn_ || arpTarget_ != arpWasTarget_)
     {
         engine.allNotesOff();
         monoBass.allNotesOff();
         arp_.reset();
     }
-    arpWasOn_ = arpOn_;
+    arpWasOn_     = arpOn_;
+    arpWasTarget_ = arpTarget_;
 
     if (arpOn_)
     {
+        const bool arpDrivesPoly = (arpTarget_ == 0 || arpTarget_ == 1);
+        const bool arpDrivesBass = (arpTarget_ == 0 || arpTarget_ == 2);
+
         // Held notes feed the arp pool; other messages pass through (block-rate).
+        // A layer the arp is not driving gets the held notes as played, so the
+        // poly voices can sustain a chord under an arpeggiated bass (or vice
+        // versa). Those pass-throughs share the arp path's block-rate timing.
         for (const auto meta : midi)
         {
             const auto msg = meta.getMessage();
-            if (msg.isNoteOn())        arp_.noteOn (msg.getNoteNumber(), msg.getFloatVelocity());
-            else if (msg.isNoteOff())  arp_.noteOff (msg.getNoteNumber());
-            else                       handleMidiMessage (msg);
+            if (msg.isNoteOn() || msg.isNoteOff())
+            {
+                if (msg.isNoteOn()) arp_.noteOn (msg.getNoteNumber(), msg.getFloatVelocity());
+                else                arp_.noteOff (msg.getNoteNumber());
+
+                if (! arpDrivesPoly || ! arpDrivesBass)
+                    handleMidiMessage (msg, ! arpDrivesPoly, ! arpDrivesBass);
+            }
+            else
+            {
+                handleMidiMessage (msg);
+            }
         }
 
         pdhybrid::Arpeggiator::Event ev[128];
@@ -988,13 +1121,13 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             cursor = pos;
             if (ev[e].noteOn)
             {
-                engine.noteOn (ev[e].note, ev[e].velocity, 1);
-                monoBass.noteOn (ev[e].note, ev[e].velocity);
+                if (arpDrivesPoly) engine.noteOn (ev[e].note, ev[e].velocity, 1);
+                if (arpDrivesBass) monoBass.noteOn (ev[e].note, ev[e].velocity);
             }
             else
             {
-                engine.noteOff (ev[e].note, 1);
-                monoBass.noteOff (ev[e].note);
+                if (arpDrivesPoly) engine.noteOff (ev[e].note, 1);
+                if (arpDrivesBass) monoBass.noteOff (ev[e].note);
             }
         }
     }
@@ -1019,13 +1152,37 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     if (buffer.getNumChannels() >= 2)
     {
         if (compOn_)
+        {
+            // The send bus has to receive the identical gain curve, or the two
+            // buses stop summing back to the original signal.
             compressor.processStereo (buffer.getWritePointer (0),
-                                      buffer.getWritePointer (1), numSamples);
-        if (chorusOn_)
-            chorus.processStereo (buffer.getWritePointer (0),
-                                  buffer.getWritePointer (1), numSamples);
+                                      buffer.getWritePointer (1), numSamples,
+                                      fxSendActive_ ? compGain_.data() : nullptr);
+            if (fxSendActive_)
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    sendL_[static_cast<std::size_t> (i)] *= compGain_[static_cast<std::size_t> (i)];
+                    sendR_[static_cast<std::size_t> (i)] *= compGain_[static_cast<std::size_t> (i)];
+                }
+        }
+
+        // Send routing: hold back the un-sent residue, run the modulation FX on
+        // the send bus alone, then sum. At send 1 the residue is zero and this
+        // is bit-for-bit the old insert chain.
         float* L = buffer.getWritePointer (0);
         float* R = buffer.getWritePointer (1);
+        if (fxSendActive_)
+            for (int i = 0; i < numSamples; ++i)
+            {
+                L[i] -= sendL_[static_cast<std::size_t> (i)];
+                R[i] -= sendR_[static_cast<std::size_t> (i)];
+            }
+
+        float* fxL = fxSendActive_ ? sendL_.data() : L;
+        float* fxR = fxSendActive_ ? sendR_.data() : R;
+
+        if (chorusOn_)
+            chorus.processStereo (fxL, fxR, numSamples);
         if (fxRouting_ == 2 && delayOn_ && reverbOn_)
         {
             // Parallel: reverb the main path; delay is fed the pre-reverb signal
@@ -1035,21 +1192,30 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 fxScratchL_.resize (static_cast<std::size_t> (numSamples));
                 fxScratchR_.resize (static_cast<std::size_t> (numSamples));
             }
-            for (int i = 0; i < numSamples; ++i) { fxScratchL_[i] = L[i]; fxScratchR_[i] = R[i]; }
-            reverb.processStereo (L, R, numSamples);
+            for (int i = 0; i < numSamples; ++i) { fxScratchL_[i] = fxL[i]; fxScratchR_[i] = fxR[i]; }
+            reverb.processStereo (fxL, fxR, numSamples);
             delay.processWet (fxScratchL_.data(), fxScratchR_.data(), numSamples);
-            for (int i = 0; i < numSamples; ++i) { L[i] += fxScratchL_[i]; R[i] += fxScratchR_[i]; }
+            for (int i = 0; i < numSamples; ++i) { fxL[i] += fxScratchL_[i]; fxR[i] += fxScratchR_[i]; }
         }
         else if (fxRouting_ == 1)
         {
-            if (reverbOn_) reverb.processStereo (L, R, numSamples);
-            if (delayOn_)  delay.processStereo (L, R, numSamples);
+            if (reverbOn_) reverb.processStereo (fxL, fxR, numSamples);
+            if (delayOn_)  delay.processStereo (fxL, fxR, numSamples);
         }
         else   // 0 = Delay -> Reverb (default), and the fallbacks for mode 2
         {
-            if (delayOn_)  delay.processStereo (L, R, numSamples);
-            if (reverbOn_) reverb.processStereo (L, R, numSamples);
+            if (delayOn_)  delay.processStereo (fxL, fxR, numSamples);
+            if (reverbOn_) reverb.processStereo (fxL, fxR, numSamples);
         }
+
+        // Sum the processed send back onto the un-sent residue.
+        if (fxSendActive_)
+            for (int i = 0; i < numSamples; ++i)
+            {
+                L[i] += sendL_[static_cast<std::size_t> (i)];
+                R[i] += sendR_[static_cast<std::size_t> (i)];
+            }
+
         if (globalEqOn_)
             globalEq.processStereo (buffer.getWritePointer (0),
                                     buffer.getWritePointer (1), numSamples);
@@ -1125,6 +1291,9 @@ void PDHybridAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     if (auto state = apvts.copyState(); state.isValid())
     {
+        // The wavetable is a file reference, not a parameter, so it rides
+        // alongside the parameter tree rather than in it.
+        state.setProperty ("wavetablePath", wavetablePath_, nullptr);
         std::unique_ptr<juce::XmlElement> xml (state.createXml());
         copyXmlToBinary (*xml, destData);
     }
@@ -1134,7 +1303,17 @@ void PDHybridAudioProcessor::setStateInformation (const void* data, int sizeInBy
 {
     std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, sizeInBytes));
     if (xml != nullptr && xml->hasTagName (apvts.state.getType()))
-        apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    {
+        auto tree = juce::ValueTree::fromXml (*xml);
+        apvts.replaceState (tree);
+
+        // Re-load the referenced table if it is still where it was. A missing
+        // file is not an error: the engine falls back to its built-in set and
+        // the patch still plays.
+        const auto path = tree.getProperty ("wavetablePath").toString();
+        if (path.isNotEmpty())
+            loadWavetable (juce::File (path));
+    }
 }
 
 // JUCE plugin entry point.

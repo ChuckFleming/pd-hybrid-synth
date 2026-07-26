@@ -32,6 +32,9 @@ add_library(pdhybrid_dsp STATIC
     src/dsp/WalshOscillator.cpp
     src/dsp/SupersawOscillator.cpp
     src/dsp/HarmonicOscillator.cpp
+    src/dsp/PafOscillator.cpp
+    src/dsp/GranularOscillator.cpp
+    src/dsp/WavetableOscillator.cpp
     src/dsp/OscillatorUnit.cpp
     src/dsp/OscEq.cpp
     src/dsp/GlobalEq.cpp
@@ -50,6 +53,7 @@ add_library(pdhybrid_dsp STATIC
     src/dsp/AllpassDispersion.cpp
     src/dsp/FormantFilter.cpp
     src/dsp/DiodeLadderFilter.cpp
+    src/dsp/BandSplitFilter.cpp
     src/dsp/PluckResonator.cpp
     src/dsp/FilterUnit.cpp
     src/dsp/Compressor.cpp

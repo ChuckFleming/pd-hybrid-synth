@@ -22,6 +22,7 @@ add_executable(pdhybrid_tests
     dsp/walsh_oscillator_tests.cpp
     dsp/new_oscillator_tests.cpp
     dsp/new_filter_tests.cpp
+    dsp/batch3_tests.cpp
     dsp/pluck_resonator_tests.cpp
     dsp/filter_tests.cpp
     dsp/svf_tests.cpp

@@ -19,6 +19,12 @@ void OscillatorUnit::setSampleRate (double sampleRateHz) noexcept
     supersaw_.setOversampling (4);
     harmonic_.setSampleRate (sampleRateHz);
     harmonic_.setOversampling (4);
+    paf_.setSampleRate (sampleRateHz);
+    paf_.setOversampling (4);
+    granular_.setSampleRate (sampleRateHz);
+    granular_.setOversampling (4);
+    wavetable_.setSampleRate (sampleRateHz);
+    wavetable_.setOversampling (4);
     analog_.setSampleRate (sampleRateHz);
     eq_.setSampleRate (sampleRateHz);
 }
@@ -32,6 +38,9 @@ void OscillatorUnit::reset() noexcept
     walsh_.reset();
     supersaw_.reset();
     harmonic_.reset();
+    paf_.reset();
+    granular_.reset();
+    wavetable_.reset();
     analog_.reset();
     eq_.reset();
 }
@@ -89,6 +98,9 @@ void OscillatorUnit::setBaseFrequency (double frequencyHz) noexcept
         case OscType::Walsh:           walsh_.setFrequency (f);    break;
         case OscType::Supersaw:        supersaw_.setFrequency (f); break;
         case OscType::Harmonic:        harmonic_.setFrequency (f); break;
+        case OscType::Paf:             paf_.setFrequency (f);      break;
+        case OscType::Granular:        granular_.setFrequency (f); break;
+        case OscType::Wavetable:       wavetable_.setFrequency (f); break;
         default:                       analog_.setFrequency (f);   break;
     }
 }
@@ -107,6 +119,9 @@ float OscillatorUnit::processSample() noexcept
                     : (type_ == OscType::Walsh)           ? walsh_.processSample()
                     : (type_ == OscType::Supersaw)        ? supersaw_.processSample()
                     : (type_ == OscType::Harmonic)        ? harmonic_.processSample()
+                    : (type_ == OscType::Paf)             ? paf_.processSample()
+                    : (type_ == OscType::Granular)        ? granular_.processSample()
+                    : (type_ == OscType::Wavetable)       ? wavetable_.processSample()
                                                           : analog_.processSample();
     return eq_.processSample (raw);
 }

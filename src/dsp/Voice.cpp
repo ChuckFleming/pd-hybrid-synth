@@ -106,6 +106,7 @@ void Voice::setParams (const SynthParams& params)
     unitA_.setPdCombine (params.oscACombine);
     unitA_.setEngineParam (params.oscAEngine);
     unitA_.setExcite (params.oscAExcite);
+    unitA_.setWavetable (params.wavetable);
     unitA_.setTuning (params.oscAOctave, params.oscASemi, params.oscAFine);
     unitA_.setEq     (params.oscAEqLow, params.oscAEqMid, params.oscAEqHigh);
 
@@ -115,6 +116,7 @@ void Voice::setParams (const SynthParams& params)
     unitB_.setPdCombine (params.oscBCombine);
     unitB_.setEngineParam (params.oscBEngine);
     unitB_.setExcite (params.oscBExcite);
+    unitB_.setWavetable (params.wavetable);
     unitB_.setTuning (params.oscBOctave, params.oscBSemi, params.oscBFine);
     unitB_.setEq     (params.oscBEqLow, params.oscBEqMid, params.oscBEqHigh);
 
@@ -239,6 +241,7 @@ void Voice::applyModulation() noexcept
 
     ringModMod_  = std::clamp (params_.ringModLevel + md (ModDest::RingModLevel), 0.0, 1.0);
     crossModMod_ = std::clamp (params_.crossModAmount + md (ModDest::CrossModAmount), 0.0, 1.0);
+    fxSendMod_   = std::clamp (params_.fxSend + md (ModDest::FxSend), 0.0, 1.0);
 
     // Cutoff: timbre (MPE), matrix, key tracking and the filter envelope all
     // shift the cutoff in octaves. Key tracking follows the note relative to
@@ -255,12 +258,14 @@ void Voice::applyModulation() noexcept
     const double resMod   = md (ModDest::Resonance);
     const double morphMod = md (ModDest::Morph);
 
+    // `freq` is this voice's current pitch, so the PD resonator can sync its
+    // ring to the fundamental (CZ-style) instead of free-running.
     filterA_.configure (params_.cutoffHz * std::pow (2.0, octA),
                         std::clamp (params_.resonance + resMod, 0.0, 1.0),
-                        std::clamp (params_.filterMorph + morphMod, 0.0, 1.0));
+                        std::clamp (params_.filterMorph + morphMod, 0.0, 1.0), freq);
     filterB_.configure (params_.filter2Cutoff * std::pow (2.0, octB),
                         std::clamp (params_.filter2Res + resMod, 0.0, 1.0),
-                        std::clamp (params_.filter2Morph + morphMod, 0.0, 1.0));
+                        std::clamp (params_.filter2Morph + morphMod, 0.0, 1.0), freq);
 
     amp_.setDrive (params_.drive * std::pow (2.0, md (ModDest::Drive) * 2.0));
 
@@ -454,6 +459,12 @@ float Voice::renderOneSample() noexcept
 
 void Voice::renderBlock (float* left, float* right, int numSamples)
 {
+    renderBlock (left, right, nullptr, nullptr, numSamples);
+}
+
+void Voice::renderBlock (float* left, float* right,
+                         float* sendL, float* sendR, int numSamples)
+{
     advanceDrift (numSamples);
 
     // Re-evaluate glide + modulation every kCtrl samples rather than once per
@@ -478,11 +489,23 @@ void Voice::renderBlock (float* left, float* right, int numSamples)
 
         applyModulation();
 
+        // The send bus is only written when a caller asks for one; with no
+        // send routing the processor uses the plain two-bus path and this
+        // branch (and its extra multiplies) never runs.
+        const bool wantSend = (sendL != nullptr && sendR != nullptr);
+
         for (int i = 0; i < chunk; ++i)
         {
             const float s = renderOneSample();
-            left[done + i]  += static_cast<float> (s * panL_);
-            right[done + i] += static_cast<float> (s * panR_);
+            const float sl = static_cast<float> (s * panL_);
+            const float sr = static_cast<float> (s * panR_);
+            left[done + i]  += sl;
+            right[done + i] += sr;
+            if (wantSend)
+            {
+                sendL[done + i] += static_cast<float> (sl * fxSendMod_);
+                sendR[done + i] += static_cast<float> (sr * fxSendMod_);
+            }
             // Envelopes advance per sample (cheap when sustaining, and their
             // shapes are short-lived); they are only read at the next chunk.
             env2_.processSample();

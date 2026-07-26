@@ -59,6 +59,10 @@ public:
     // Adds `numSamples` of this voice's output into the stereo `left`/`right`
     // buffers, panned to its stereo position.
     void renderBlock (float* left, float* right, int numSamples);
+    // Additionally accumulates this voice scaled by its FX send level into a
+    // send bus. Pass nulls (or use the overload above) to skip that work.
+    void renderBlock (float* left, float* right,
+                      float* sendL, float* sendR, int numSamples);
 
 private:
     double noteHz (int note) const noexcept;   // note -> Hz with master tune + transpose
@@ -111,6 +115,7 @@ private:
     double noiseLevelMod_ = 0.0; // noise level after matrix modulation
     double ringModMod_  = 0.0;  // ring-mod depth after matrix modulation
     double crossModMod_ = 0.0;  // cross-mod depth after matrix modulation
+    double fxSendMod_   = 1.0;  // FX send level after matrix modulation
     double randomMod_ = 0.0;    // per-note sample & hold random source
     ModSources lastSources_;    // snapshot for the editor's live meters
     double panL_      = 0.70710678;   // equal-power pan gains (default centre)

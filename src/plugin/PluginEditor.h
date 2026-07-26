@@ -235,6 +235,13 @@ private:
     CallbackComponent footer;
     juce::TextButton randButton { "RAND" };
     juce::TextButton panicButton { "PANIC" };
+
+    // Wavetable import. The button doubles as the readout for which table is
+    // loaded, so the Wavetable engine is not a mystery box.
+    juce::TextButton wavetableButton { "WAVETABLE: default" };
+    std::unique_ptr<juce::FileChooser> wavetableChooser;
+    void chooseWavetable();
+    void refreshWavetableButton();
     void paintFooter (juce::Graphics&);
     void layoutFooter();
 

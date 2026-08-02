@@ -128,11 +128,22 @@ int ChordMode::buildVoicing (int root, int* out) noexcept
         // this for free -- a pitch class already sounding near the centre
         // resolves to the same absolute note, so no explicit common-tone logic
         // is needed.
+        // Bound the centre to within half an octave of the played root. Letting
+        // it free-run makes the voicing a random walk with no restoring force:
+        // over a long progression the chords creep up or down the keyboard
+        // until they pin against the MIDI clamp. Re-deriving the bound from the
+        // root each chord means the drift cannot accumulate, while leaving the
+        // centre free enough inside that band to keep common tones.
+        double centre = lastCentre_;
+        const double lo = root - 6.0, hi = root + 6.0;
+        if (centre < lo) centre = lo;
+        if (centre > hi) centre = hi;
+
         for (int i = 0; i < n; ++i)
         {
             const int pc = ((root + iv[i]) % 12 + 12) % 12;
             // Round half away from zero without <cmath>: the operand is small.
-            const double k   = (lastCentre_ - pc) / 12.0;
+            const double k   = (centre - pc) / 12.0;
             const int    oct = static_cast<int> (k >= 0.0 ? k + 0.5 : k - 0.5);
             out[i] = pc + 12 * oct;
         }

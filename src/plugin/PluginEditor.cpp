@@ -2184,7 +2184,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // off the path entirely.
     std::vector<Page> layout {
         { "1 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " VOICE",
-                        { &oscA, &oscB, &mixer, &chordSec, &bassSec, &pluckSec, &unison, &glideSec },
+                        { &oscA, &oscB, &mixer, &bassSec, &pluckSec, &unison, &glideSec, &chordSec },
                                                                                 nullptr, {}, 0 },
         { "2 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " SHAPE",
                         { &filter, &filter2, &routingSec, &drive },              nullptr, {}, 0 },

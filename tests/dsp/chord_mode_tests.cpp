@@ -435,6 +435,36 @@ TEST_CASE ("A second root replaces the first", "[chord]")
     REQUIRE (c.heldRoot() == 65);
 }
 
+TEST_CASE ("Voice-led chords do not drift out of register", "[chord][voicing]")
+{
+    // The placement centre used to be the previous voicing's mean, free to
+    // follow wherever the last chord happened to land. With no restoring force
+    // that is a random walk: play a long progression and the chords creep up or
+    // down the keyboard until they pin against the MIDI clamp.
+    for (int voicing : { (int) ChordMode::VoiceLed, (int) ChordMode::Shell })
+    {
+        auto c = makeChord();
+        c.setVoicing (voicing);
+        c.setSpread (0.0);
+
+        // Roots inside one octave: the chords should stay inside one region too.
+        static const int kRoots[] = { 60, 65, 67, 62, 64, 69, 60, 67 };
+        int lo = 999, hi = -999;
+        for (int i = 0; i < 60; ++i)
+        {
+            const int root = kRoots[i % 8];
+            c.setQuality (i % ChordMode::kNumQualities);
+            const auto v = chordNotesOn (onEvents (c, root));
+            offEvents (c, root);
+            for (int n : v) { lo = std::min (lo, n); hi = std::max (hi, n); }
+        }
+
+        INFO ("voicing " << voicing << " spanned " << lo << ".." << hi);
+        REQUIRE (lo >= 48);       // never sinks below C3
+        REQUIRE (hi <= 84);       // never climbs above C6
+    }
+}
+
 TEST_CASE ("A quality key flags the latch for the host parameter", "[chord]")
 {
     // chordQuality is a real parameter, and the processor pushes it into

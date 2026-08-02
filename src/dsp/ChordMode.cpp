@@ -79,7 +79,43 @@ void sortAscending (int* v, int n) noexcept
 int ChordMode::buildVoicing (int root, int* out) noexcept
 {
     int iv[kMaxChordNotes];
-    const int n = qualityIntervals (quality_, iv);
+    int n = qualityIntervals (quality_, iv);
+
+    // Shell: drop the fifth, but only where something useful is left -- a triad
+    // reduced to root and third is not a chord worth playing.
+    if (voicing_ == Shell && n >= 4)
+    {
+        int m = 0;
+        for (int i = 0; i < n; ++i)
+            if (iv[i] != 7) iv[m++] = iv[i];
+        n = m;
+    }
+
+    if (voicing_ == Closed || voicing_ == Drop2)
+    {
+        // Fixed register, no history: the octave starting at 54, centred on C4.
+        // chordOctave is deliberately not used here -- it is applied once at the
+        // end, for every mode.
+        constexpr int kBase = 54;
+        for (int i = 0; i < n; ++i)
+        {
+            const int pc = ((root + iv[i]) % 12 + 12) % 12;
+            out[i] = kBase + ((pc - kBase) % 12 + 12) % 12;
+        }
+        sortAscending (out, n);
+
+        if (voicing_ == Drop2 && n >= 2)
+        {
+            out[n - 2] -= 12;
+            sortAscending (out, n);
+        }
+
+        double sum = 0.0;
+        for (int i = 0; i < n; ++i) sum += out[i];
+        lastCentre_ = n > 0 ? sum / n : lastCentre_;
+        hasHistory_ = true;
+        return n;
+    }
 
     // Root position, and also the very *first* chord of a voice-led sequence:
     // with no history there is nothing to lead from, and centring on the played

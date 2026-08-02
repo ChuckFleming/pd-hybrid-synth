@@ -266,3 +266,57 @@ TEST_CASE ("refresh does nothing when no root is held", "[chord]")
     ChordMode::Event buf[ChordMode::kMaxEvents];
     REQUIRE (c.refresh (buf, ChordMode::kMaxEvents) == 0);
 }
+
+TEST_CASE ("Closed voicing stays in one fixed octave", "[chord][voicing]")
+{
+    auto c = makeChord();
+    c.setVoicing (ChordMode::Closed);
+    c.setQuality (0);
+
+    // Same chord played two octaves apart must come out identically: Closed has
+    // no memory and no dependence on the played octave.
+    const auto low  = chordNotesOn (onEvents (c, 60));
+    offEvents (c, 60);
+    const auto high = chordNotesOn (onEvents (c, 84));
+    offEvents (c, 84);
+    REQUIRE (low == high);
+
+    // And it sits inside the octave starting at 54.
+    for (int nte : low) { REQUIRE (nte >= 54); REQUIRE (nte <= 65); }
+}
+
+TEST_CASE ("Drop-2 lowers the second voice from the top", "[chord][voicing]")
+{
+    auto c = makeChord();
+    c.setQuality (4);                       // maj7, four notes
+
+    c.setVoicing (ChordMode::Closed);
+    const auto closed = chordNotesOn (onEvents (c, 60));
+    offEvents (c, 60);
+
+    c.setVoicing (ChordMode::Drop2);
+    const auto drop = chordNotesOn (onEvents (c, 60));
+
+    REQUIRE (closed.size() == 4);
+    REQUIRE (drop.size() == 4);
+    // The dropped voice is an octave below where it sat in the closed voicing.
+    REQUIRE (drop.front() == closed[closed.size() - 2] - 12);
+    // Wider overall.
+    REQUIRE (drop.back() - drop.front() > closed.back() - closed.front());
+}
+
+TEST_CASE ("Shell drops the fifth from four-note chords only", "[chord][voicing]")
+{
+    auto c = makeChord();
+    c.setVoicing (ChordMode::Shell);
+
+    c.setQuality (4);                       // maj7 -> root, 3rd, 7th
+    const auto seventh = chordNotesOn (onEvents (c, 60));
+    offEvents (c, 60);
+    REQUIRE (seventh.size() == 3);
+    for (int nte : seventh) REQUIRE (nte % 12 != 7);   // no G
+
+    c.setQuality (0);                       // maj triad is left intact
+    const auto triad = chordNotesOn (onEvents (c, 60));
+    REQUIRE (triad.size() == 3);
+}

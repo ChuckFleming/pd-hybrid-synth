@@ -109,21 +109,14 @@ int ChordMode::buildVoicing (int root, int* out) noexcept
             out[n - 2] -= 12;
             sortAscending (out, n);
         }
-
-        double sum = 0.0;
-        for (int i = 0; i < n; ++i) sum += out[i];
-        lastCentre_ = n > 0 ? sum / n : lastCentre_;
-        hasHistory_ = true;
-        return n;
     }
-
     // Root position, and also the very *first* chord of a voice-led sequence:
     // with no history there is nothing to lead from, and centring on the played
     // root would place some chord tones below it -- press C and the fifth lands
     // under it, so the key you pressed is not the bass. Starting in root
     // position makes the played key audibly the root; every chord after leads
     // from it.
-    if (voicing_ == RootPosition || ! hasHistory_)
+    else if (voicing_ == RootPosition || ! hasHistory_)
     {
         for (int i = 0; i < n; ++i)
             out[i] = root + iv[i];
@@ -145,6 +138,37 @@ int ChordMode::buildVoicing (int root, int* out) noexcept
         }
         sortAscending (out, n);
     }
+
+    // ---- shared tail: applies to every voicing mode ----
+
+    // Spread: lift the k voices above the bass by an octave. k = 0 leaves the
+    // voicing closed; k = n-1 raises everything except the bass.
+    {
+        const double kf = spread_ * (n - 1);
+        const int    k  = static_cast<int> (kf + 0.5);
+        for (int i = 1; i <= k && i < n; ++i)
+            out[i] += 12;
+        sortAscending (out, n);
+    }
+
+    for (int i = 0; i < n; ++i)
+        out[i] += 12 * octave_;
+
+    // Fold anything that fell off either end back by whole octaves, so the
+    // chord keeps its pitch classes rather than being clipped against a wall.
+    for (int i = 0; i < n; ++i)
+    {
+        while (out[i] < 0)   out[i] += 12;
+        while (out[i] > 127) out[i] -= 12;
+    }
+    sortAscending (out, n);
+
+    // Folding can collide two voices onto one note; drop the duplicate.
+    int m = 0;
+    for (int i = 0; i < n; ++i)
+        if (i == 0 || out[i] != out[i - 1])
+            out[m++] = out[i];
+    n = m;
 
     // Carry the centre forward for the next chord.
     double sum = 0.0;

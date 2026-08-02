@@ -320,3 +320,73 @@ TEST_CASE ("Shell drops the fifth from four-note chords only", "[chord][voicing]
     const auto triad = chordNotesOn (onEvents (c, 60));
     REQUIRE (triad.size() == 3);
 }
+
+namespace {
+
+int chordWidth (ChordMode& c, int root)
+{
+    const auto v = chordNotesOn (onEvents (c, root));
+    offEvents (c, root);
+    if (v.empty()) return 0;
+    return v.back() - v.front();
+}
+
+} // namespace
+
+TEST_CASE ("Spread widens the voicing monotonically", "[chord][voicing]")
+{
+    auto c = makeChord();
+    c.setVoicing (ChordMode::VoiceLed);
+    c.setQuality (4);                       // maj7, four notes
+
+    c.setSpread (0.0);
+    const int closed = chordWidth (c, 60);
+    c.setSpread (0.5);
+    const int mid = chordWidth (c, 60);
+    c.setSpread (1.0);
+    const int wide = chordWidth (c, 60);
+
+    INFO ("widths " << closed << " " << mid << " " << wide);
+    REQUIRE (mid  >= closed);
+    REQUIRE (wide >  closed);
+}
+
+TEST_CASE ("Octave transposes the whole voicing", "[chord][voicing]")
+{
+    auto c = makeChord();
+    c.setVoicing (ChordMode::RootPosition);
+    c.setQuality (0);
+    c.setSpread (0.0);
+
+    c.setOctave (0);
+    const auto base = chordNotesOn (onEvents (c, 60));
+    offEvents (c, 60);
+
+    c.setOctave (1);
+    const auto up = chordNotesOn (onEvents (c, 60));
+
+    REQUIRE (base.size() == up.size());
+    for (std::size_t i = 0; i < base.size(); ++i)
+        REQUIRE (up[i] == base[i] + 12);
+}
+
+TEST_CASE ("Every voiced note stays inside MIDI range", "[chord][voicing]")
+{
+    for (int voicing = 0; voicing <= ChordMode::Shell; ++voicing)
+        for (int quality = 0; quality < ChordMode::kNumQualities; ++quality)
+            for (int octave : { -2, 0, 2 })
+                for (double spread : { 0.0, 1.0 })
+                    for (int root : { 60, 72, 96 })   // must be at/above the split
+                    {
+                        auto c = makeChord();
+                        c.setVoicing (voicing);
+                        c.setQuality (quality);
+                        c.setOctave (octave);
+                        c.setSpread (spread);
+                        const auto v = chordNotesOn (onEvents (c, root));
+                        INFO ("voicing " << voicing << " quality " << quality
+                              << " octave " << octave << " root " << root);
+                        REQUIRE_FALSE (v.empty());
+                        for (int nte : v) { REQUIRE (nte >= 0); REQUIRE (nte <= 127); }
+                    }
+}

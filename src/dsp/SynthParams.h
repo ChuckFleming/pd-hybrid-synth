@@ -2,6 +2,7 @@
 
 #include "ModMatrix.h"
 #include "WavetableOscillator.h"
+#include <cmath>
 #include <memory>
 
 namespace pdhybrid {
@@ -74,6 +75,30 @@ inline double syncedDelaySeconds (double bpm, int divIndex) noexcept
     if (divIndex > 8) divIndex = 8;
     const double t = beats[divIndex] * 60.0 / (bpm > 1.0 ? bpm : 120.0);
     return t < 0.001 ? 0.001 : (t > 2.0 ? 2.0 : t);
+}
+
+// Index of the note division (0..8, matching syncedDelaySeconds) whose duration
+// at `bpm` is closest to `seconds`, compared on a log scale so "nearest" means
+// nearest by ear rather than by raw milliseconds. Used by the envelope tempo
+// sync: the time knobs keep their normal range and each stage lands on the
+// division it is already closest to.
+inline int nearestDivisionIndex (double seconds, double bpm) noexcept
+{
+    int    best = 0;
+    double bestErr = 1.0e30;
+    for (int i = 0; i <= 8; ++i)
+    {
+        const double d = syncedDelaySeconds (bpm, i);
+        const double err = std::abs (std::log (d / (seconds > 1.0e-6 ? seconds : 1.0e-6)));
+        if (err < bestErr) { bestErr = err; best = i; }
+    }
+    return best;
+}
+
+/** The synced duration a stage time snaps to, or `seconds` when sync is off. */
+inline double syncedEnvTime (double seconds, double bpm, bool sync) noexcept
+{
+    return sync ? syncedDelaySeconds (bpm, nearestDivisionIndex (seconds, bpm)) : seconds;
 }
 
 // Microtuning: cents deviation from 12-TET for a pitch class (0 = C .. 11 = B),

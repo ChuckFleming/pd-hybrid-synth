@@ -288,6 +288,9 @@ private:
     CallbackComponent strip;
     std::vector<LabeledKnob*> stripKnobs;   // cutoff, reso, macro 1/2, A D S R Vel, master
     juce::ComboBox* stripPoly = nullptr;
+    juce::Button*   stripAmpSync = nullptr;    // amp envelope tempo sync
+    LabeledKnob*    stripBpm = nullptr;        // always-visible tempo
+    juce::ComboBox* stripTempoMode = nullptr;
     juce::Button*   stripLimiter = nullptr;
     juce::Button*   stripArp = nullptr;
     std::vector<int> stripDividers_;        // x positions of the cluster rules
@@ -297,7 +300,7 @@ private:
     Section oscA, oscB, mixer;                                           // Voice page
     Section glideSec, unison, bassSec;
     Section pluckSec, drive, routingSec, filter, filter2;   // Shape page
-    Section stageEnvSec, modEnv, ampEnvSync, lfo, lfo2, vibratoSec, arpSec;   // Mod page
+    Section stageEnvSec, modEnv, lfo, lfo2, vibratoSec, arpSec;   // Mod page
     StageEnvelopePanel stageEnv;
     void buildStageEnvelopes();
 

@@ -248,23 +248,18 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("internalBpm", "Internal BPM",
         juce::NormalisableRange<float> (20.0f, 300.0f), 120.0f, bpmAttr);
 
-    // Per-stage envelope sync. "Free" uses the matching time knob; any note
-    // division overrides it, following the same pattern as the LFO and delay.
-    const juce::StringArray envSyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
-                                           "1/4.", "1/8.", "1/4T", "1/8T" };
-    auto addEnvSync = [&] (const juce::String& id, const juce::String& label)
-    {
-        params.push_back (std::make_unique<juce::AudioParameterChoice> (
-            juce::ParameterID { id + "AtkSync", 1 }, label + " Attack Sync", envSyncNames, 0));
-        params.push_back (std::make_unique<juce::AudioParameterChoice> (
-            juce::ParameterID { id + "DecSync", 1 }, label + " Decay Sync", envSyncNames, 0));
-        params.push_back (std::make_unique<juce::AudioParameterChoice> (
-            juce::ParameterID { id + "RelSync", 1 }, label + " Release Sync", envSyncNames, 0));
-    };
-    addEnvSync ("amp",     "Amp Env");
-    addEnvSync ("filtEnv", "Filter Env");
-    addEnvSync ("filt2Env","Filter 2 Env");
-    addEnvSync ("modEnv",  "Mod Env");
+    // Envelope tempo sync: one switch per envelope, not per stage. Turning it on
+    // snaps that envelope's attack, decay and release to whichever note division
+    // each is nearest at the current tempo, so the knobs keep working exactly as
+    // they did and the whole envelope moves with the tempo together.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "ampEnvSync", 1 }, "Amp Env Sync", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "filtEnvSync", 1 }, "Filter Env Sync", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "filt2EnvSync", 1 }, "Filter 2 Env Sync", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "modEnvSync", 1 }, "Mod Env Sync", false));
 
     // --- Arpeggiator ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (
@@ -605,13 +600,12 @@ void PDHybridAudioProcessor::pushParams()
                         bpm = *b;
     currentBpm_.store (bpm, std::memory_order_relaxed);
 
-    // A per-stage envelope time: "Free" (index 0) keeps the seconds knob,
-    // anything else is a note division at the current tempo.
-    auto envTime = [&] (const char* syncId, double freeSeconds)
-    {
-        const int idx = static_cast<int> (apvts.getRawParameterValue (syncId)->load());
-        return idx <= 0 ? freeSeconds : pdhybrid::syncedDelaySeconds (bpm, idx - 1);
-    };
+    // One sync switch per envelope: off leaves the knob in seconds, on snaps
+    // each stage to the note division it is nearest at the current tempo.
+    auto envSynced = [&] (const char* syncId)
+    { return apvts.getRawParameterValue (syncId)->load() > 0.5f; };
+    auto envTime = [&] (bool sync, double seconds)
+    { return pdhybrid::syncedEnvTime (seconds, bpm, sync); };
 
     auto readOscGroup = [&] (const juce::String& id,
                              pdhybrid::OscType& type, int& wave, double& amount,
@@ -669,10 +663,11 @@ void PDHybridAudioProcessor::pushParams()
     p.filterMorph = apvts.getRawParameterValue ("filterMorph")->load();
     p.keyTrack        = apvts.getRawParameterValue ("keyTrack")->load();
     p.filterEnvAmount = apvts.getRawParameterValue ("filterEnvAmount")->load();
-    p.filterEnvA  = envTime ("filtEnvAtkSync", apvts.getRawParameterValue ("filterEnvA")->load());
-    p.filterEnvD  = envTime ("filtEnvDecSync", apvts.getRawParameterValue ("filterEnvD")->load());
+    const bool filtEnvSync = envSynced ("filtEnvSync");
+    p.filterEnvA  = envTime (filtEnvSync, apvts.getRawParameterValue ("filterEnvA")->load());
+    p.filterEnvD  = envTime (filtEnvSync, apvts.getRawParameterValue ("filterEnvD")->load());
     p.filterEnvS  = apvts.getRawParameterValue ("filterEnvS")->load();
-    p.filterEnvR  = envTime ("filtEnvRelSync", apvts.getRawParameterValue ("filterEnvR")->load());
+    p.filterEnvR  = envTime (filtEnvSync, apvts.getRawParameterValue ("filterEnvR")->load());
     p.filterRouting = static_cast<pdhybrid::FilterRouting> (
         static_cast<int> (apvts.getRawParameterValue ("filterRouting")->load()));
     p.filter2Type   = static_cast<pdhybrid::FilterType> (
@@ -681,10 +676,11 @@ void PDHybridAudioProcessor::pushParams()
     p.filter2Res    = apvts.getRawParameterValue ("filter2Res")->load();
     p.filter2Morph  = apvts.getRawParameterValue ("filter2Morph")->load();
     p.filter2EnvAmount = apvts.getRawParameterValue ("filter2EnvAmount")->load();
-    p.filter2EnvA = envTime ("filt2EnvAtkSync", apvts.getRawParameterValue ("filter2EnvA")->load());
-    p.filter2EnvD = envTime ("filt2EnvDecSync", apvts.getRawParameterValue ("filter2EnvD")->load());
+    const bool filt2EnvSync = envSynced ("filt2EnvSync");
+    p.filter2EnvA = envTime (filt2EnvSync, apvts.getRawParameterValue ("filter2EnvA")->load());
+    p.filter2EnvD = envTime (filt2EnvSync, apvts.getRawParameterValue ("filter2EnvD")->load());
     p.filter2EnvS = apvts.getRawParameterValue ("filter2EnvS")->load();
-    p.filter2EnvR = envTime ("filt2EnvRelSync", apvts.getRawParameterValue ("filter2EnvR")->load());
+    p.filter2EnvR = envTime (filt2EnvSync, apvts.getRawParameterValue ("filter2EnvR")->load());
     p.driveOn     = apvts.getRawParameterValue ("driveOn")->load() > 0.5f;
     p.drive       = apvts.getRawParameterValue ("drive")->load();
     p.driveType   = static_cast<int> (apvts.getRawParameterValue ("driveType")->load());
@@ -695,10 +691,11 @@ void PDHybridAudioProcessor::pushParams()
     p.filterVelSens = apvts.getRawParameterValue ("filterVelSens")->load();
     p.noiseModDepth = apvts.getRawParameterValue ("noiseMod")->load();
     p.bias      = apvts.getRawParameterValue ("bias")->load();
-    p.attack    = envTime ("ampAtkSync", apvts.getRawParameterValue ("attack")->load());
-    p.decay     = envTime ("ampDecSync", apvts.getRawParameterValue ("decay")->load());
+    const bool ampEnvSyncOn = envSynced ("ampEnvSync");
+    p.attack    = envTime (ampEnvSyncOn, apvts.getRawParameterValue ("attack")->load());
+    p.decay     = envTime (ampEnvSyncOn, apvts.getRawParameterValue ("decay")->load());
     p.sustain   = apvts.getRawParameterValue ("sustain")->load();
-    p.release   = envTime ("ampRelSync", apvts.getRawParameterValue ("release")->load());
+    p.release   = envTime (ampEnvSyncOn, apvts.getRawParameterValue ("release")->load());
     p.gain      = apvts.getRawParameterValue ("gain")->load();
     const int osIdx = static_cast<int> (apvts.getRawParameterValue ("osQuality")->load());
     const int osFactor[] = { 1, 2, 4, 8 };
@@ -828,10 +825,11 @@ void PDHybridAudioProcessor::pushParams()
     p.lfo2Fade   = apvts.getRawParameterValue ("lfo2Fade")->load();
     p.lfo2Phase  = apvts.getRawParameterValue ("lfo2Phase")->load();
     p.lfo2Retrig = apvts.getRawParameterValue ("lfo2Retrig")->load() > 0.5f;
-    p.modEnvA = envTime ("modEnvAtkSync", apvts.getRawParameterValue ("modEnvA")->load());
-    p.modEnvD = envTime ("modEnvDecSync", apvts.getRawParameterValue ("modEnvD")->load());
+    const bool modEnvSyncOn = envSynced ("modEnvSync");
+    p.modEnvA = envTime (modEnvSyncOn, apvts.getRawParameterValue ("modEnvA")->load());
+    p.modEnvD = envTime (modEnvSyncOn, apvts.getRawParameterValue ("modEnvD")->load());
     p.modEnvS = apvts.getRawParameterValue ("modEnvS")->load();
-    p.modEnvR = envTime ("modEnvRelSync", apvts.getRawParameterValue ("modEnvR")->load());
+    p.modEnvR = envTime (modEnvSyncOn, apvts.getRawParameterValue ("modEnvR")->load());
 
     p.czAmount  = apvts.getRawParameterValue ("czAmount")->load();
     p.czSustain = static_cast<int> (apvts.getRawParameterValue ("czSustain")->load());

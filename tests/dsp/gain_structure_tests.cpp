@@ -223,6 +223,36 @@ TEST_CASE ("Note divisions convert to the expected envelope times", "[tempo]")
     REQUIRE (syncedDelaySeconds (240.0, 2) == Approx (0.25));
 }
 
+TEST_CASE ("Envelope sync snaps a stage to its nearest division", "[tempo][envelope]")
+{
+    // One switch per envelope: the time knobs keep working as they always did
+    // and each stage lands on whichever division it is already closest to.
+    const double bpm = 120.0;   // 1/4 = 500 ms, 1/8 = 250 ms, 1/16 = 125 ms
+
+    REQUIRE (syncedEnvTime (0.240, bpm, true) == Approx (0.25));   // near 1/8
+    REQUIRE (syncedEnvTime (0.480, bpm, true) == Approx (0.5));    // near 1/4
+    REQUIRE (syncedEnvTime (0.130, bpm, true) == Approx (0.125));  // near 1/16
+
+    // Off, the value passes through untouched.
+    REQUIRE (syncedEnvTime (0.240, bpm, false) == Approx (0.240));
+    REQUIRE (syncedEnvTime (7.5,   bpm, false) == Approx (7.5));
+
+    // The division set is not just the straight notes -- dotted and triplet
+    // values sit between them, so 180 ms lands on the 1/8 triplet (167 ms)
+    // rather than on 1/8 (250 ms).
+    REQUIRE (syncedEnvTime (0.180, bpm, true) == Approx (syncedDelaySeconds (bpm, 8)));
+    REQUIRE (syncedEnvTime (0.360, bpm, true) == Approx (syncedDelaySeconds (bpm, 6)));  // dotted 1/8
+
+    // The same knob position follows the tempo.
+    REQUIRE (syncedEnvTime (0.240, 60.0,  true) == Approx (0.25));   // 1/16 at 60
+    REQUIRE (syncedEnvTime (0.240, 240.0, true) == Approx (0.25));   // 1/4 at 240
+
+    // Out-of-range values clamp to the nearest available division rather than
+    // producing something silly.
+    REQUIRE (syncedEnvTime (0.0001, bpm, true) == Approx (syncedDelaySeconds (bpm, 4)));
+    REQUIRE (syncedEnvTime (60.0,   bpm, true) == Approx (syncedDelaySeconds (bpm, 0)));
+}
+
 TEST_CASE ("A synced envelope stage tracks tempo", "[tempo][envelope]")
 {
     // An eighth note at 120 BPM is 250 ms; at 60 BPM it is 500 ms. Drive an

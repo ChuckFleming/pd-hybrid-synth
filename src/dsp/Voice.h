@@ -52,9 +52,12 @@ public:
     void setTimbre             (double timbre01)   noexcept { timbre_ = timbre01; }
     void setModWheel           (double modWheel01) noexcept { modWheel_ = modWheel01; }
 
-    // Per-voice unison offsets (detune in cents, pan add in [-1, 1]).
-    void setUnison (double detuneCents, double panOffset) noexcept
-    { unisonDetuneCents_ = detuneCents; unisonPan_ = panOffset; }
+    // Per-voice unison offsets (detune in cents, pan add in [-1, 1]) and the
+    // level compensation for the size of the stack. Without the gain, a 6-voice
+    // unison note is up to six times the level of the same note played solo --
+    // which is most of why wide patches ran the master stage into distortion.
+    void setUnison (double detuneCents, double panOffset, double gain = 1.0) noexcept
+    { unisonDetuneCents_ = detuneCents; unisonPan_ = panOffset; unisonGain_ = gain; }
 
     // Adds `numSamples` of this voice's output into the stereo `left`/`right`
     // buffers, panned to its stereo position.
@@ -116,6 +119,8 @@ private:
     double ringModMod_  = 0.0;  // ring-mod depth after matrix modulation
     double crossModMod_ = 0.0;  // cross-mod depth after matrix modulation
     double fxSendMod_   = 1.0;  // FX send level after matrix modulation
+    double unisonGain_  = 1.0;  // level compensation for the unison stack size
+    double mixNorm_     = 1.0;  // constant-power normalisation of the osc mixer
     double randomMod_ = 0.0;    // per-note sample & hold random source
     ModSources lastSources_;    // snapshot for the editor's live meters
     double panL_      = 0.70710678;   // equal-power pan gains (default centre)

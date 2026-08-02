@@ -68,6 +68,9 @@ public:
     static constexpr int kNumModSources = static_cast<int> (pdhybrid::ModSource::Count);
     void readModLevels (float* dest, int num) const noexcept;
 
+    /** Tempo currently driving sync (host BPM, or the internal one). */
+    double currentBpm() const noexcept { return currentBpm_.load (std::memory_order_relaxed); }
+
     /** Current compressor gain reduction in dB (<= 0), for the Out page meter. */
     float gainReductionDb() const noexcept { return gainReduction_.load (std::memory_order_relaxed); }
 
@@ -84,6 +87,7 @@ private:
     void publishModLevels() noexcept;
     std::atomic<float> modLevels_[kNumModSources] {};
     std::atomic<float> gainReduction_ { 0.0f };
+    std::atomic<double> currentBpm_ { 120.0 };
 
     void pushScope (const float* left, const float* right, int n) noexcept;
     float scopeBuf_[kScopeSize] = { 0.0f };

@@ -54,6 +54,9 @@ public:
     // and the measurement says more about beat phase than about distribution.
     double unisonSpreadAt (int k, int n) const noexcept;
 
+    /** Level compensation applied to each sub-voice of an n-voice stack. */
+    static double unisonGainFor (int n) noexcept;
+
     void renderBlock (float* left, float* right, int numSamples);
     // Also fills a send bus with each voice scaled by its FX send level, for
     // the processor's send-style FX routing.
@@ -103,6 +106,7 @@ private:
     std::uint64_t ageCounter_ = 0;
     double        sampleRate_ = 44100.0;
     double        modWheel_   = 0.0;
+    int           unisonSize_ = 1;     // sub-voices in the stack being started
     double        lastNoteHz_ = 0.0;   // previous note's pitch, for glide
 };
 

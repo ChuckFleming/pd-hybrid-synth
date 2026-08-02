@@ -63,6 +63,15 @@ int SynthEngine::allocateVoice (int limit) noexcept
     return best;
 }
 
+double SynthEngine::unisonGainFor (int n) noexcept
+{
+    // 1/sqrt(n): the sub-voices are detuned against each other, so they sum
+    // incoherently and their power adds rather than their amplitude. This keeps
+    // a unison note at roughly the level of the same note played solo, instead
+    // of up to n times louder.
+    return n <= 1 ? 1.0 : 1.0 / std::sqrt (static_cast<double> (n));
+}
+
 double SynthEngine::unisonSpreadAt (int k, int n) const noexcept
 {
     if (n <= 1)
@@ -95,7 +104,8 @@ void SynthEngine::startVoice (int v, int note, float velocity, int noteId,
     voiceTimbre_[v]    = 0.0;
 
     voices_[v].setParams (params_);
-    voices_[v].setUnison (params_.unisonDetune * spread, params_.unisonWidth * spread);
+    voices_[v].setUnison (params_.unisonDetune * spread, params_.unisonWidth * spread,
+                          unisonGainFor (unisonSize_));
     voices_[v].start (note, velocity, fromHz, glideSamples);
 }
 
@@ -134,6 +144,7 @@ void SynthEngine::polyNoteOn (int note, float velocity, int noteId)
     // stack fits inside the active polyphony).
     int n = params_.unisonVoices < 1 ? 1 : (params_.unisonVoices > 6 ? 6 : params_.unisonVoices);
     if (n > lim) n = lim;
+    unisonSize_ = n;
 
     for (int k = 0; k < n; ++k)
     {
@@ -256,6 +267,7 @@ void SynthEngine::updateMono()
         }
 
         monoVoiceN_ = n;
+        unisonSize_ = n;
         for (int k = 0; k < n; ++k)
         {
             const int    v      = allocateVoice (lim);

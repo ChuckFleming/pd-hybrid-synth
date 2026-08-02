@@ -279,6 +279,19 @@ void Voice::applyModulation() noexcept
     oscBLevelMod_  = std::clamp (params_.oscBLevel + md (ModDest::OscBLevel), 0.0, 1.0);
     noiseLevelMod_ = std::clamp (params_.noiseLevel + md (ModDest::NoiseLevel), 0.0, 1.0);
 
+    // Constant-power mixer: turning every source up used to stack their levels,
+    // so a patch could leave the mixer several times hotter than a single
+    // oscillator before the filter had even seen it. Normalising by the
+    // quadrature sum caps that, and leaves the common single-oscillator case
+    // (one source at full, the rest at zero) at exactly unity -- so those
+    // patches are unchanged.
+    const double sumSq = oscALevelMod_ * oscALevelMod_
+                       + oscBLevelMod_ * oscBLevelMod_
+                       + noiseLevelMod_ * noiseLevelMod_
+                       + ringModMod_ * ringModMod_;
+    const double lvl = std::sqrt (sumSq);
+    mixNorm_ = lvl > 1.0 ? 1.0 / lvl : 1.0;
+
     // LFO rates can be modulated (+/- 2 octaves); no change when unrouted.
     lfo_.setFrequency  (params_.lfoRate  * std::pow (2.0, md (ModDest::LfoRate)  * 2.0));
     lfo2_.setFrequency (params_.lfo2Rate * std::pow (2.0, md (ModDest::Lfo2Rate) * 2.0));
@@ -428,6 +441,8 @@ float Voice::renderOneSample() noexcept
              * noiseLevelMod_;
     }
 
+    s *= mixNorm_;   // constant-power mixer (see applyModulation)
+
     // Karplus-Strong pluck: the osc mix becomes the string's exciter.
     if (params_.pluckOn)
         s = pluck_.processSample (static_cast<float> (s));
@@ -454,7 +469,8 @@ float Voice::renderOneSample() noexcept
     if (params_.driveOn && params_.drivePos == 0)
         s = amp_.processSample (static_cast<float> (s));
     const double e = env_.processSample();
-    return static_cast<float> (s * e * velAmp_ * pressure_ * ampMod_ * params_.gain);
+    return static_cast<float> (s * e * velAmp_ * pressure_ * ampMod_
+                               * unisonGain_ * params_.gain);
 }
 
 void Voice::renderBlock (float* left, float* right, int numSamples)

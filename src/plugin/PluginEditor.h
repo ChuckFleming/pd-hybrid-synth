@@ -297,7 +297,7 @@ private:
     Section oscA, oscB, mixer;                                           // Voice page
     Section glideSec, unison, bassSec;
     Section pluckSec, drive, routingSec, filter, filter2;   // Shape page
-    Section stageEnvSec, modEnv, lfo, lfo2, vibratoSec, arpSec;   // Mod page
+    Section stageEnvSec, modEnv, ampEnvSync, lfo, lfo2, vibratoSec, arpSec;   // Mod page
     StageEnvelopePanel stageEnv;
     void buildStageEnvelopes();
 
@@ -364,7 +364,7 @@ private:
     struct RouteView { int slot; int source; int dest; float depth; int curve; };
     std::vector<RouteView> routes_;
     Section chorusSec, delaySec, reverbSec, comp, globalEqSec, stereo;   // Out page
-    Section voiceSec, tuningSec, globalLfoSec, qualitySec;               // Global page
+    Section voiceSec, tuningSec, globalLfoSec, qualitySec, tempoSec;     // Global page
     Section envelope;                                                    // amp env (lives in the strip)
 
     // Modulation matrix. Lives as an overlay over the whole editor rather than

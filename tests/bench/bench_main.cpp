@@ -7,6 +7,7 @@
 
 #include "dsp/SynthEngine.h"
 #include "dsp/SynthParams.h"
+#include "dsp/MasterStage.h"
 
 #include <chrono>
 #include <cstdio>
@@ -142,6 +143,103 @@ Level measureLevel (const SynthParams& base, int numNotes)
     return { peak, std::sqrt (sumSq / std::max (1L, n)) };
 }
 
+// Engine peak with an arbitrary chord / unison / mixer setup. Used to map the
+// gain structure: where does the level actually come from as a patch gets wide?
+Level measureConfig (int notes, int unison, double oscA, double oscB,
+                     double noise, double ring)
+{
+    SynthEngine engine;
+    engine.setSampleRate (kSampleRate);
+
+    SynthParams p;
+    p.oscAType     = OscType::Saw;
+    p.oscBType     = OscType::Saw;
+    p.oscALevel    = oscA;
+    p.oscBLevel    = oscB;
+    p.noiseLevel   = noise;
+    p.ringModLevel = ring;
+    p.unisonVoices = unison;
+    p.unisonDetune = 20.0;
+    p.cutoffHz     = 12000.0;
+    p.sustain      = 1.0;
+    p.attack       = 0.005;
+    p.decay        = 0.05;
+    engine.setParams (p);
+
+    static const int kChord[] = { 48, 52, 55, 60, 64, 67 };
+    for (int i = 0; i < notes; ++i)
+        engine.noteOn (kChord[i], 1.0f, i + 1);
+
+    std::vector<float> l (kBlock, 0.0f), r (kBlock, 0.0f);
+    double peak = 0.0, sumSq = 0.0;
+    long   n = 0;
+    const int blocks = static_cast<int> (2.0 * kSampleRate / kBlock);
+    for (int b = 0; b < blocks; ++b)
+    {
+        std::fill (l.begin(), l.end(), 0.0f);
+        std::fill (r.begin(), r.end(), 0.0f);
+        engine.renderBlock (l.data(), r.data(), kBlock);
+        // Skip the attack transient.
+        if (b < 20) continue;
+        for (int i = 0; i < kBlock; ++i)
+        {
+            const double v = std::abs (l[i]);
+            peak = std::max (peak, v);
+            sumSq += v * v;
+            ++n;
+        }
+    }
+    return { peak, std::sqrt (sumSq / std::max (1L, n)) };
+}
+
+// Engine -> MasterStage, reporting the final peak and how hard the limiter had
+// to work. Distortion here is measured as the harmonic content the stage adds
+// to a signal that was clean going in.
+struct MasterResult { double peak; double grDb; };
+
+MasterResult measureThroughMaster (int notes, int unison)
+{
+    SynthEngine engine;
+    engine.setSampleRate (kSampleRate);
+
+    SynthParams p;
+    p.oscAType     = OscType::Saw;
+    p.unisonVoices = unison;
+    p.unisonDetune = 20.0;
+    p.cutoffHz     = 12000.0;
+    p.sustain      = 1.0;
+    p.attack       = 0.005;
+    p.decay        = 0.05;
+    engine.setParams (p);
+
+    MasterStage master;
+    master.setSampleRate (kSampleRate);
+    master.setGainDb (0.0);
+    master.setLimiterEnabled (true);
+    master.setThreshold (0.9);
+    master.reset();
+
+    static const int kChord[] = { 48, 52, 55, 60, 64, 67 };
+    for (int i = 0; i < notes; ++i)
+        engine.noteOn (kChord[i], 1.0f, i + 1);
+
+    std::vector<float> l (kBlock, 0.0f), r (kBlock, 0.0f);
+    double peak = 0.0, worstGr = 0.0;
+    const int blocks = static_cast<int> (2.0 * kSampleRate / kBlock);
+    for (int b = 0; b < blocks; ++b)
+    {
+        std::fill (l.begin(), l.end(), 0.0f);
+        std::fill (r.begin(), r.end(), 0.0f);
+        engine.renderBlock (l.data(), r.data(), kBlock);
+        master.processStereo (l.data(), r.data(), kBlock);
+        if (b < 20) continue;
+        for (int i = 0; i < kBlock; ++i)
+            peak = std::max (peak, std::abs ((double) l[i]));
+        worstGr = std::min (worstGr, master.gainReductionDb());
+    }
+    return { peak, worstGr };
+}
+
 void report (const char* name, const Result& r)
 {
     std::printf ("  %-16s %6.1f %% rt   worst %6.2f ms   over budget: %d\n",
@@ -231,6 +329,47 @@ int main (int argc, char** argv)
         for (int i = 0; i < 8; ++i) { p.dcwEnvRate[i] = 0.25; p.dcwEnvLevel[i] = (i % 2) ? 0.9 : 0.1; }
         report (kOscNames[t], runChord (p, notes));
     }
+
+    // Where the level actually comes from. The master limiter asymptotes to 1.0,
+    // so anything arriving well above that is squashed into the top of its knee
+    // -- audible as "clipping" even though nothing hard-clips.
+    std::printf ("\n--- GAIN STRUCTURE: engine peak (limiter ceiling is 1.0) ---\n");
+    std::printf ("  notes x unison (osc A only)\n");
+    for (int notes6 : { 1, 3, 6 })
+        for (int uni : { 1, 3, 6 })
+        {
+            const auto lv = measureConfig (notes6, uni, 1.0, 0.0, 0.0, 0.0);
+            std::printf ("    %d note(s) x %d unison = %2d voices   peak %6.2f   rms %6.3f%s\n",
+                         notes6, uni, notes6 * uni, lv.peak, lv.rms,
+                         lv.peak > 1.0 ? "   <-- over ceiling" : "");
+        }
+
+    std::printf ("  mixer sources (1 note, no unison)\n");
+    {
+        struct { const char* name; double a, b, n, r; } cases[] = {
+            { "A only",            1.0, 0.0, 0.0, 0.0 },
+            { "A + B",             1.0, 1.0, 0.0, 0.0 },
+            { "A + B + noise",     1.0, 1.0, 1.0, 0.0 },
+            { "A + B + noise+ring",1.0, 1.0, 1.0, 1.0 },
+        };
+        for (const auto& c : cases)
+        {
+            const auto lv = measureConfig (1, 1, c.a, c.b, c.n, c.r);
+            std::printf ("    %-20s peak %6.2f   rms %6.3f%s\n",
+                         c.name, lv.peak, lv.rms,
+                         lv.peak > 1.0 ? "   <-- over ceiling" : "");
+        }
+    }
+
+    std::printf ("  through the master stage (limiter ceiling 0.9 + soft-clip net)\n");
+    for (int notes6 : { 1, 3, 6 })
+        for (int uni : { 1, 6 })
+        {
+            const auto m = measureThroughMaster (notes6, uni);
+            std::printf ("    %d note(s) x %d unison   out peak %5.2f   limiter GR %5.1f dB%s\n",
+                         notes6, uni, m.peak, m.grDb,
+                         m.peak > 1.001 ? "   <-- ESCAPED THE CEILING" : "");
+        }
 
     std::printf ("\n--- Output level by filter type (Saw osc, before any FX) ---\n");
     for (double res : { 0.3, 0.7, 1.0 })

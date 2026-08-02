@@ -108,6 +108,19 @@ const juce::StringArray kLfoWaveNames { "Sine", "Triangle", "Square", "Saw", "Ra
                                         "Sample & Hold", "Smooth Random", "Exponential" };
 const juce::StringArray kSyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
                                      "1/4.", "1/8.", "1/4T", "1/8T" };
+// Same divisions, prefixed with the envelope stage they belong to: three of
+// these sit side by side in one card and would otherwise be indistinguishable.
+// Item order must stay identical to the choice parameter's.
+juce::StringArray envSyncNames (const char* stage)
+{
+    juce::StringArray out;
+    for (const auto& d : kSyncNames)
+        out.add (juce::String (stage) + ": " + d);
+    return out;
+}
+const juce::StringArray kAtkSyncNames = envSyncNames ("Atk");
+const juce::StringArray kDecSyncNames = envSyncNames ("Dec");
+const juce::StringArray kRelSyncNames = envSyncNames ("Rel");
 const juce::StringArray kDstNames { "None", "Pitch", "PD Amount", "Pulse Width", "Cutoff",
                                     "Resonance", "Morph", "Drive", "Amplitude", "Pan",
                                     "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
@@ -1061,7 +1074,9 @@ void PDHybridEditor::buildSections()
     filter.custom2  = &filt1Curve;
     filter.customH2 = 50;
     filter.knobSplit = 5;
-    filter.combos = { &addCombo ("filterType", kFilterTypeNames) };
+    filter.combos = { &addCombo ("filterType", kFilterTypeNames),
+                      &addCombo ("filtEnvAtkSync", kAtkSyncNames), &addCombo ("filtEnvDecSync", kDecSyncNames),
+                      &addCombo ("filtEnvRelSync", kRelSyncNames) };
     filter.knobs  = { &addKnob ("cutoff", "Cutoff", 2, KnobSize::Large),
                       &addKnob ("resonance", "Reso", 2, KnobSize::Large),
                       &addKnob ("filterMorph", "Morph"), &addKnob ("keyTrack", "Key Trk"),
@@ -1081,7 +1096,9 @@ void PDHybridEditor::buildSections()
     filter2.custom2  = &filt2Curve;
     filter2.customH2 = 50;
     filter2.knobSplit = 4;
-    filter2.combos = { &addCombo ("filter2Type", kFilterTypeNames) };
+    filter2.combos = { &addCombo ("filter2Type", kFilterTypeNames),
+                       &addCombo ("filt2EnvAtkSync", kAtkSyncNames), &addCombo ("filt2EnvDecSync", kDecSyncNames),
+                       &addCombo ("filt2EnvRelSync", kRelSyncNames) };
     filter2.knobs  = { &addKnob ("filter2Cutoff", "Cutoff", 2, KnobSize::Large),
                        &addKnob ("filter2Res", "Reso", 2, KnobSize::Large),
                        &addKnob ("filter2Morph", "Morph"), &addKnob ("filter2EnvAmount", "Env Amt"),
@@ -1102,8 +1119,19 @@ void PDHybridEditor::buildSections()
     modEnv.span    = 2;
     modEnv.custom  = &modCurve;
     modEnv.customH = 62;
+    modEnv.combos = { &addCombo ("modEnvAtkSync", kAtkSyncNames), &addCombo ("modEnvDecSync", kDecSyncNames),
+                      &addCombo ("modEnvRelSync", kRelSyncNames) };
     modEnv.knobs = { &addKnob ("modEnvA", "Atk"), &addKnob ("modEnvD", "Dec"),
                      &addKnob ("modEnvS", "Sus"), &addKnob ("modEnvR", "Rel") };
+
+    // The amp ADSR itself lives in the performance strip, but its tempo-sync
+    // selectors belong with the other envelopes rather than crowding the strip.
+    ampEnvSync.title  = "Amp Env Sync";
+    ampEnvSync.cols   = 1;
+    ampEnvSync.span   = 2;
+    ampEnvSync.combos = { &addCombo ("ampAtkSync", kAtkSyncNames),
+                          &addCombo ("ampDecSync", kDecSyncNames),
+                          &addCombo ("ampRelSync", kRelSyncNames) };
 
     // The three CZ 8-stage envelopes share one card with a stage selector and a
     // draggable curve; see buildStageEnvelopes(). Amber-titled because the card
@@ -1322,6 +1350,14 @@ void PDHybridEditor::buildSections()
     qualitySec.span   = 2;
     qualitySec.combos = { &addCombo ("osQuality", { "Oversampling 1x", "Oversampling 2x",
                                                     "Oversampling 4x", "Oversampling 8x" }) };
+
+    // Tempo. Host mode still falls back to this BPM when no host transport is
+    // present, which is the standalone case.
+    tempoSec.title  = "Tempo";
+    tempoSec.cols   = 1;
+    tempoSec.span   = 2;
+    tempoSec.combos = { &addCombo ("tempoMode", { "Tempo: Host", "Tempo: Internal" }) };
+    tempoSec.knobs  = { &addKnob ("internalBpm", "BPM", 1, KnobSize::Large) };
 }
 
 //==============================================================================
@@ -2028,12 +2064,12 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                         { &filter, &filter2, &routingSec, &drive },              nullptr, {}, 0 },
         { "3 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " MOD",
                         { &stageEnvSec, &lfo, &lfo2,
-                          &modEnv, &vibratoSec, &arpSec },                      nullptr, {}, 0 },
+                          &modEnv, &ampEnvSync, &vibratoSec, &arpSec },        nullptr, {}, 0 },
         { "4 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " OUT",
                         { &chorusSec, &delaySec, &reverbSec,
                           &globalEqSec, &comp, &stereo },                        nullptr, {}, 0 },
         { juce::String (juce::CharPointer_UTF8 ("\xe2\x9a\x99")) + " GLOBAL",
-                        { &voiceSec, &tuningSec, &globalLfoSec, &qualitySec },  nullptr, {}, 0 },
+                        { &voiceSec, &tuningSec, &globalLfoSec, &tempoSec, &qualitySec },  nullptr, {}, 0 },
     };
 
     for (auto& pg : layout)

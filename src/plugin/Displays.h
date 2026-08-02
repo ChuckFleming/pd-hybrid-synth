@@ -1546,4 +1546,163 @@ private:
     float last_[4] { -1.0f, -1.0f, -1.0f, -1.0f };
 };
 
+//==============================================================================
+/** The chord-mode keyboard: quality zone, root zone, and what is sounding.
+
+    Draws a real piano layout -- seven white keys per octave with black keys only
+    between C-D, D-E, F-G, G-A and A-B, each 62% of a white key's width and 62%
+    of its height, centred on the white-key boundary. Anything looser than that
+    reads as "not a keyboard" at a glance.
+
+    The quality names are printed on the twelve quality-zone keys, so the mapping
+    needs no separate legend. The latched quality lights green and the held root
+    amber -- the colour this panel already uses for "this is live". */
+class ChordKeyboard : public juce::Component,
+                      private juce::Timer
+{
+public:
+    static constexpr int kOctaves     = 3;
+    static constexpr int kWhitePerOct = 7;
+    static constexpr int kNumWhite    = kOctaves * kWhitePerOct;
+
+    ChordKeyboard() { setInterceptsMouseClicks (false, false); }
+    ~ChordKeyboard() override { stopTimer(); }
+
+    void attach (juce::AudioProcessorValueTreeState& s,
+                 std::function<int()> heldRoot,
+                 std::function<int (int*, int)> voiced)
+    {
+        apvts_    = &s;
+        heldRoot_ = std::move (heldRoot);
+        voiced_   = std::move (voiced);
+        startTimerHz (20);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "KEYBOARD");
+        if (apvts_ == nullptr) return;
+
+        static const char* kQualityNames[12] = { "maj", "min", "7", "m7", "maj7", "6",
+                                                 "m7b5", "dim7", "aug", "sus2", "sus4", "m6" };
+        static const int kWhiteSemi[7]  = { 0, 2, 4, 5, 7, 9, 11 };
+        static const int kBlackAfter[5] = { 0, 1, 3, 4, 5 };   // C, D, F, G, A
+        static const int kBlackSemi[5]  = { 1, 3, 6, 8, 10 };
+
+        const int split   = juce::roundToInt (raw ("chordSplit"));
+        const int quality = juce::roundToInt (raw ("chordQuality"));
+        const int zoneLow = split - 12;
+        const int root    = heldRoot_ ? heldRoot_() : -1;
+
+        int sounding[8] = { 0 };
+        const int nSounding = voiced_ ? voiced_ (sounding, 8) : 0;
+        auto isSounding = [&] (int midi)
+        {
+            for (int i = 0; i < nSounding; ++i) if (sounding[i] == midi) return true;
+            return false;
+        };
+
+        // Start from the octave holding the quality zone so it is always shown.
+        const int   firstMidi = (zoneLow / 12) * 12;
+        const float w = in.getWidth() / (float) kNumWhite;
+        const float h = in.getHeight();
+
+        g.setFont (monoF (7.5f));
+
+        for (int i = 0; i < kNumWhite; ++i)
+        {
+            const int midi = firstMidi + (i / 7) * 12 + kWhiteSemi[i % 7];
+            const juce::Rectangle<float> r (in.getX() + i * w, in.getY(), w, h);
+
+            const bool inZone = (midi >= zoneLow && midi < split);
+            const bool isSel  = inZone && (midi - zoneLow) == quality;
+            const bool isRoot = (midi == root);
+
+            g.setColour (isSel  ? juce::Colour (0xff1d5c3c)
+                       : isRoot ? juce::Colour (0xff3a2a0c)
+                       : inZone ? juce::Colour (0xff0b2618)
+                                : juce::Colour (0xff07130d));
+            g.fillRect (r);
+
+            if (isSounding (midi) && ! isRoot)
+            {
+                g.setColour (kTrace.withAlpha (0.30f));
+                g.fillRect (r.reduced (2.0f));
+            }
+
+            g.setColour (isSel ? kTrace : (isRoot ? kAmber : kEdge));
+            g.drawRect (r, 1.0f);
+
+            if (inZone)
+            {
+                g.setColour (isSel ? juce::Colour (0xffbdf5d6) : kDim);
+                g.drawText (kQualityNames[midi - zoneLow],
+                            r.withTrimmedBottom (2.0f), juce::Justification::centredBottom);
+            }
+        }
+
+        const float bw = w * 0.62f, bh = h * 0.62f;
+        for (int oct = 0; oct < kOctaves; ++oct)
+            for (int b = 0; b < 5; ++b)
+            {
+                const int   midi     = firstMidi + oct * 12 + kBlackSemi[b];
+                const float boundary = in.getX() + (oct * 7 + kBlackAfter[b] + 1) * w;
+                const juce::Rectangle<float> r (boundary - bw * 0.5f, in.getY(), bw, bh);
+
+                const bool inZone = (midi >= zoneLow && midi < split);
+                const bool isSel  = inZone && (midi - zoneLow) == quality;
+                const bool isRoot = (midi == root);
+
+                g.setColour (isSel  ? juce::Colour (0xff1d5c3c)
+                           : isRoot ? juce::Colour (0xff3a2a0c)
+                           : inZone ? juce::Colour (0xff061a10)
+                                    : juce::Colour (0xff010402));
+                g.fillRect (r);
+
+                if (isSounding (midi) && ! isRoot)
+                {
+                    g.setColour (kTrace.withAlpha (0.30f));
+                    g.fillRect (r.reduced (1.5f));
+                }
+
+                g.setColour (isSel ? kTrace : (isRoot ? kAmber : kEdge));
+                g.drawRect (r, 1.0f);
+            }
+
+        // Split marker on the real zone boundary.
+        const int idx = splitWhiteIndex (firstMidi, split);
+        if (idx >= 0 && idx <= kNumWhite)
+        {
+            g.setColour (kAmber);
+            g.fillRect (in.getX() + idx * w - 1.0f, in.getY() - 2.0f, 2.0f, h + 4.0f);
+        }
+    }
+
+private:
+    /** How many white keys sit below `split`, counting from `firstMidi`. */
+    static int splitWhiteIndex (int firstMidi, int split)
+    {
+        static const int kWhiteSemi[7] = { 0, 2, 4, 5, 7, 9, 11 };
+        int idx = 0;
+        for (int i = 0; i < kNumWhite; ++i)
+        {
+            const int midi = firstMidi + (i / 7) * 12 + kWhiteSemi[i % 7];
+            if (midi < split) idx = i + 1;
+        }
+        return idx;
+    }
+
+    float raw (const juce::String& id) const
+    {
+        auto* p = apvts_->getParameter (id);
+        return p != nullptr ? p->convertFrom0to1 (p->getValue()) : 0.0f;
+    }
+
+    void timerCallback() override { repaint(); }
+
+    juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    std::function<int()> heldRoot_;
+    std::function<int (int*, int)> voiced_;
+};
+
 } // namespace pdui

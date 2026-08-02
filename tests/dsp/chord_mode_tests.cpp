@@ -390,3 +390,56 @@ TEST_CASE ("Every voiced note stays inside MIDI range", "[chord][voicing]")
                         for (int nte : v) { REQUIRE (nte >= 0); REQUIRE (nte <= 127); }
                     }
 }
+
+TEST_CASE ("flush releases everything sounding", "[chord]")
+{
+    auto c = makeChord();
+    onEvents (c, 60);
+
+    ChordMode::Event buf[ChordMode::kMaxEvents];
+    const int n = c.flush (buf, ChordMode::kMaxEvents);
+    REQUIRE (n > 0);
+    for (int i = 0; i < n; ++i)
+        REQUIRE_FALSE (buf[i].noteOn);          // offs only
+
+    REQUIRE (c.heldRoot() == -1);
+    REQUIRE (c.flush (buf, ChordMode::kMaxEvents) == 0);   // idempotent
+}
+
+TEST_CASE ("voicedNotes reports what is sounding", "[chord]")
+{
+    auto c = makeChord();
+    c.setVoicing (ChordMode::RootPosition);
+    c.setQuality (0);
+    onEvents (c, 60);
+
+    int notes[ChordMode::kMaxChordNotes] = { 0 };
+    const int n = c.voicedNotes (notes, ChordMode::kMaxChordNotes);
+    REQUIRE (n == 3);
+    REQUIRE (notes[0] == 60);
+    REQUIRE (notes[1] == 64);
+    REQUIRE (notes[2] == 67);
+}
+
+TEST_CASE ("A second root replaces the first", "[chord]")
+{
+    auto c = makeChord();
+    c.setVoicing (ChordMode::RootPosition);
+    onEvents (c, 60);
+    onEvents (c, 65);
+    REQUIRE (c.heldRoot() == 65);
+
+    // Releasing the abandoned root must not silence the chord that replaced it.
+    const auto evs = offEvents (c, 60);
+    REQUIRE (evs.empty());
+    REQUIRE (c.heldRoot() == 65);
+}
+
+TEST_CASE ("Output never exceeds maxOut", "[chord]")
+{
+    auto c = makeChord();
+    c.setQuality (4);
+    ChordMode::Event tiny[2];
+    const int n = c.handleNoteOn (60, 1.0f, tiny, 2);
+    REQUIRE (n <= 2);
+}

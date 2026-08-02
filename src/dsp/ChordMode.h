@@ -46,8 +46,16 @@ public:
         spread, octave). Call once per block; returns 0 when nothing is due. */
     int refresh (Event* out, int maxOut) noexcept;
 
+    /** Releases everything sounding. Used when the split moves or chord mode is
+        switched off, either of which would otherwise strand a held note. Also
+        clears the voicing history, so the next chord starts in root position. */
+    int flush (Event* out, int maxOut) noexcept;
+
     int latchedQuality() const noexcept { return quality_; }
     int heldRoot()       const noexcept { return heldRoot_; }
+
+    /** Copies the currently sounding chord notes out. Returns the count. */
+    int voicedNotes (int* out, int maxOut) const noexcept;
 
 private:
     /** Fills `out` with the voiced chord for `root`. Returns the note count.

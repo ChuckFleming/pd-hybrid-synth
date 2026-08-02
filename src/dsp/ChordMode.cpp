@@ -217,6 +217,24 @@ int ChordMode::emitChange (const int* newNotes, int newCount, int root,
     return n;
 }
 
+int ChordMode::flush (Event* out, int maxOut) noexcept
+{
+    heldRoot_ = -1;
+    dirty_    = false;
+    // A flush means the keyboard layout changed under the player, so there is
+    // no progression to keep leading from: start the next chord fresh.
+    hasHistory_ = false;
+    return emitChange (nullptr, 0, -1, out, maxOut);
+}
+
+int ChordMode::voicedNotes (int* out, int maxOut) const noexcept
+{
+    int n = 0;
+    for (int i = 0; i < curCount_ && n < maxOut; ++i)
+        out[n++] = cur_[i];
+    return n;
+}
+
 int ChordMode::revoice (Event* out, int maxOut) noexcept
 {
     dirty_ = false;

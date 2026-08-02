@@ -131,25 +131,34 @@ inline const char* envDivisionName (int i) noexcept
 
 // Index of the division whose duration at `bpm` is closest to `seconds`,
 // compared on a log scale so "nearest" means nearest by ear rather than by raw
-// milliseconds. The time knobs keep their normal range and each stage lands on
-// the division it is already closest to.
-inline int nearestDivisionIndex (double seconds, double bpm) noexcept
+// milliseconds. The time knobs keep their normal range and each control lands
+// on the division it is already closest to.
+//
+// `maxSeconds` bounds the search to divisions the caller can actually reach:
+// the delay line tops out at two seconds, and offering it divisions it would
+// only clamp back down would make two different choices read as the same time.
+inline int nearestDivisionIndex (double seconds, double bpm,
+                                 double maxSeconds = 1.0e9) noexcept
 {
     int    best = 0;
     double bestErr = 1.0e30;
     for (int i = 0; i < kNumEnvDivisions; ++i)
     {
         const double d = envDivisionSeconds (i, bpm);
+        if (i > 0 && d > maxSeconds)
+            break;   // ascending table: everything after this is out of reach too
         const double err = std::abs (std::log (d / (seconds > 1.0e-9 ? seconds : 1.0e-9)));
         if (err < bestErr) { bestErr = err; best = i; }
     }
     return best;
 }
 
-/** The synced duration a stage time snaps to, or `seconds` when sync is off. */
-inline double syncedEnvTime (double seconds, double bpm, bool sync) noexcept
+/** The synced duration a time snaps to, or `seconds` when sync is off. */
+inline double syncedEnvTime (double seconds, double bpm, bool sync,
+                             double maxSeconds = 1.0e9) noexcept
 {
-    return sync ? envDivisionSeconds (nearestDivisionIndex (seconds, bpm), bpm) : seconds;
+    return sync ? envDivisionSeconds (nearestDivisionIndex (seconds, bpm, maxSeconds), bpm)
+                : seconds;
 }
 
 // Microtuning: cents deviation from 12-TET for a pitch class (0 = C .. 11 = B),

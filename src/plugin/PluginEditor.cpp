@@ -1216,9 +1216,8 @@ void PDHybridEditor::buildSections()
     delaySec.span    = 2;
     delaySec.custom  = &delayTaps;
     delaySec.customH = 56;
-    delaySec.toggles = { &addToggle ("delayOn", "ON") };
-    delaySec.combos  = { &addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" }),
-                         &addCombo ("delaySyncL", kSyncNames), &addCombo ("delaySyncR", kSyncNames) };
+    delaySec.toggles = { &addToggle ("delayOn", "ON"), &addToggle ("delaySync", "SYNC") };
+    delaySec.combos  = { &addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" }) };
     delaySec.knobs   = { &addKnob ("delayTimeL", "Time L"), &addKnob ("delayTimeR", "Time R"),
                          &addKnob ("delayFeedback", "Fbk"), &addKnob ("delayMix", "Mix"),
                          &addKnob ("delayDuck", "Duck") };
@@ -1513,28 +1512,36 @@ PDHybridEditor::LabeledKnob* PDHybridEditor::findKnob (const juce::String& param
 
 void PDHybridEditor::setupEnvTimeReadouts()
 {
-    // Each envelope's three time knobs and curve, paired with the switch that
-    // retimes them.
+    // Each group of time controls, paired with the switch that retimes them and
+    // (for the envelopes) the curve that draws them. The delay's two taps work
+    // the same way, so they share the machinery: `maxSeconds` keeps its snap
+    // inside the delay line's two-second reach.
     struct EnvGroup
     {
         const char* sync; const char* a; const char* d; const char* r;
         pdui::EnvelopeCurve* curve;
+        double maxSeconds;
     };
     const EnvGroup kGroups[] = {
-        { "ampEnvSync",   "attack",      "decay",       "release",     &ampCurve   },
-        { "filtEnvSync",  "filterEnvA",  "filterEnvD",  "filterEnvR",  &filt1Curve },
-        { "filt2EnvSync", "filter2EnvA", "filter2EnvD", "filter2EnvR", &filt2Curve },
-        { "modEnvSync",   "modEnvA",     "modEnvD",     "modEnvR",     &modCurve   },
+        { "ampEnvSync",   "attack",      "decay",       "release",     &ampCurve,   1.0e9 },
+        { "filtEnvSync",  "filterEnvA",  "filterEnvD",  "filterEnvR",  &filt1Curve, 1.0e9 },
+        { "filt2EnvSync", "filter2EnvA", "filter2EnvD", "filter2EnvR", &filt2Curve, 1.0e9 },
+        { "modEnvSync",   "modEnvA",     "modEnvD",     "modEnvR",     &modCurve,   1.0e9 },
+        { "delaySync",    "delayTimeL",  "delayTimeR",  nullptr,       nullptr,
+          pdhybrid::Delay::kMaxDelaySeconds },
     };
 
     for (const auto& g : kGroups)
     {
         const juce::String syncId (g.sync);
+        const double maxSeconds = g.maxSeconds;
         auto synced = [this, syncId]
         { return proc.apvts.getRawParameterValue (syncId)->load() > 0.5f; };
 
         for (const char* id : { g.a, g.d, g.r })
         {
+            if (id == nullptr)
+                continue;
             auto* k = findKnob (id);
             if (k == nullptr)
                 continue;
@@ -1543,11 +1550,11 @@ void PDHybridEditor::setupEnvTimeReadouts()
             // which can only ever render seconds: it knows nothing about the
             // sync switch or the tempo. Showing "237 ms" for a stage that is
             // actually playing 250 ms would be a readout that lies.
-            k->slider.textFromValueFunction = [this, synced] (double v)
+            k->slider.textFromValueFunction = [this, synced, maxSeconds] (double v)
             {
                 if (synced())
                     return juce::String (pdhybrid::envDivisionName (
-                        pdhybrid::nearestDivisionIndex (v, proc.currentBpm())));
+                        pdhybrid::nearestDivisionIndex (v, proc.currentBpm(), maxSeconds)));
 
                 return v < 1.0 ? juce::String (juce::roundToInt (v * 1000.0)) + " ms"
                                : juce::String (v, 2) + " s";
@@ -1559,8 +1566,19 @@ void PDHybridEditor::setupEnvTimeReadouts()
         // The curve draws the time that is actually played, so while SYNC is on
         // it holds still until the division changes.
         if (g.curve != nullptr)
-            g.curve->setTimeMapper ([this, synced] (double seconds)
-            { return pdhybrid::syncedEnvTime (seconds, proc.currentBpm(), synced()); });
+            g.curve->setTimeMapper ([this, synced, maxSeconds] (double seconds)
+            { return pdhybrid::syncedEnvTime (seconds, proc.currentBpm(), synced(), maxSeconds); });
+    }
+
+    // The delay's tap pattern is the same kind of display and needs the same
+    // treatment, or it animates through a division the way the curves did.
+    {
+        auto synced = [this] { return proc.apvts.getRawParameterValue ("delaySync")->load() > 0.5f; };
+        delayTaps.setTimeMapper ([this, synced] (double seconds)
+        {
+            return pdhybrid::syncedEnvTime (seconds, proc.currentBpm(), synced(),
+                                            pdhybrid::Delay::kMaxDelaySeconds);
+        });
     }
 }
 
@@ -1569,7 +1587,8 @@ void PDHybridEditor::refreshEnvTimeReadouts()
     // Cheap change detection: the readouts only need redrawing when a sync
     // switch flips or the tempo moves, not on every timer tick.
     juce::String state;
-    for (const char* id : { "ampEnvSync", "filtEnvSync", "filt2EnvSync", "modEnvSync" })
+    for (const char* id : { "ampEnvSync", "filtEnvSync", "filt2EnvSync", "modEnvSync",
+                            "delaySync" })
         state << (proc.apvts.getRawParameterValue (id)->load() > 0.5f ? '1' : '0');
     state << juce::String (juce::roundToInt (proc.currentBpm()));
 

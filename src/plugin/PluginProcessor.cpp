@@ -308,12 +308,12 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "delayMode", 1 }, "Delay Mode",
         juce::StringArray { "Mono", "Stereo", "Ping-Pong" }, 1));
-    const juce::StringArray delaySyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
-                                             "1/4.", "1/8.", "1/4T", "1/8T" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { "delaySyncL", 1 }, "Delay Sync L", delaySyncNames, 0));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { "delaySyncR", 1 }, "Delay Sync R", delaySyncNames, 0));
+    // One switch for both taps, matching the envelopes: on, each time knob
+    // snaps to the note division it is nearest. This replaces a pair of
+    // per-tap "Free / 1-1 / 1-2 ..." dropdowns, which took up most of the card
+    // and made the time knobs beside them look inert.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "delaySync", 1 }, "Delay Sync", false));
     pf ("delayTimeL", "Delay Time L",
         juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.30f, sec);
     pf ("delayTimeR", "Delay Time R",
@@ -734,12 +734,15 @@ void PDHybridAudioProcessor::pushParams()
 
     delay.setMode (static_cast<pdhybrid::DelayMode> (
         static_cast<int> (apvts.getRawParameterValue ("delayMode")->load())));
-    const int dSyncL = static_cast<int> (apvts.getRawParameterValue ("delaySyncL")->load());
-    const int dSyncR = static_cast<int> (apvts.getRawParameterValue ("delaySyncR")->load());
-    const double delayL = dSyncL == 0 ? apvts.getRawParameterValue ("delayTimeL")->load()
-                                      : pdhybrid::syncedDelaySeconds (bpm, dSyncL - 1);
-    const double delayR = dSyncR == 0 ? apvts.getRawParameterValue ("delayTimeR")->load()
-                                      : pdhybrid::syncedDelaySeconds (bpm, dSyncR - 1);
+    // Both taps snap independently to whichever division each is nearest, so
+    // the classic offset pair (say 1/8 against 1/8.) still works from one switch.
+    const bool delaySyncOn = apvts.getRawParameterValue ("delaySync")->load() > 0.5f;
+    const double delayL = pdhybrid::syncedEnvTime (
+        apvts.getRawParameterValue ("delayTimeL")->load(), bpm, delaySyncOn,
+        pdhybrid::Delay::kMaxDelaySeconds);
+    const double delayR = pdhybrid::syncedEnvTime (
+        apvts.getRawParameterValue ("delayTimeR")->load(), bpm, delaySyncOn,
+        pdhybrid::Delay::kMaxDelaySeconds);
     delay.setTimes    (delayL, delayR);
     delay.setFeedback (apvts.getRawParameterValue ("delayFeedback")->load());
     delay.setMix      (apvts.getRawParameterValue ("delayMix")->load());

@@ -1159,12 +1159,17 @@ public:
 
     void attach (juce::AudioProcessorValueTreeState& s) { apvts_ = &s; startTimerHz (10); }
 
+    /** Maps a raw tap time to the time actually used, so the pattern holds
+        still while SYNC is on and a knob moves inside one division. */
+    void setTimeMapper (std::function<double (double)> fn)
+    { timeMap_ = std::move (fn); repaint(); }
+
     void paint (juce::Graphics& g) override
     {
         auto in = drawFrame (g, getLocalBounds().toFloat(), "TAPS");
         if (apvts_ == nullptr) return;
 
-        const float tL  = raw ("delayTimeL"), tR = raw ("delayTimeR");
+        const float tL  = mapTime (raw ("delayTimeL")), tR = mapTime (raw ("delayTimeR"));
         const float fb  = juce::jlimit (0.0f, 0.95f, raw ("delayFeedback"));
         const int   mod = juce::roundToInt (raw ("delayMode"));   // 0 mono 1 stereo 2 ping-pong
         const float span = juce::jmax (0.05f, juce::jmax (tL, tR) * 6.0f);
@@ -1195,16 +1200,21 @@ private:
         auto* p = apvts_->getParameter (id);
         return p != nullptr ? p->convertFrom0to1 (p->getValue()) : 0.0f;
     }
+    float mapTime (float seconds) const
+    { return timeMap_ ? static_cast<float> (timeMap_ (seconds)) : seconds; }
     void timerCallback() override
     {
         if (apvts_ == nullptr) return;
-        const float now[4] { raw ("delayTimeL"), raw ("delayTimeR"),
+        // Compare the drawn times, not the raw ones: with sync on a knob can
+        // move a long way inside one division without changing the pattern.
+        const float now[4] { mapTime (raw ("delayTimeL")), mapTime (raw ("delayTimeR")),
                              raw ("delayFeedback"), raw ("delayMode") };
         for (int i = 0; i < 4; ++i)
             if (! juce::approximatelyEqual (now[i], last_[i])) { last_[i] = now[i]; repaint(); }
     }
 
     juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    std::function<double (double)> timeMap_;   // raw seconds -> played seconds
     float last_[4] { -1e9f, -1e9f, -1e9f, -1e9f };
 };
 

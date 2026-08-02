@@ -344,6 +344,17 @@ int main (int argc, char** argv)
                          lv.peak > 1.0 ? "   <-- over ceiling" : "");
         }
 
+    // Chord mode turns one key into three or four voices, so the voice budget
+    // is spent much faster than the note count suggests.
+    std::printf ("  chord-shaped load (4 notes at once)\n");
+    for (int uni : { 1, 3, 6 })
+    {
+        const auto lv = measureConfig (4, uni, 1.0, 0.0, 0.0, 0.0);
+        std::printf ("    4-note chord x %d unison = %2d voices   peak %6.2f   rms %6.3f%s\n",
+                     uni, 4 * uni, lv.peak, lv.rms,
+                     lv.peak > 1.0 ? "   <-- over ceiling" : "");
+    }
+
     std::printf ("  mixer sources (1 note, no unison)\n");
     {
         struct { const char* name; double a, b, n, r; } cases[] = {

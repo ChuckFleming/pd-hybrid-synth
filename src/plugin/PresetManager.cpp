@@ -255,6 +255,16 @@ void PresetManager::createFactoryPresetsIfNeeded()
         {"resonance",0.8f}, {"filterMorph",0.5f}, {"sustain",0.9f}, {"attack",0.1f},
         {"mod1Source",2}, {"mod1Dest",6}, {"mod1Depth",0.5f}, {"lfoRate",0.4f} });  // LFO -> tilt
 
+    // --- Chord mode ---
+    ensure ("Chord/Organ Comp", { {"chordOn",1}, {"chordSplit",60}, {"chordVoicing",0},
+        {"chordSpread",0.3f}, {"oscAType",0}, {"cutoff",6000}, {"attack",0.01f},
+        {"decay",0.3f}, {"sustain",0.85f}, {"release",0.3f}, {"bassOn",1},
+        {"bassLevel",0.7f}, {"chorusOn",1} });
+    ensure ("Chord/Arp Progression", { {"chordOn",1}, {"chordSplit",60}, {"chordVoicing",3},
+        {"chordSpread",0.6f}, {"arpOn",1}, {"arpRate",4}, {"arpTarget",0},
+        {"oscAType",9}, {"cutoff",7000}, {"sustain",0.8f}, {"release",0.4f},
+        {"delayMix",0.25f}, {"reverbOn",1} });
+
     // --- Send / routing showcases ---
     ensure ("Routing/Dry Lead Wet Pad", { {"oscAType",9}, {"oscAAmount",0.5f}, {"fxSend",0.25f},
         {"cutoff",8000}, {"sustain",0.85f}, {"reverbOn",1}, {"reverbMix",0.6f},

@@ -8,6 +8,7 @@
 #include "harness/Spectrum.h"
 
 #include <vector>
+#include <string>
 #include <cmath>
 #include <algorithm>
 
@@ -205,10 +206,10 @@ TEST_CASE ("Unison gain compensation follows 1/sqrt(n)", "[synth][gain]")
 // Tempo-synced envelope times
 // ---------------------------------------------------------------------------
 
-TEST_CASE ("Note divisions convert to the expected envelope times", "[tempo]")
+TEST_CASE ("Note divisions convert to the expected times", "[tempo]")
 {
-    // syncedDelaySeconds is what the processor maps an envelope stage's sync
-    // choice through, so these are the times a synced ADSR actually gets.
+    // syncedDelaySeconds drives the LFO, delay and arp sync. The envelopes use
+    // their own wider table (see envDivisionSeconds).
     // Index order: 1/1, 1/2, 1/4, 1/8, 1/16, 1/4., 1/8., 1/4T, 1/8T.
     REQUIRE (syncedDelaySeconds (120.0, 0) == Approx (2.0));    // 1/1 = 4 beats
     REQUIRE (syncedDelaySeconds (120.0, 1) == Approx (1.0));    // 1/2
@@ -221,6 +222,27 @@ TEST_CASE ("Note divisions convert to the expected envelope times", "[tempo]")
     // Halving the tempo doubles every division.
     REQUIRE (syncedDelaySeconds (60.0, 2) == Approx (1.0));
     REQUIRE (syncedDelaySeconds (240.0, 2) == Approx (0.25));
+}
+
+TEST_CASE ("Envelope divisions span the whole knob range", "[tempo][envelope]")
+{
+    // The envelope table is deliberately wider than the nine values the
+    // LFO/delay/arp sync share: a time knob runs from milliseconds to tens of
+    // seconds, and a table stopping at 1/1 left most of its travel clamped.
+    const double bpm = 120.0;   // one beat = 500 ms
+
+    REQUIRE (kNumEnvDivisions == 20);
+
+    // Ascending, with no duplicates -- nearest-match is meaningless otherwise.
+    for (int i = 1; i < kNumEnvDivisions; ++i)
+        REQUIRE (envDivisionSeconds (i, bpm) > envDivisionSeconds (i - 1, bpm));
+
+    // Covers ~31 ms to 16 s at 120 BPM, so both ends of an attack knob
+    // (1 ms .. 30 s) land on something musical rather than pinning.
+    REQUIRE (envDivisionSeconds (0, bpm) == Approx (0.03125));                  // 1/64
+    REQUIRE (envDivisionSeconds (kNumEnvDivisions - 1, bpm) == Approx (16.0));  // 8/1
+    REQUIRE (std::string (envDivisionName (0)) == "1/64");
+    REQUIRE (std::string (envDivisionName (kNumEnvDivisions - 1)) == "8/1");
 }
 
 TEST_CASE ("Envelope sync snaps a stage to its nearest division", "[tempo][envelope]")
@@ -237,20 +259,21 @@ TEST_CASE ("Envelope sync snaps a stage to its nearest division", "[tempo][envel
     REQUIRE (syncedEnvTime (0.240, bpm, false) == Approx (0.240));
     REQUIRE (syncedEnvTime (7.5,   bpm, false) == Approx (7.5));
 
-    // The division set is not just the straight notes -- dotted and triplet
-    // values sit between them, so 180 ms lands on the 1/8 triplet (167 ms)
-    // rather than on 1/8 (250 ms).
-    REQUIRE (syncedEnvTime (0.180, bpm, true) == Approx (syncedDelaySeconds (bpm, 8)));
-    REQUIRE (syncedEnvTime (0.360, bpm, true) == Approx (syncedDelaySeconds (bpm, 6)));  // dotted 1/8
+    // Straight, dotted and triplet values all sit in the table, so the snap is
+    // finer than the straight notes alone: 180 ms goes to the dotted 1/16
+    // (187.5 ms), not to 1/8 (250 ms).
+    REQUIRE (syncedEnvTime (0.180, bpm, true) == Approx (0.1875));
+    REQUIRE (syncedEnvTime (0.360, bpm, true) == Approx (0.375));   // dotted 1/8
 
     // The same knob position follows the tempo.
-    REQUIRE (syncedEnvTime (0.240, 60.0,  true) == Approx (0.25));   // 1/16 at 60
-    REQUIRE (syncedEnvTime (0.240, 240.0, true) == Approx (0.25));   // 1/4 at 240
+    REQUIRE (syncedEnvTime (0.500, 120.0, true) == Approx (0.5));    // 1/4 at 120
+    REQUIRE (syncedEnvTime (0.500, 60.0,  true) == Approx (0.5));    // 1/8 at 60
+    REQUIRE (syncedEnvTime (0.500, 240.0, true) == Approx (0.5));    // 1/2 at 240
 
-    // Out-of-range values clamp to the nearest available division rather than
-    // producing something silly.
-    REQUIRE (syncedEnvTime (0.0001, bpm, true) == Approx (syncedDelaySeconds (bpm, 4)));
-    REQUIRE (syncedEnvTime (60.0,   bpm, true) == Approx (syncedDelaySeconds (bpm, 0)));
+    // Out-of-range values clamp to the ends of the table.
+    REQUIRE (syncedEnvTime (0.0001, bpm, true) == Approx (envDivisionSeconds (0, bpm)));
+    REQUIRE (syncedEnvTime (600.0,  bpm, true)
+             == Approx (envDivisionSeconds (kNumEnvDivisions - 1, bpm)));
 }
 
 TEST_CASE ("A synced envelope stage tracks tempo", "[tempo][envelope]")

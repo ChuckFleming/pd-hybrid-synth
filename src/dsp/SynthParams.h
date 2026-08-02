@@ -77,19 +77,70 @@ inline double syncedDelaySeconds (double bpm, int divIndex) noexcept
     return t < 0.001 ? 0.001 : (t > 2.0 ? 2.0 : t);
 }
 
-// Index of the note division (0..8, matching syncedDelaySeconds) whose duration
-// at `bpm` is closest to `seconds`, compared on a log scale so "nearest" means
-// nearest by ear rather than by raw milliseconds. Used by the envelope tempo
-// sync: the time knobs keep their normal range and each stage lands on the
-// division it is already closest to.
+// Note divisions for envelope tempo sync, in beats (1 beat = a quarter note),
+// ascending. Deliberately a *separate*, much wider table than the nine values
+// the LFO/delay/arp sync share: an envelope time knob spans milliseconds to
+// tens of seconds, so a table that stopped at 1/1 left most of the knob's
+// travel clamped against the two ends. Straight, dotted and triplet values of
+// every length from 1/64 to eight bars.
+struct EnvDivision { double beats; const char* name; };
+
+inline const EnvDivision* envDivisions() noexcept
+{
+    static const EnvDivision kTable[] = {
+        {  0.0625,      "1/64"  },
+        {  1.0 / 12.0,  "1/32T" },
+        {  0.125,       "1/32"  },
+        {  1.0 / 6.0,   "1/16T" },
+        {  0.1875,      "1/32." },
+        {  0.25,        "1/16"  },
+        {  1.0 / 3.0,   "1/8T"  },
+        {  0.375,       "1/16." },
+        {  0.5,         "1/8"   },
+        {  2.0 / 3.0,   "1/4T"  },
+        {  0.75,        "1/8."  },
+        {  1.0,         "1/4"   },
+        {  4.0 / 3.0,   "1/2T"  },
+        {  1.5,         "1/4."  },
+        {  2.0,         "1/2"   },
+        {  3.0,         "1/2."  },
+        {  4.0,         "1/1"   },
+        {  8.0,         "2/1"   },
+        { 16.0,         "4/1"   },
+        { 32.0,         "8/1"   },
+    };
+    return kTable;
+}
+
+inline constexpr int kNumEnvDivisions = 20;
+
+/** Duration in seconds of envelope division `i` at `bpm`. */
+inline double envDivisionSeconds (int i, double bpm) noexcept
+{
+    if (i < 0) i = 0;
+    if (i >= kNumEnvDivisions) i = kNumEnvDivisions - 1;
+    return envDivisions()[i].beats * 60.0 / (bpm > 1.0 ? bpm : 120.0);
+}
+
+inline const char* envDivisionName (int i) noexcept
+{
+    if (i < 0) i = 0;
+    if (i >= kNumEnvDivisions) i = kNumEnvDivisions - 1;
+    return envDivisions()[i].name;
+}
+
+// Index of the division whose duration at `bpm` is closest to `seconds`,
+// compared on a log scale so "nearest" means nearest by ear rather than by raw
+// milliseconds. The time knobs keep their normal range and each stage lands on
+// the division it is already closest to.
 inline int nearestDivisionIndex (double seconds, double bpm) noexcept
 {
     int    best = 0;
     double bestErr = 1.0e30;
-    for (int i = 0; i <= 8; ++i)
+    for (int i = 0; i < kNumEnvDivisions; ++i)
     {
-        const double d = syncedDelaySeconds (bpm, i);
-        const double err = std::abs (std::log (d / (seconds > 1.0e-6 ? seconds : 1.0e-6)));
+        const double d = envDivisionSeconds (i, bpm);
+        const double err = std::abs (std::log (d / (seconds > 1.0e-9 ? seconds : 1.0e-9)));
         if (err < bestErr) { bestErr = err; best = i; }
     }
     return best;
@@ -98,7 +149,7 @@ inline int nearestDivisionIndex (double seconds, double bpm) noexcept
 /** The synced duration a stage time snaps to, or `seconds` when sync is off. */
 inline double syncedEnvTime (double seconds, double bpm, bool sync) noexcept
 {
-    return sync ? syncedDelaySeconds (bpm, nearestDivisionIndex (seconds, bpm)) : seconds;
+    return sync ? envDivisionSeconds (nearestDivisionIndex (seconds, bpm), bpm) : seconds;
 }
 
 // Microtuning: cents deviation from 12-TET for a pitch class (0 = C .. 11 = B),

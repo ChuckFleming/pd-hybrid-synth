@@ -80,6 +80,16 @@ public:
         startTimerHz (12);
     }
 
+    /** Maps a raw stage time to the time actually being played. Set by the
+        editor to the tempo-sync snap, so that while SYNC is on the curve only
+        moves when the division changes -- turning a knob within a division's
+        snap zone alters nothing audible and must not animate the display. */
+    void setTimeMapper (std::function<double (double)> fn)
+    {
+        timeMap_ = std::move (fn);
+        repaint();
+    }
+
     void paint (juce::Graphics& g) override
     {
         auto in = drawFrame (g, getLocalBounds().toFloat(), caption_);
@@ -247,10 +257,10 @@ private:
         Geometry g;
         if (a_ == nullptr) return g;
 
-        const float A = a_->convertFrom0to1 (a_->getValue());
-        const float D = d_->convertFrom0to1 (d_->getValue());
+        const float A = mapTime (a_->convertFrom0to1 (a_->getValue()));
+        const float D = mapTime (d_->convertFrom0to1 (d_->getValue()));
         const float S = juce::jlimit (0.0f, 1.0f, s_->convertFrom0to1 (s_->getValue()));
-        const float R = r_->convertFrom0to1 (r_->getValue());
+        const float R = mapTime (r_->convertFrom0to1 (r_->getValue()));
 
         // The held section is a fixed slice of the width; the three timed
         // sections share the rest in proportion to their real durations.
@@ -300,10 +310,22 @@ private:
         }
     }
 
+    float mapTime (float seconds) const
+    {
+        return timeMap_ ? static_cast<float> (timeMap_ (seconds)) : seconds;
+    }
+
     void timerCallback() override
     {
         if (a_ == nullptr) return;
-        const float now[4] { a_->getValue(), d_->getValue(), s_->getValue(), r_->getValue() };
+
+        // Compare the *drawn* values, not the raw parameter values: with sync
+        // on, a knob can move a long way inside one division without changing
+        // the shape, and repainting then would show motion that is not there.
+        const float now[4] { mapTime (a_->convertFrom0to1 (a_->getValue())),
+                             mapTime (d_->convertFrom0to1 (d_->getValue())),
+                             s_->getValue(),
+                             mapTime (r_->convertFrom0to1 (r_->getValue())) };
         for (int i = 0; i < 4; ++i)
             if (! juce::approximatelyEqual (now[i], last_[i])) { last_[i] = now[i]; repaint(); }
     }
@@ -316,6 +338,7 @@ private:
     int   dragNode_  = -1;
     int   hoverNode_ = -1;
     float dragScale_ = 0.0f;   // x scale frozen for the duration of a drag
+    std::function<double (double)> timeMap_;   // raw seconds -> played seconds
 };
 
 //==============================================================================

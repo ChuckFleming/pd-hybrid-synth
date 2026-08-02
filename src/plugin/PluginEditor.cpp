@@ -1513,18 +1513,26 @@ PDHybridEditor::LabeledKnob* PDHybridEditor::findKnob (const juce::String& param
 
 void PDHybridEditor::setupEnvTimeReadouts()
 {
-    // Each envelope's three time knobs, paired with the switch that retimes them.
-    struct EnvGroup { const char* sync; const char* a; const char* d; const char* r; };
-    static const EnvGroup kGroups[] = {
-        { "ampEnvSync",   "attack",      "decay",       "release"     },
-        { "filtEnvSync",  "filterEnvA",  "filterEnvD",  "filterEnvR"  },
-        { "filt2EnvSync", "filter2EnvA", "filter2EnvD", "filter2EnvR" },
-        { "modEnvSync",   "modEnvA",     "modEnvD",     "modEnvR"     },
+    // Each envelope's three time knobs and curve, paired with the switch that
+    // retimes them.
+    struct EnvGroup
+    {
+        const char* sync; const char* a; const char* d; const char* r;
+        pdui::EnvelopeCurve* curve;
+    };
+    const EnvGroup kGroups[] = {
+        { "ampEnvSync",   "attack",      "decay",       "release",     &ampCurve   },
+        { "filtEnvSync",  "filterEnvA",  "filterEnvD",  "filterEnvR",  &filt1Curve },
+        { "filt2EnvSync", "filter2EnvA", "filter2EnvD", "filter2EnvR", &filt2Curve },
+        { "modEnvSync",   "modEnvA",     "modEnvD",     "modEnvR",     &modCurve   },
     };
 
     for (const auto& g : kGroups)
     {
         const juce::String syncId (g.sync);
+        auto synced = [this, syncId]
+        { return proc.apvts.getRawParameterValue (syncId)->load() > 0.5f; };
+
         for (const char* id : { g.a, g.d, g.r })
         {
             auto* k = findKnob (id);
@@ -1535,10 +1543,11 @@ void PDHybridEditor::setupEnvTimeReadouts()
             // which can only ever render seconds: it knows nothing about the
             // sync switch or the tempo. Showing "237 ms" for a stage that is
             // actually playing 250 ms would be a readout that lies.
-            k->slider.textFromValueFunction = [this, syncId] (double v)
+            k->slider.textFromValueFunction = [this, synced] (double v)
             {
-                if (proc.apvts.getRawParameterValue (syncId)->load() > 0.5f)
-                    return kSyncNames[1 + pdhybrid::nearestDivisionIndex (v, proc.currentBpm())];
+                if (synced())
+                    return juce::String (pdhybrid::envDivisionName (
+                        pdhybrid::nearestDivisionIndex (v, proc.currentBpm())));
 
                 return v < 1.0 ? juce::String (juce::roundToInt (v * 1000.0)) + " ms"
                                : juce::String (v, 2) + " s";
@@ -1546,6 +1555,12 @@ void PDHybridEditor::setupEnvTimeReadouts()
             k->slider.updateText();
             envTimeKnobs.push_back (k);
         }
+
+        // The curve draws the time that is actually played, so while SYNC is on
+        // it holds still until the division changes.
+        if (g.curve != nullptr)
+            g.curve->setTimeMapper ([this, synced] (double seconds)
+            { return pdhybrid::syncedEnvTime (seconds, proc.currentBpm(), synced()); });
     }
 }
 

@@ -31,6 +31,40 @@ public:
 
     /** Semitone offsets of `quality` (0..11). Returns the note count. */
     static int qualityIntervals (int quality, int* out) noexcept;
+
+    void setEnabled   (bool on) noexcept       { enabled_ = on; }
+    void setSplitNote (int midiNote) noexcept;
+    void setQuality   (int index) noexcept;
+    void setVoicing   (int mode) noexcept      { if (mode != voicing_) { voicing_ = mode; dirty_ = true; } }
+    void setSpread    (double spread01) noexcept;
+    void setOctave    (int octaves) noexcept;
+
+    int handleNoteOn  (int note, float vel, Event* out, int maxOut) noexcept;
+    int handleNoteOff (int note, Event* out, int maxOut) noexcept;
+
+    int latchedQuality() const noexcept { return quality_; }
+    int heldRoot()       const noexcept { return heldRoot_; }
+
+private:
+    /** Fills `out` with the voiced chord for `root`. Returns the note count. */
+    int buildVoicing (int root, int* out) const noexcept;
+    /** Diffs `newNotes` against what is sounding and emits only the changes. */
+    int emitChange (const int* newNotes, int newCount, int root,
+                    Event* out, int maxOut) noexcept;
+
+    bool   enabled_ = false;
+    int    split_   = 60;
+    int    quality_ = 0;
+    int    voicing_ = VoiceLed;
+    double spread_  = 0.4;
+    int    octave_  = 0;
+    bool   dirty_   = false;
+
+    int    heldRoot_ = -1;
+    float  heldVel_  = 1.0f;
+    int    curRoot_  = -1;                    // note currently sounding on the bass
+    int    cur_[kMaxChordNotes] = { 0 };      // chord notes currently sounding
+    int    curCount_ = 0;
 };
 
 } // namespace pdhybrid

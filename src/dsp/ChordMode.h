@@ -46,8 +46,9 @@ public:
     int heldRoot()       const noexcept { return heldRoot_; }
 
 private:
-    /** Fills `out` with the voiced chord for `root`. Returns the note count. */
-    int buildVoicing (int root, int* out) const noexcept;
+    /** Fills `out` with the voiced chord for `root`. Returns the note count.
+        Not const: it carries the voicing centre forward for the next chord. */
+    int buildVoicing (int root, int* out) noexcept;
     /** Diffs `newNotes` against what is sounding and emits only the changes. */
     int emitChange (const int* newNotes, int newCount, int root,
                     Event* out, int maxOut) noexcept;
@@ -65,6 +66,13 @@ private:
     int    curRoot_  = -1;                    // note currently sounding on the bass
     int    cur_[kMaxChordNotes] = { 0 };      // chord notes currently sounding
     int    curCount_ = 0;
+
+    // Voicing centre carried forward. This deliberately outlives the sounding
+    // notes: releasing a chord and playing the next one is still a progression,
+    // and it should lead from where the last one sat rather than jumping back
+    // to root position every time a key is lifted.
+    double lastCentre_ = 0.0;
+    bool   hasHistory_ = false;
 };
 
 } // namespace pdhybrid

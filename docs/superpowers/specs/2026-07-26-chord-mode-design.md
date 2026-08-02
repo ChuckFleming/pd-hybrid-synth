@@ -138,14 +138,23 @@ Pitch classes are `pc_i = (root + interval_i) mod 12`.
 
 ### Mode 0 — Voice-Led (default)
 
-1. `centre` = mean of the previous voicing's notes; on the first chord,
-   `centre = root`.
-2. Place each pitch class in the octave nearest that centre:
-   `note_i = pc_i + 12 * round((centre - pc_i) / 12.0)`
-3. Sort ascending, remove duplicates.
+1. **First chord of a sequence** (no voicing history): root position, i.e.
+   `root + interval_i`. Centring on the played root instead — as an earlier
+   draft of this spec said — places some chord tones *below* it: press C and the
+   fifth lands under it, so the key you pressed is not the bass. Root position
+   makes the played key audibly the root.
+2. **Every chord after**: place each pitch class in the octave nearest the
+   previous voicing's centre,
+   `note_i = pc_i + 12 * round((centre - pc_i) / 12.0)`, then sort and dedupe.
+3. The centre is carried forward as the mean of the voicing just produced.
 
 No explicit common-tone logic is needed: a pitch class already sounding near the
 centre resolves to the same absolute note, so common tones hold automatically.
+
+**The voicing centre outlives the sounding notes.** Releasing a chord and playing
+the next one is still a progression, so history persists across note-offs rather
+than resetting to root position every time a key is lifted. Only a `flush` — mode
+toggled, or the split moved — clears it.
 
 ### Mode 1 — Root Position
 

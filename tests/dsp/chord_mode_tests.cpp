@@ -142,3 +142,61 @@ TEST_CASE ("The bass layer gets a root-flagged event", "[chord]")
     REQUIRE (rootOns == 1);
     REQUIRE (rootNote == 60);
 }
+
+TEST_CASE ("Voice-led places the first chord around the played root", "[chord][voicing]")
+{
+    auto c = makeChord();
+    c.setVoicing (ChordMode::VoiceLed);
+    c.setQuality (0);                                  // maj
+    const auto notes = chordNotesOn (onEvents (c, 60));
+    // Centre is the root itself on the first chord: C is placed at 60, E and G
+    // in whichever octave sits nearest 60.
+    REQUIRE (notes == std::vector<int> { 60, 64, 67 });
+}
+
+TEST_CASE ("Voice-led keeps common tones at the same absolute pitch",
+           "[chord][voicing]")
+{
+    auto c = makeChord();
+    c.setVoicing (ChordMode::VoiceLed);
+
+    c.setQuality (0);                                  // maj
+    const auto cMaj = chordNotesOn (onEvents (c, 60));  // C E G
+    offEvents (c, 60);
+
+    c.setQuality (1);                                  // min
+    const auto aMin = chordNotesOn (onEvents (c, 69));  // A C E
+
+    // C and E are in both chords and must land on the identical MIDI note.
+    for (int shared : { 60, 64 })
+    {
+        const bool inC = std::find (cMaj.begin(), cMaj.end(), shared) != cMaj.end();
+        const bool inA = std::find (aMin.begin(), aMin.end(), shared) != aMin.end();
+        INFO ("shared tone " << shared);
+        REQUIRE (inC);
+        REQUIRE (inA);
+    }
+}
+
+TEST_CASE ("Voice-led moves less than root position", "[chord][voicing]")
+{
+    // Total absolute movement from one chord to the next, summed over voices.
+    auto totalMovement = [] (int voicing)
+    {
+        auto c = makeChord();
+        c.setVoicing (voicing);
+        c.setQuality (0);
+        auto a = chordNotesOn (onEvents (c, 60));      // C major
+        offEvents (c, 60);
+        auto b = chordNotesOn (onEvents (c, 65));      // F major
+        int move = 0;
+        const std::size_t n = a.size() < b.size() ? a.size() : b.size();
+        for (std::size_t i = 0; i < n; ++i)
+            move += a[i] > b[i] ? a[i] - b[i] : b[i] - a[i];
+        return move;
+    };
+
+    INFO ("voice-led " << totalMovement (ChordMode::VoiceLed)
+          << " vs root position " << totalMovement (ChordMode::RootPosition));
+    REQUIRE (totalMovement (ChordMode::VoiceLed) < totalMovement (ChordMode::RootPosition));
+}

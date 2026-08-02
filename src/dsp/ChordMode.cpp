@@ -60,13 +60,62 @@ void ChordMode::setOctave (int octaves) noexcept
     if (octaves != octave_) { octave_ = octaves; dirty_ = true; }
 }
 
-// Placeholder until Task 3: root position, no spread or octave yet.
-int ChordMode::buildVoicing (int root, int* out) const noexcept
+namespace {
+
+// Insertion sort: at most four elements, and it keeps the class allocation-free.
+void sortAscending (int* v, int n) noexcept
+{
+    for (int i = 1; i < n; ++i)
+    {
+        const int key = v[i];
+        int j = i - 1;
+        while (j >= 0 && v[j] > key) { v[j + 1] = v[j]; --j; }
+        v[j + 1] = key;
+    }
+}
+
+} // namespace
+
+int ChordMode::buildVoicing (int root, int* out) noexcept
 {
     int iv[kMaxChordNotes];
     const int n = qualityIntervals (quality_, iv);
-    for (int i = 0; i < n; ++i)
-        out[i] = root + iv[i];
+
+    // Root position, and also the very *first* chord of a voice-led sequence:
+    // with no history there is nothing to lead from, and centring on the played
+    // root would place some chord tones below it -- press C and the fifth lands
+    // under it, so the key you pressed is not the bass. Starting in root
+    // position makes the played key audibly the root; every chord after leads
+    // from it.
+    if (voicing_ == RootPosition || ! hasHistory_)
+    {
+        for (int i = 0; i < n; ++i)
+            out[i] = root + iv[i];
+    }
+    else
+    {
+        // Closest-position placement: put every pitch class in whichever octave
+        // sits nearest the previous voicing's centre. Common tones fall out of
+        // this for free -- a pitch class already sounding near the centre
+        // resolves to the same absolute note, so no explicit common-tone logic
+        // is needed.
+        for (int i = 0; i < n; ++i)
+        {
+            const int pc = ((root + iv[i]) % 12 + 12) % 12;
+            // Round half away from zero without <cmath>: the operand is small.
+            const double k   = (lastCentre_ - pc) / 12.0;
+            const int    oct = static_cast<int> (k >= 0.0 ? k + 0.5 : k - 0.5);
+            out[i] = pc + 12 * oct;
+        }
+        sortAscending (out, n);
+    }
+
+    // Carry the centre forward for the next chord.
+    double sum = 0.0;
+    for (int i = 0; i < n; ++i) sum += out[i];
+    lastCentre_ = n > 0 ? sum / n : lastCentre_;
+    hasHistory_ = true;
+
     return n;
 }
 

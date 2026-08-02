@@ -1580,11 +1580,19 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), "KEYBOARD");
+        auto frame = drawFrame (g, getLocalBounds().toFloat(), "KEYBOARD");
         if (apvts_ == nullptr) return;
+
+        // Bottom strip names the chord being played; the keys take the rest.
+        auto readout = frame.removeFromBottom (13.0f);
+        auto in = frame.withTrimmedBottom (2.0f);
 
         static const char* kQualityNames[12] = { "maj", "min", "7", "m7", "maj7", "6",
                                                  "m7b5", "dim7", "aug", "sus2", "sus4", "m6" };
+        // A black key is about nine pixels wide at real size, so it gets the
+        // shortest form that is still unambiguous rather than the full name.
+        static const char* kShortNames[12]   = { "maj", "m", "7", "m7", "maj7", "6",
+                                                 "\xc3\xb8", "dim", "+", "s2", "s4", "m6" };
         static const int kWhiteSemi[7]  = { 0, 2, 4, 5, 7, 9, 11 };
         static const int kBlackAfter[5] = { 0, 1, 3, 4, 5 };   // C, D, F, G, A
         static const int kBlackSemi[5]  = { 1, 3, 6, 8, 10 };
@@ -1667,6 +1675,16 @@ public:
 
                 g.setColour (isSel ? kTrace : (isRoot ? kAmber : kEdge));
                 g.drawRect (r, 1.0f);
+
+                if (inZone)
+                {
+                    g.setFont (monoF (6.0f));
+                    g.setColour (isSel ? juce::Colour (0xffbdf5d6) : kDim);
+                    g.drawText (kShortNames[midi - zoneLow],
+                                r.withTrimmedBottom (1.0f).expanded (3.0f, 0.0f),
+                                juce::Justification::centredBottom);
+                    g.setFont (monoF (7.5f));
+                }
             }
 
         // Split marker on the real zone boundary.
@@ -1676,9 +1694,35 @@ public:
             g.setColour (kAmber);
             g.fillRect (in.getX() + idx * w - 1.0f, in.getY() - 2.0f, 2.0f, h + 4.0f);
         }
+
+        // --- readout: the chord actually playing, and how it is voiced ---
+        g.setFont (monoF (8.5f));
+        if (root >= 0 && nSounding > 0)
+        {
+            juce::String s = noteName (root) + " " + kQualityNames[quality] + "   ";
+            for (int i = 0; i < nSounding; ++i)
+                s << noteName (sounding[i]) << " ";
+            g.setColour (kAmber);
+            g.drawText (s, readout, juce::Justification::centredLeft);
+        }
+        else
+        {
+            g.setColour (kDim.withAlpha (0.8f));
+            g.drawText (juce::String ("LATCHED ") + kQualityNames[quality]
+                            + "   play a key above the split",
+                        readout, juce::Justification::centredLeft);
+        }
     }
 
 private:
+    static juce::String noteName (int midi)
+    {
+        static const char* kNames[12] = { "C", "C#", "D", "D#", "E", "F",
+                                          "F#", "G", "G#", "A", "A#", "B" };
+        if (midi < 0) return "--";
+        return juce::String (kNames[((midi % 12) + 12) % 12]) + juce::String (midi / 12 - 1);
+    }
+
     /** How many white keys sit below `split`, counting from `firstMidi`. */
     static int splitWhiteIndex (int firstMidi, int split)
     {

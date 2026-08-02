@@ -985,6 +985,24 @@ void PDHybridEditor::buildSections()
     refreshWavetableButton();
     mixer.toggles = { &wavetableButton };
 
+    // Chord mode. Wide card: the keyboard graphic is the documentation, so it
+    // needs the room to stay legible.
+    chordKeys.attach (proc.apvts,
+                      [this] { return proc.chordHeldRoot(); },
+                      [this] (int* out, int maxOut) { return proc.chordVoicedNotes (out, maxOut); });
+    chordSec.title   = "Chord";
+    chordSec.cols    = 3;
+    chordSec.span    = 3;
+    chordSec.custom  = &chordKeys;
+    chordSec.customH = 92;
+    chordSec.toggles = { &addToggle ("chordOn", "ON") };
+    // Must match the chordVoicing choice parameter exactly, in order.
+    chordSec.combos  = { &addCombo ("chordVoicing", { "Voice-Led", "Root Position",
+                                                      "Closed", "Drop-2", "Shell" }) };
+    chordSec.knobs   = { &addKnob ("chordSplit", "Split", 0),
+                         &addKnob ("chordSpread", "Spread"),
+                         &addKnob ("chordOctave", "Octave", 0) };
+
     bassCurve.attach (proc.apvts, "bassAttack", "bassDecay", "bassSustain", "bassRelease");
     bassSec.title   = "Mono Bass";
     bassSec.cols    = 5;
@@ -2166,7 +2184,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // off the path entirely.
     std::vector<Page> layout {
         { "1 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " VOICE",
-                        { &oscA, &oscB, &mixer, &bassSec, &pluckSec, &unison, &glideSec },
+                        { &oscA, &oscB, &mixer, &chordSec, &bassSec, &pluckSec, &unison, &glideSec },
                                                                                 nullptr, {}, 0 },
         { "2 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " SHAPE",
                         { &filter, &filter2, &routingSec, &drive },              nullptr, {}, 0 },

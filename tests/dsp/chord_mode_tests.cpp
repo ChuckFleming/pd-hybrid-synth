@@ -435,6 +435,27 @@ TEST_CASE ("A second root replaces the first", "[chord]")
     REQUIRE (c.heldRoot() == 65);
 }
 
+TEST_CASE ("A quality key flags the latch for the host parameter", "[chord]")
+{
+    // chordQuality is a real parameter, and the processor pushes it into
+    // ChordMode every block. A quality key therefore has to write *back* to the
+    // parameter, or the next block overwrites the latch and the key press is
+    // undone before it is audible. This flag is how the processor knows to.
+    auto c = makeChord();
+    REQUIRE_FALSE (c.consumeQualityChanged());   // nothing pending
+
+    onEvents (c, 51);                            // the m7 key
+    REQUIRE (c.latchedQuality() == 3);
+    REQUIRE (c.consumeQualityChanged());         // flagged
+    REQUIRE_FALSE (c.consumeQualityChanged());   // and consumed exactly once
+
+    // The parameter path must NOT raise it, or the processor would fight
+    // itself -- writing back the value it had just pushed in.
+    c.setQuality (7);
+    REQUIRE (c.latchedQuality() == 7);
+    REQUIRE_FALSE (c.consumeQualityChanged());
+}
+
 TEST_CASE ("Output never exceeds maxOut", "[chord]")
 {
     auto c = makeChord();

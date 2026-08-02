@@ -54,6 +54,13 @@ public:
     int latchedQuality() const noexcept { return quality_; }
     int heldRoot()       const noexcept { return heldRoot_; }
 
+    /** True once after a quality *key* moved the latch, so the caller can write
+        the new value back to its parameter. Without that write-back the next
+        parameter push would overwrite the latch and undo the key press. Changes
+        arriving through setQuality (the parameter itself) do not raise it. */
+    bool consumeQualityChanged() noexcept
+    { const bool c = qualityFromKey_; qualityFromKey_ = false; return c; }
+
     /** Copies the currently sounding chord notes out. Returns the count. */
     int voicedNotes (int* out, int maxOut) const noexcept;
 
@@ -74,6 +81,7 @@ private:
     double spread_  = 0.4;
     int    octave_  = 0;
     bool   dirty_   = false;
+    bool   qualityFromKey_ = false;   // latch moved by a key, not the parameter
 
     int    heldRoot_ = -1;
     float  heldVel_  = 1.0f;

@@ -273,7 +273,14 @@ int ChordMode::handleNoteOn (int note, float vel, Event* out, int maxOut) noexce
 
     if (note >= split_ - kQualityZoneSize)    // quality zone: latch, never sounds
     {
-        setQuality (note - (split_ - kQualityZoneSize));
+        const int q = note - (split_ - kQualityZoneSize);
+        if (q != quality_)
+        {
+            setQuality (q);
+            // Tell the caller to push this back into its parameter: the
+            // parameter is the latch, and it is re-applied every block.
+            qualityFromKey_ = true;
+        }
         // A quality key re-voices whatever is sounding, right now. `refresh`
         // covers the same change arriving from host automation instead.
         return revoice (out, maxOut);

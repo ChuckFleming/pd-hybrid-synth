@@ -745,7 +745,17 @@ void PDHybridAudioProcessor::pushParams()
     chordSplitCached_ = static_cast<int> (apvts.getRawParameterValue ("chordSplit")->load());
     chord_.setEnabled   (chordOn_);
     chord_.setSplitNote (chordSplitCached_);
-    chord_.setQuality   (static_cast<int> (apvts.getRawParameterValue ("chordQuality")->load()));
+    // Push the quality only when the *parameter* moved. Pushing every block
+    // would overwrite a latch just set by a quality key, undoing the key press
+    // before it was ever audible.
+    {
+        const int q = static_cast<int> (apvts.getRawParameterValue ("chordQuality")->load());
+        if (q != chordQualitySeen_)
+        {
+            chord_.setQuality (q);
+            chordQualitySeen_ = q;
+        }
+    }
     chord_.setVoicing   (static_cast<int> (apvts.getRawParameterValue ("chordVoicing")->load()));
     chord_.setSpread    (apvts.getRawParameterValue ("chordSpread")->load());
     chord_.setOctave    (static_cast<int> (apvts.getRawParameterValue ("chordOctave")->load()));
@@ -1033,6 +1043,24 @@ void PDHybridAudioProcessor::dispatchChordEvents (const pdhybrid::ChordMode::Eve
     }
 }
 
+void PDHybridAudioProcessor::syncChordQualityParam()
+{
+    // A quality key moved the latch. Write it back so the parameter -- which is
+    // what gets pushed in every block, saved with the preset and shown in the
+    // editor -- agrees with what is actually latched.
+    if (! chord_.consumeQualityChanged())
+        return;
+
+    const int q = chord_.latchedQuality();
+    chordQualitySeen_ = q;
+
+    if (auto* p = apvts.getParameter ("chordQuality"))
+    {
+        const float norm = p->convertTo0to1 (static_cast<float> (q));
+        p->setValueNotifyingHost (norm);
+    }
+}
+
 void PDHybridAudioProcessor::publishChordState() noexcept
 {
     int notes[pdhybrid::ChordMode::kMaxChordNotes];
@@ -1070,6 +1098,7 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg,
         const int n = chord_.handleNoteOn (msg.getNoteNumber(), vel,
                                            ev, pdhybrid::ChordMode::kMaxEvents);
         dispatchChordEvents (ev, n, channel, toPoly, toBass);
+        syncChordQualityParam();
         publishChordState();
     }
     else if (msg.isNoteOff())
@@ -1078,6 +1107,7 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg,
         const int n = chord_.handleNoteOff (msg.getNoteNumber(),
                                             ev, pdhybrid::ChordMode::kMaxEvents);
         dispatchChordEvents (ev, n, channel, toPoly, toBass);
+        syncChordQualityParam();
         publishChordState();
     }
     else if (msg.isPitchWheel())
@@ -1263,6 +1293,7 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                            ev, pdhybrid::ChordMode::kMaxEvents)
                     : chord_.handleNoteOff (msg.getNoteNumber(),
                                             ev, pdhybrid::ChordMode::kMaxEvents);
+                syncChordQualityParam();
                 publishChordState();
 
                 for (int i = 0; i < n; ++i)

@@ -113,6 +113,8 @@ private:
     void dispatchChordEvents (const pdhybrid::ChordMode::Event* ev, int n, int channel,
                               bool toPoly, bool toBass);
     void publishChordState() noexcept;
+    /** Writes a key-driven quality latch back into the chordQuality parameter. */
+    void syncChordQualityParam();
     void renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
 
     void applyGlobalModulation (juce::AudioBuffer<float>& buffer, int numSamples);
@@ -165,6 +167,7 @@ private:
     // Members, not function-local statics: a static would be shared across
     // plugin instances and two instances would flush each other's notes.
     int                   chordSplitCached_ = 60, chordLastSplit_ = 60;
+    int                   chordQualitySeen_ = 0;   // last value pushed from the parameter
     // Live chord state, written on the audio thread and read by the editor.
     std::atomic<int>      chordRoot_ { -1 };
     std::atomic<int>      chordNoteCount_ { 0 };

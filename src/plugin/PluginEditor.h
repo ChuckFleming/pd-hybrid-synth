@@ -362,6 +362,15 @@ private:
     void addRouteToSelected();
     void timerCallback() override;           // live values + ring refresh
 
+    // Envelope time knobs read out as note divisions while their envelope's
+    // SYNC is on. Held so the timer can refresh them when the switch or the
+    // tempo moves — the value has not changed, only what it means.
+    LabeledKnob* findKnob (const juce::String& paramId);
+    void setupEnvTimeReadouts();
+    void refreshEnvTimeReadouts();
+    std::vector<LabeledKnob*> envTimeKnobs;
+    juce::String lastEnvSyncState;           // change detection for the refresh
+
     // Matrix state as of the last refresh, so painting never touches the APVTS
     // in a tight loop.
     struct RouteView { int slot; int source; int dest; float depth; int curve; };

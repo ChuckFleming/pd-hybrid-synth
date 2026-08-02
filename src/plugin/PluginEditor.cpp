@@ -1331,7 +1331,7 @@ void PDHybridEditor::buildSections()
     tempoSec.title  = "Tempo";
     tempoSec.cols   = 1;
     tempoSec.span   = 2;
-    tempoSec.combos = { &addCombo ("tempoMode", { "Tempo: Host", "Tempo: Internal" }) };
+    tempoSec.combos = { &addCombo ("tempoMode", { "Tempo: Host", "Tempo: Local" }) };
     tempoSec.knobs  = { &addKnob ("internalBpm", "BPM", 1, KnobSize::Large) };
 }
 
@@ -1503,8 +1503,72 @@ void PDHybridEditor::refreshModRings()
     }
 }
 
+PDHybridEditor::LabeledKnob* PDHybridEditor::findKnob (const juce::String& paramId)
+{
+    for (auto& k : knobs)
+        if (k->paramId == paramId)
+            return k.get();
+    return nullptr;
+}
+
+void PDHybridEditor::setupEnvTimeReadouts()
+{
+    // Each envelope's three time knobs, paired with the switch that retimes them.
+    struct EnvGroup { const char* sync; const char* a; const char* d; const char* r; };
+    static const EnvGroup kGroups[] = {
+        { "ampEnvSync",   "attack",      "decay",       "release"     },
+        { "filtEnvSync",  "filterEnvA",  "filterEnvD",  "filterEnvR"  },
+        { "filt2EnvSync", "filter2EnvA", "filter2EnvD", "filter2EnvR" },
+        { "modEnvSync",   "modEnvA",     "modEnvD",     "modEnvR"     },
+    };
+
+    for (const auto& g : kGroups)
+    {
+        const juce::String syncId (g.sync);
+        for (const char* id : { g.a, g.d, g.r })
+        {
+            auto* k = findKnob (id);
+            if (k == nullptr)
+                continue;
+
+            // Replaces the text the attachment installed from the parameter,
+            // which can only ever render seconds: it knows nothing about the
+            // sync switch or the tempo. Showing "237 ms" for a stage that is
+            // actually playing 250 ms would be a readout that lies.
+            k->slider.textFromValueFunction = [this, syncId] (double v)
+            {
+                if (proc.apvts.getRawParameterValue (syncId)->load() > 0.5f)
+                    return kSyncNames[1 + pdhybrid::nearestDivisionIndex (v, proc.currentBpm())];
+
+                return v < 1.0 ? juce::String (juce::roundToInt (v * 1000.0)) + " ms"
+                               : juce::String (v, 2) + " s";
+            };
+            k->slider.updateText();
+            envTimeKnobs.push_back (k);
+        }
+    }
+}
+
+void PDHybridEditor::refreshEnvTimeReadouts()
+{
+    // Cheap change detection: the readouts only need redrawing when a sync
+    // switch flips or the tempo moves, not on every timer tick.
+    juce::String state;
+    for (const char* id : { "ampEnvSync", "filtEnvSync", "filt2EnvSync", "modEnvSync" })
+        state << (proc.apvts.getRawParameterValue (id)->load() > 0.5f ? '1' : '0');
+    state << juce::String (juce::roundToInt (proc.currentBpm()));
+
+    if (state == lastEnvSyncState)
+        return;
+    lastEnvSyncState = state;
+
+    for (auto* k : envTimeKnobs)
+        k->slider.updateText();
+}
+
 void PDHybridEditor::timerCallback()
 {
+    refreshEnvTimeReadouts();
     refreshModRings();
     layoutInspector();   // the route list grows and shrinks, so re-place the buttons
     inspector.repaint();
@@ -1794,7 +1858,7 @@ void PDHybridEditor::buildStrip()
     stripBpm->slider.setColour (juce::Slider::textBoxTextColourId, kValueCol);
     strip.addAndMakeVisible (stripBpm->slider);
     strip.addAndMakeVisible (stripBpm->label);
-    stripTempoMode = &addCombo ("tempoMode", { "HOST", "INT" });
+    stripTempoMode = &addCombo ("tempoMode", { "HOST", "LOCAL" });
     strip.addAndMakeVisible (*stripTempoMode);
 
     stripPoly = &addCombo ("voiceMode", { "Poly", "Mono", "Legato", "Unison Legato" });
@@ -2002,6 +2066,10 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     proc.apvts.addParameterListener ("filterType", this);
     proc.apvts.addParameterListener ("filter2Type", this);
     updateOscControls();
+
+    // After every knob and its attachment exist: the attachment installs the
+    // parameter's own text function, so this has to override it afterwards.
+    setupEnvTimeReadouts();
 
     // --- Modulation matrix widgets (hosted on the Modulation tab) ---
     for (int i = 0; i < kNumModRows; ++i)

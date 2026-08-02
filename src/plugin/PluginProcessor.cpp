@@ -239,13 +239,13 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
         juce::ParameterID { "compOn", 1 }, "Compressor On", true));
 
     // --- Tempo ---
-    // "Host" still falls back to the internal BPM when the host reports none,
-    // which is what makes the standalone build (and any host without a
-    // transport) follow this knob instead of a hardcoded 120.
+    // "Local" overrides the host outright; "Host" follows the host but still
+    // falls back to this knob when the host reports no tempo, which is what
+    // makes the standalone build (and any host without a transport) usable.
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "tempoMode", 1 }, "Tempo Source",
-        juce::StringArray { "Tempo: Host", "Tempo: Internal" }, 0));
-    pf ("internalBpm", "Internal BPM",
+        juce::StringArray { "Tempo: Host", "Tempo: Local" }, 0));
+    pf ("internalBpm", "Local BPM",
         juce::NormalisableRange<float> (20.0f, 300.0f), 120.0f, bpmAttr);
 
     // Envelope tempo sync: one switch per envelope, not per stage. Turning it on

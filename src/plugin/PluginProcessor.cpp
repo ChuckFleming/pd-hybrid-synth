@@ -261,6 +261,26 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "modEnvSync", 1 }, "Mod Env Sync", false));
 
+    // --- Chord mode ---
+    // A one-octave quality zone latches a chord type; the root zone above it
+    // sets the root. chordQuality is a real parameter rather than hidden state,
+    // so the latched chord saves with the preset and a host can automate it.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "chordOn", 1 }, "Chord Mode", false));
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "chordSplit", 1 }, "Chord Split", 36, 84, 60));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "chordQuality", 1 }, "Chord Quality",
+        juce::StringArray { "maj", "min", "7", "m7", "maj7", "6",
+                            "m7b5", "dim7", "aug", "sus2", "sus4", "m6" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "chordVoicing", 1 }, "Chord Voicing",
+        juce::StringArray { "Voice-Led", "Root Position", "Closed",
+                            "Drop-2", "Shell" }, 0));
+    pf ("chordSpread", "Chord Spread", juce::NormalisableRange<float> (0.0f, 1.0f), 0.4f, pct);
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "chordOctave", 1 }, "Chord Octave", -2, 2, 0));
+
     // --- Arpeggiator ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "arpOn", 1 }, "Arp On", false));

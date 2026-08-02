@@ -741,6 +741,15 @@ void PDHybridAudioProcessor::pushParams()
     compressor.setMakeup    (apvts.getRawParameterValue ("compMakeup")->load());
 
     // Arpeggiator (step length from tempo; note events generated in processBlock).
+    chordOn_ = apvts.getRawParameterValue ("chordOn")->load() > 0.5f;
+    chordSplitCached_ = static_cast<int> (apvts.getRawParameterValue ("chordSplit")->load());
+    chord_.setEnabled   (chordOn_);
+    chord_.setSplitNote (chordSplitCached_);
+    chord_.setQuality   (static_cast<int> (apvts.getRawParameterValue ("chordQuality")->load()));
+    chord_.setVoicing   (static_cast<int> (apvts.getRawParameterValue ("chordVoicing")->load()));
+    chord_.setSpread    (apvts.getRawParameterValue ("chordSpread")->load());
+    chord_.setOctave    (static_cast<int> (apvts.getRawParameterValue ("chordOctave")->load()));
+
     arpOn_ = apvts.getRawParameterValue ("arpOn")->load() > 0.5f;
     arpTarget_ = static_cast<int> (apvts.getRawParameterValue ("arpTarget")->load());
     {
@@ -998,6 +1007,50 @@ void PDHybridAudioProcessor::applyGlobalModulation (juce::AudioBuffer<float>& bu
     }
 }
 
+void PDHybridAudioProcessor::dispatchChordEvents (const pdhybrid::ChordMode::Event* ev,
+                                                  int n, int channel,
+                                                  bool toPoly, bool toBass)
+{
+    // isRoot events are the bass layer's; the rest are chord notes for the poly
+    // voices. With chord mode off, ChordMode passes the played note through as a
+    // single isRoot event, so the `! chordOn_` terms route it to both.
+    for (int i = 0; i < n; ++i)
+    {
+        const auto& e = ev[i];
+        const bool wantPoly = toPoly && (! e.isRoot || ! chordOn_);
+        const bool wantBass = toBass && (e.isRoot   || ! chordOn_);
+
+        if (e.noteOn)
+        {
+            if (wantPoly) engine.noteOn (e.note, e.velocity, channel);
+            if (wantBass) monoBass.noteOn (e.note, e.velocity);
+        }
+        else
+        {
+            if (wantPoly) engine.noteOff (e.note, channel);
+            if (wantBass) monoBass.noteOff (e.note);
+        }
+    }
+}
+
+void PDHybridAudioProcessor::publishChordState() noexcept
+{
+    int notes[pdhybrid::ChordMode::kMaxChordNotes];
+    const int n = chord_.voicedNotes (notes, pdhybrid::ChordMode::kMaxChordNotes);
+    for (int i = 0; i < n; ++i)
+        chordNotes_[i].store (notes[i], std::memory_order_relaxed);
+    chordNoteCount_.store (n, std::memory_order_relaxed);
+    chordRoot_.store (chord_.heldRoot(), std::memory_order_relaxed);
+}
+
+int PDHybridAudioProcessor::chordVoicedNotes (int* out, int maxOut) const noexcept
+{
+    const int n = juce::jmin (maxOut, chordNoteCount_.load (std::memory_order_relaxed));
+    for (int i = 0; i < n; ++i)
+        out[i] = chordNotes_[i].load (std::memory_order_relaxed);
+    return n;
+}
+
 void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg,
                                                 bool toPoly, bool toBass)
 {
@@ -1013,13 +1066,19 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg,
             case 3: vel = 1.0f;                  break;   // Fixed
             default:                             break;   // Linear
         }
-        if (toPoly) engine.noteOn (msg.getNoteNumber(), vel, channel);
-        if (toBass) monoBass.noteOn (msg.getNoteNumber(), vel);
+        pdhybrid::ChordMode::Event ev[pdhybrid::ChordMode::kMaxEvents];
+        const int n = chord_.handleNoteOn (msg.getNoteNumber(), vel,
+                                           ev, pdhybrid::ChordMode::kMaxEvents);
+        dispatchChordEvents (ev, n, channel, toPoly, toBass);
+        publishChordState();
     }
     else if (msg.isNoteOff())
     {
-        if (toPoly) engine.noteOff (msg.getNoteNumber(), channel);
-        if (toBass) monoBass.noteOff (msg.getNoteNumber());
+        pdhybrid::ChordMode::Event ev[pdhybrid::ChordMode::kMaxEvents];
+        const int n = chord_.handleNoteOff (msg.getNoteNumber(),
+                                            ev, pdhybrid::ChordMode::kMaxEvents);
+        dispatchChordEvents (ev, n, channel, toPoly, toBass);
+        publishChordState();
     }
     else if (msg.isPitchWheel())
         engine.setNotePitchBend (channel,
@@ -1154,6 +1213,32 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     arpWasOn_     = arpOn_;
     arpWasTarget_ = arpTarget_;
 
+    // Same for chord mode: switching it, or moving the split under held notes,
+    // would otherwise strand a note on the wrong side of the boundary.
+    if (chordOn_ != chordWasOn_ || chordSplitCached_ != chordLastSplit_)
+    {
+        pdhybrid::ChordMode::Event ev[pdhybrid::ChordMode::kMaxEvents];
+        chord_.flush (ev, pdhybrid::ChordMode::kMaxEvents);
+        engine.allNotesOff();
+        monoBass.allNotesOff();
+        arp_.reset();
+        publishChordState();
+    }
+    chordWasOn_     = chordOn_;
+    chordLastSplit_ = chordSplitCached_;
+
+    // Drain any re-voice owed to a parameter change (quality moved under host
+    // automation, say) -- a quality *key* re-voices inside handleNoteOn instead.
+    {
+        pdhybrid::ChordMode::Event ev[pdhybrid::ChordMode::kMaxEvents];
+        const int n = chord_.refresh (ev, pdhybrid::ChordMode::kMaxEvents);
+        if (n > 0)
+        {
+            dispatchChordEvents (ev, n, 1, true, true);
+            publishChordState();
+        }
+    }
+
     if (arpOn_)
     {
         const bool arpDrivesPoly = (arpTarget_ == 0 || arpTarget_ == 1);
@@ -1168,8 +1253,24 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             const auto msg = meta.getMessage();
             if (msg.isNoteOn() || msg.isNoteOff())
             {
-                if (msg.isNoteOn()) arp_.noteOn (msg.getNoteNumber(), msg.getFloatVelocity());
-                else                arp_.noteOff (msg.getNoteNumber());
+                // Chord mode runs first, so the arp pool receives the chord's
+                // notes rather than the single key that produced them -- hold a
+                // chord, get a running arpeggio of it. The root-flagged event is
+                // the bass layer's and has no business in the arp.
+                pdhybrid::ChordMode::Event ev[pdhybrid::ChordMode::kMaxEvents];
+                const int n = msg.isNoteOn()
+                    ? chord_.handleNoteOn (msg.getNoteNumber(), msg.getFloatVelocity(),
+                                           ev, pdhybrid::ChordMode::kMaxEvents)
+                    : chord_.handleNoteOff (msg.getNoteNumber(),
+                                            ev, pdhybrid::ChordMode::kMaxEvents);
+                publishChordState();
+
+                for (int i = 0; i < n; ++i)
+                {
+                    if (chordOn_ && ev[i].isRoot) continue;
+                    if (ev[i].noteOn) arp_.noteOn  (ev[i].note, ev[i].velocity);
+                    else              arp_.noteOff (ev[i].note);
+                }
 
                 if (! arpDrivesPoly || ! arpDrivesBass)
                     handleMidiMessage (msg, ! arpDrivesPoly, ! arpDrivesBass);

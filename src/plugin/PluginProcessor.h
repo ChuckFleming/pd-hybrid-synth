@@ -7,6 +7,7 @@
 #include "dsp/Chorus.h"
 #include "dsp/Reverb.h"
 #include "dsp/Arpeggiator.h"
+#include "dsp/ChordMode.h"
 #include "dsp/GlobalEq.h"
 #include "dsp/MonoBass.h"
 #include "dsp/MasterStage.h"
@@ -68,6 +69,11 @@ public:
     static constexpr int kNumModSources = static_cast<int> (pdhybrid::ModSource::Count);
     void readModLevels (float* dest, int num) const noexcept;
 
+    /** Root currently held in chord mode, or -1. For the editor's display. */
+    int chordHeldRoot() const noexcept { return chordRoot_.load (std::memory_order_relaxed); }
+    /** Copies the sounding chord out for the display. Returns the count. */
+    int chordVoicedNotes (int* out, int maxOut) const noexcept;
+
     /** Tempo currently driving sync (host BPM, or the internal one). */
     double currentBpm() const noexcept { return currentBpm_.load (std::memory_order_relaxed); }
 
@@ -103,6 +109,10 @@ private:
     // whichever layer it is not driving.
     void handleMidiMessage (const juce::MidiMessage& msg,
                             bool toPoly = true, bool toBass = true);
+    /** Routes ChordMode output: isRoot events to the bass, the rest to poly. */
+    void dispatchChordEvents (const pdhybrid::ChordMode::Event* ev, int n, int channel,
+                              bool toPoly, bool toBass);
+    void publishChordState() noexcept;
     void renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
 
     void applyGlobalModulation (juce::AudioBuffer<float>& buffer, int numSamples);
@@ -149,6 +159,16 @@ private:
     std::vector<std::shared_ptr<pdhybrid::WavetableOscillator::WavetableSet>> retiredWavetables_;
     juce::String          wavetableName_;
     juce::String          wavetablePath_;
+
+    pdhybrid::ChordMode   chord_;
+    bool                  chordOn_ = false, chordWasOn_ = false;
+    // Members, not function-local statics: a static would be shared across
+    // plugin instances and two instances would flush each other's notes.
+    int                   chordSplitCached_ = 60, chordLastSplit_ = 60;
+    // Live chord state, written on the audio thread and read by the editor.
+    std::atomic<int>      chordRoot_ { -1 };
+    std::atomic<int>      chordNoteCount_ { 0 };
+    std::atomic<int>      chordNotes_[pdhybrid::ChordMode::kMaxChordNotes] { };
 
     pdhybrid::Arpeggiator arp_;
     bool                  arpOn_ = false, arpWasOn_ = false;

@@ -157,6 +157,24 @@ int ChordMode::emitChange (const int* newNotes, int newCount, int root,
     return n;
 }
 
+int ChordMode::revoice (Event* out, int maxOut) noexcept
+{
+    dirty_ = false;
+    if (heldRoot_ < 0)
+        return 0;
+
+    int nv[kMaxChordNotes];
+    const int nc = buildVoicing (heldRoot_, nv);
+    return emitChange (nv, nc, heldRoot_, out, maxOut);
+}
+
+int ChordMode::refresh (Event* out, int maxOut) noexcept
+{
+    if (! dirty_)
+        return 0;
+    return revoice (out, maxOut);
+}
+
 int ChordMode::handleNoteOn (int note, float vel, Event* out, int maxOut) noexcept
 {
     if (! enabled_)
@@ -178,7 +196,9 @@ int ChordMode::handleNoteOn (int note, float vel, Event* out, int maxOut) noexce
     if (note >= split_ - kQualityZoneSize)    // quality zone: latch, never sounds
     {
         setQuality (note - (split_ - kQualityZoneSize));
-        return 0;
+        // A quality key re-voices whatever is sounding, right now. `refresh`
+        // covers the same change arriving from host automation instead.
+        return revoice (out, maxOut);
     }
 
     if (maxOut < 1) return 0;                 // below the zones: pass through

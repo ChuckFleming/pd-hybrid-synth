@@ -42,6 +42,10 @@ public:
     int handleNoteOn  (int note, float vel, Event* out, int maxOut) noexcept;
     int handleNoteOff (int note, Event* out, int maxOut) noexcept;
 
+    /** Emits any re-voice owed after a parameter change (quality, voicing,
+        spread, octave). Call once per block; returns 0 when nothing is due. */
+    int refresh (Event* out, int maxOut) noexcept;
+
     int latchedQuality() const noexcept { return quality_; }
     int heldRoot()       const noexcept { return heldRoot_; }
 
@@ -52,6 +56,8 @@ private:
     /** Diffs `newNotes` against what is sounding and emits only the changes. */
     int emitChange (const int* newNotes, int newCount, int root,
                     Event* out, int maxOut) noexcept;
+    /** Rebuilds and re-emits the held chord. Shared by quality keys and refresh. */
+    int revoice (Event* out, int maxOut) noexcept;
 
     bool   enabled_ = false;
     int    split_   = 60;

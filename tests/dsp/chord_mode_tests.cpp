@@ -200,3 +200,69 @@ TEST_CASE ("Voice-led moves less than root position", "[chord][voicing]")
           << " vs root position " << totalMovement (ChordMode::RootPosition));
     REQUIRE (totalMovement (ChordMode::VoiceLed) < totalMovement (ChordMode::RootPosition));
 }
+
+TEST_CASE ("Changing quality on a held root re-voices immediately", "[chord]")
+{
+    auto c = makeChord();
+    c.setVoicing (ChordMode::VoiceLed);
+    c.setQuality (0);                       // maj
+    onEvents (c, 60);                       // C major sounding
+
+    // Press the m7 key (48 + 3) while C is still held.
+    const auto evs = onEvents (c, 51);
+    REQUIRE_FALSE (evs.empty());            // it re-voiced
+
+    std::vector<int> ons, offs;
+    for (const auto& e : evs)
+    {
+        if (e.isRoot) continue;
+        (e.noteOn ? ons : offs).push_back (e.note);
+    }
+    // C major -> C minor 7: E leaves, Eb and Bb arrive, C and G untouched.
+    REQUIRE (offs == std::vector<int> { 64 });
+    REQUIRE (ons.size() == 2);
+}
+
+TEST_CASE ("Common tones are never retriggered", "[chord]")
+{
+    auto c = makeChord();
+    c.setVoicing (ChordMode::VoiceLed);
+    c.setQuality (0);                       // maj  -> C E G
+    onEvents (c, 60);
+
+    const auto evs = onEvents (c, 52);      // E of the quality zone = maj7
+
+    // maj -> maj7 only ADDS the 7th. C, E and G must not appear at all.
+    for (const auto& e : evs)
+    {
+        if (e.isRoot) continue;
+        INFO ("event on note " << e.note);
+        REQUIRE (e.note != 60);
+        REQUIRE (e.note != 64);
+        REQUIRE (e.note != 67);
+    }
+}
+
+TEST_CASE ("refresh re-voices after an automated parameter change", "[chord]")
+{
+    auto c = makeChord();
+    c.setVoicing (ChordMode::VoiceLed);
+    c.setQuality (0);
+    onEvents (c, 60);
+
+    ChordMode::Event buf[ChordMode::kMaxEvents];
+    REQUIRE (c.refresh (buf, ChordMode::kMaxEvents) == 0);   // nothing pending
+
+    c.setQuality (3);                                        // as if from automation
+    const int n = c.refresh (buf, ChordMode::kMaxEvents);
+    REQUIRE (n > 0);
+    REQUIRE (c.refresh (buf, ChordMode::kMaxEvents) == 0);   // consumed once only
+}
+
+TEST_CASE ("refresh does nothing when no root is held", "[chord]")
+{
+    auto c = makeChord();
+    c.setQuality (5);
+    ChordMode::Event buf[ChordMode::kMaxEvents];
+    REQUIRE (c.refresh (buf, ChordMode::kMaxEvents) == 0);
+}

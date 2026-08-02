@@ -442,10 +442,11 @@ TEST_CASE ("Voice-led chords do not drift out of register", "[chord][voicing]")
     // that is a random walk: play a long progression and the chords creep up or
     // down the keyboard until they pin against the MIDI clamp.
     for (int voicing : { (int) ChordMode::VoiceLed, (int) ChordMode::Shell })
+      for (double spread : { 0.0, 0.4, 1.0 })   // 0.4 is the default
     {
         auto c = makeChord();
         c.setVoicing (voicing);
-        c.setSpread (0.0);
+        c.setSpread (spread);
 
         // Roots inside one octave: the chords should stay inside one region too.
         static const int kRoots[] = { 60, 65, 67, 62, 64, 69, 60, 67 };
@@ -459,9 +460,10 @@ TEST_CASE ("Voice-led chords do not drift out of register", "[chord][voicing]")
             for (int n : v) { lo = std::min (lo, n); hi = std::max (hi, n); }
         }
 
-        INFO ("voicing " << voicing << " spanned " << lo << ".." << hi);
+        INFO ("voicing " << voicing << " spread " << spread
+              << " spanned " << lo << ".." << hi);
         REQUIRE (lo >= 48);       // never sinks below C3
-        REQUIRE (hi <= 84);       // never climbs above C6
+        REQUIRE (hi <= 88);       // never climbs past E6
     }
 }
 

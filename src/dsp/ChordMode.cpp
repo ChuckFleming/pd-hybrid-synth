@@ -128,16 +128,18 @@ int ChordMode::buildVoicing (int root, int* out) noexcept
         // this for free -- a pitch class already sounding near the centre
         // resolves to the same absolute note, so no explicit common-tone logic
         // is needed.
-        // Bound the centre to within half an octave of the played root. Letting
-        // it free-run makes the voicing a random walk with no restoring force:
-        // over a long progression the chords creep up or down the keyboard
-        // until they pin against the MIDI clamp. Re-deriving the bound from the
-        // root each chord means the drift cannot accumulate, while leaving the
-        // centre free enough inside that band to keep common tones.
-        double centre = lastCentre_;
-        const double lo = root - 6.0, hi = root + 6.0;
-        if (centre < lo) centre = lo;
-        if (centre > hi) centre = hi;
+        // The centre is where the previous chord sat, nudged gently back toward
+        // the register a root-position chord would occupy. Two separate things
+        // made the voicing run away without this: the spread offset feeding
+        // back in (fixed in the tail, where the centre is now captured before
+        // spread), and a genuine random walk -- each chord's mean becomes the
+        // next chord's centre, so placement error accumulates instead of
+        // averaging out. The nudge only has to cancel the second, so it is kept
+        // weak: strong enough to stop the walk, light enough that the voicing
+        // still goes where the music takes it.
+        constexpr double kPull = 0.10;
+        const double target = root + 5.0;          // centroid of a root triad
+        const double centre = lastCentre_ + kPull * (target - lastCentre_);
 
         for (int i = 0; i < n; ++i)
         {
@@ -151,6 +153,19 @@ int ChordMode::buildVoicing (int root, int* out) noexcept
     }
 
     // ---- shared tail: applies to every voicing mode ----
+
+    // Carry the centre forward for the next chord -- taken HERE, before spread
+    // and octave. Those are a width control and a transpose; neither should
+    // decide where the next chord is centred. Taking the centre after them fed
+    // the spread offset back in on every chord, which is a systematic ramp
+    // rather than a wobble: at the default spread the voicing climbed to the
+    // top of the MIDI range and stayed there.
+    {
+        double sum = 0.0;
+        for (int i = 0; i < n; ++i) sum += out[i];
+        lastCentre_ = n > 0 ? sum / n : lastCentre_;
+        hasHistory_ = true;
+    }
 
     // Spread: lift the k voices above the bass by an octave. k = 0 leaves the
     // voicing closed; k = n-1 raises everything except the bass.
@@ -180,12 +195,6 @@ int ChordMode::buildVoicing (int root, int* out) noexcept
         if (i == 0 || out[i] != out[i - 1])
             out[m++] = out[i];
     n = m;
-
-    // Carry the centre forward for the next chord.
-    double sum = 0.0;
-    for (int i = 0; i < n; ++i) sum += out[i];
-    lastCentre_ = n > 0 ? sum / n : lastCentre_;
-    hasHistory_ = true;
 
     return n;
 }

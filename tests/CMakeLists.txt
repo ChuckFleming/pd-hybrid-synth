@@ -42,6 +42,7 @@ add_executable(pdhybrid_tests
     dsp/chorus_tests.cpp
     dsp/reverb_tests.cpp
     dsp/arpeggiator_tests.cpp
+    dsp/chord_mode_tests.cpp
     harness/Fft.cpp
     harness/Spectrum.cpp
 )

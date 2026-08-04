@@ -105,6 +105,7 @@ target_sources(PDHybridSynth PRIVATE
     src/plugin/PluginEditor.cpp
     src/plugin/PresetManager.cpp
     src/plugin/CrtOverlay.cpp
+    src/plugin/Theme.cpp
 )
 target_include_directories(PDHybridSynth PRIVATE src)
 target_compile_definitions(PDHybridSynth PRIVATE

@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <cmath>
+#include "Theme.h"
 
 /**
     "CZ Terminal" look for the PD Hybrid Synth editor: pure-black background with
@@ -30,7 +31,19 @@ public:
         setColour (juce::TextButton::buttonColourId,   juce::Colour (0xff000000));
         setColour (juce::TextButton::textColourOffId,  juce::Colour (0xff4be08a));
         setColour (juce::TextButton::textColourOnId,   juce::Colour (0xff4be08a));
+
+        setTheme (theme_);   // overwrites the literals above; they go in Task 5
     }
+
+    /** Installs a skin. Call `sendLookAndFeelChange()` on the editor afterwards
+        so every child repaints. */
+    void setTheme (const pdui::Theme& t)
+    {
+        theme_ = t;
+        theme_.applyTo (*this);
+    }
+
+    const pdui::Theme& theme() const noexcept { return theme_; }
 
     static juce::Font mono (float h, bool bold = false)
     {
@@ -134,4 +147,7 @@ public:
         g.fillRect (x0, cyf - 1.5f, juce::jmax (0.0f, sliderPos - x0), 3.0f);
         g.fillRect (sliderPos - 2.0f, cyf - 7.0f, 4.0f, 14.0f);
     }
+
+private:
+    pdui::Theme theme_ = pdui::Theme::fromId (pdtheme::ThemeId::Panel1985);
 };

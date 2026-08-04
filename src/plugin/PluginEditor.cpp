@@ -2116,6 +2116,9 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // steal the combo's onChange, which the ComboBoxAttachment owns.
     proc.apvts.addParameterListener ("oscAType", this);
     proc.apvts.addParameterListener ("oscBType", this);
+    // Combine gates the PD Wave 2 combo, so the greying has to follow it too.
+    proc.apvts.addParameterListener ("oscACombine", this);
+    proc.apvts.addParameterListener ("oscBCombine", this);
     proc.apvts.addParameterListener ("filterType", this);
     proc.apvts.addParameterListener ("filter2Type", this);
     updateOscControls();
@@ -2280,6 +2283,8 @@ PDHybridEditor::~PDHybridEditor()
     for (auto& k : knobs)
         k->slider.removeMouseListener (this);
     proc.apvts.removeParameterListener ("oscAType", this);
+    proc.apvts.removeParameterListener ("oscACombine", this);
+    proc.apvts.removeParameterListener ("oscBCombine", this);
     proc.apvts.removeParameterListener ("oscBType", this);
     proc.apvts.removeParameterListener ("filterType", this);
     proc.apvts.removeParameterListener ("filter2Type", this);
@@ -2313,14 +2318,19 @@ void PDHybridEditor::updateOscControls()
         k->slider.setAlpha (on ? 1.0f : 0.4f);
         k->label.setAlpha  (on ? 1.0f : 0.4f);
     };
-    auto apply = [&] (Section& sec, const char* typeParam)
+    auto apply = [&] (Section& sec, const juce::String& id)
     {
-        const int type = juce::roundToInt (proc.apvts.getRawParameterValue (typeParam)->load());
+        const int type = juce::roundToInt (proc.apvts.getRawParameterValue (id + "Type")->load());
+        const bool combine = proc.apvts.getRawParameterValue (id + "Combine")->load() > 0.5f;
         const auto roles = oscKnobRoles (type);
         // Combos are Type / PD Wave / PD Wave 2 / Excite. The two wave choices and
         // the Combine toggle feed only the PD engine; Excite only the Scanned one.
         comboActive (sec.combos[1], type == 0);
-        comboActive (sec.combos[2], type == 0);
+        // PD Wave 2 is the alternate cycle of the wave-combine mode, so it is
+        // read only while Combine is on -- see PhaseDistortionOscillator, which
+        // picks waveB_ only when (combine_ && useB_). Left always-on it looked
+        // like a duplicate of the first wave selector that did nothing.
+        comboActive (sec.combos[2], type == 0 && combine);
         comboActive (sec.combos[3], roles.exciteActive);
         // Toggles are ON / Combine. Only Combine is PD-only; ON is the mixer
         // mute and has to stay live for every engine -- greying it out would
@@ -2337,8 +2347,8 @@ void PDHybridEditor::updateOscControls()
         knobRole (sec.knobs[1], roles.pwLabel,     roles.pwActive);
         knobRole (sec.knobs[2], roles.engineLabel, roles.engineActive);
     };
-    apply (oscA, "oscAType");
-    apply (oscB, "oscBType");
+    apply (oscA, "oscA");
+    apply (oscB, "oscB");
 
     // The filter MORPH knob is the same shared control: it means a different
     // thing per engine, and the two plain lowpasses don't use it at all.
@@ -2466,6 +2476,20 @@ void PDHybridEditor::paintFooter (juce::Graphics& g)
     g.setColour (active > 0 ? kModCol : kLabelCol.withAlpha (0.6f));
     g.drawText (juce::String (active) + " MOD ROUTE" + (active == 1 ? "" : "S") + " ACTIVE",
                 r.withTrimmedRight (140), juce::Justification::centredRight);
+
+    // Reverse lookup of whatever is sounding, centred. Amber because it is live
+    // state rather than a setting -- the same language the mod meters use.
+    int notes[32];
+    const int n = proc.soundingNotes (notes, 32);
+    if (n > 0)
+    {
+        char nameBuf[pdhybrid::ChordNamer::kMaxName] = { 0 };
+        pdhybrid::ChordNamer::name (notes, n, nameBuf, pdhybrid::ChordNamer::kMaxName);
+
+        g.setFont (monoFont (12.0f));
+        g.setColour (kModCol);
+        g.drawText (nameBuf, r, juce::Justification::centred);
+    }
 }
 
 void PDHybridEditor::refreshPresetList()

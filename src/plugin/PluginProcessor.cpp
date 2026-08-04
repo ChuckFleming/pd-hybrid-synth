@@ -1046,7 +1046,55 @@ void PDHybridAudioProcessor::dispatchChordEvents (const pdhybrid::ChordMode::Eve
             if (wantPoly) engine.noteOff (e.note, channel);
             if (wantBass) monoBass.noteOff (e.note);
         }
+
+        // Track what is sounding for the chord readout. This is the one place
+        // every note reaches a synth layer, whatever produced it -- played
+        // directly, built by chord mode or stepped out by the arpeggiator -- so
+        // the readout names what you actually hear.
+        if (wantPoly || wantBass)
+            trackSoundingNote (e.note, e.noteOn);
     }
+
+    publishSoundingNotes();
+}
+
+void PDHybridAudioProcessor::trackSoundingNote (int note, bool on) noexcept
+{
+    if (note < 0 || note > 127)
+        return;
+
+    // Reference-counted: the same note can be held on two MIDI channels (and is,
+    // under MPE), and the first note-off must not blank a note still sounding.
+    if (on)
+    {
+        if (noteRefs_[note] < 255) ++noteRefs_[note];
+    }
+    else if (noteRefs_[note] > 0)
+        --noteRefs_[note];
+}
+
+void PDHybridAudioProcessor::publishSoundingNotes() noexcept
+{
+    std::uint32_t m[4] = { 0, 0, 0, 0 };
+    for (int n = 0; n < 128; ++n)
+        if (noteRefs_[n] > 0)
+            m[n >> 5] |= 1u << (n & 31);
+
+    for (int i = 0; i < 4; ++i)
+        soundingMask_[i].store (m[i], std::memory_order_relaxed);
+}
+
+int PDHybridAudioProcessor::soundingNotes (int* out, int maxOut) const noexcept
+{
+    int n = 0;
+    for (int w = 0; w < 4 && n < maxOut; ++w)
+    {
+        const std::uint32_t m = soundingMask_[w].load (std::memory_order_relaxed);
+        for (int b = 0; b < 32 && n < maxOut; ++b)
+            if (m & (1u << b))
+                out[n++] = w * 32 + b;
+    }
+    return n;
 }
 
 void PDHybridAudioProcessor::syncChordQualityParam()
@@ -1137,6 +1185,7 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg,
     {
         engine.allNotesOff();
         monoBass.allNotesOff();
+        clearSoundingNotes();
     }
 }
 
@@ -1231,6 +1280,7 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     {
         engine.allNotesOff();
         monoBass.allNotesOff();
+        clearSoundingNotes();
         arp_.reset();
     }
 
@@ -1244,6 +1294,7 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     {
         engine.allNotesOff();
         monoBass.allNotesOff();
+        clearSoundingNotes();
         arp_.reset();
     }
     arpWasOn_     = arpOn_;
@@ -1257,6 +1308,7 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         chord_.flush (ev, pdhybrid::ChordMode::kMaxEvents);
         engine.allNotesOff();
         monoBass.allNotesOff();
+        clearSoundingNotes();
         arp_.reset();
         publishChordState();
     }
@@ -1307,7 +1359,14 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                     if (chordOn_ && ev[i].isRoot) continue;
                     if (ev[i].noteOn) arp_.noteOn  (ev[i].note, ev[i].velocity);
                     else              arp_.noteOff (ev[i].note);
+
+                    // The chord readout follows the arp's pool, not its steps.
+                    // The steps are one note at a time, which would just make
+                    // the readout flicker; the pool is the chord being held,
+                    // which is what the player is actually playing.
+                    trackSoundingNote (ev[i].note, ev[i].noteOn);
                 }
+                publishSoundingNotes();
 
                 if (! arpDrivesPoly || ! arpDrivesBass)
                     handleMidiMessage (msg, ! arpDrivesPoly, ! arpDrivesBass);

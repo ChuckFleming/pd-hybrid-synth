@@ -13,6 +13,7 @@
 #include "dsp/MasterStage.h"
 #include "PresetManager.h"
 #include <vector>
+#include <cstdint>
 
 /**
     Polyphonic hybrid synth: drives the headless SynthEngine (PD osc -> ladder
@@ -74,6 +75,10 @@ public:
     /** Copies the sounding chord out for the display. Returns the count. */
     int chordVoicedNotes (int* out, int maxOut) const noexcept;
 
+    /** Every MIDI note currently sounding, ascending, for the chord readout.
+        Returns the count. Safe to call from the message thread. */
+    int soundingNotes (int* out, int maxOut) const noexcept;
+
     /** Tempo currently driving sync (host BPM, or the internal one). */
     double currentBpm() const noexcept { return currentBpm_.load (std::memory_order_relaxed); }
 
@@ -113,6 +118,19 @@ private:
     void dispatchChordEvents (const pdhybrid::ChordMode::Event* ev, int n, int channel,
                               bool toPoly, bool toBass);
     void publishChordState() noexcept;
+    /** Reference-counts a note in/out of the sounding set. Audio thread. */
+    void trackSoundingNote (int note, bool on) noexcept;
+    /** Packs the sounding set into the atomics the editor reads. Audio thread. */
+    void publishSoundingNotes() noexcept;
+    /** Drops every tracked note. Pairs with allNotesOff, which silences the
+        layers without emitting the note-offs the reference counts expect. */
+    void clearSoundingNotes() noexcept
+    {
+        for (auto& r : noteRefs_) r = 0;
+        publishSoundingNotes();
+    }
+    std::uint8_t noteRefs_[128] = { 0 };          // audio thread only
+    std::atomic<std::uint32_t> soundingMask_[4] { };
     /** Writes a key-driven quality latch back into the chordQuality parameter. */
     void syncChordQualityParam();
     void renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);

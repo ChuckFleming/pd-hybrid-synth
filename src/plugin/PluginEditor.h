@@ -7,6 +7,7 @@
 #include "CrtOverlay.h"
 #include "ScopeDisplay.h"
 #include "Displays.h"
+#include "dsp/ChordNamer.h"
 #include <functional>
 #include <memory>
 #include <utility>

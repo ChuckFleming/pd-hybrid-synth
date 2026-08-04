@@ -73,6 +73,17 @@ target_compile_features(pdhybrid_dsp PUBLIC cxx_std_17)
 set_target_properties(pdhybrid_dsp PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---------------------------------------------------------------------------
+# JUCE-free theme palettes. Separate from the plugin so the tests -- which do
+# not link JUCE -- can check every theme's contrast.
+# ---------------------------------------------------------------------------
+add_library(pdhybrid_theme STATIC
+    src/theme/ThemePalette.cpp
+)
+target_include_directories(pdhybrid_theme PUBLIC src)
+target_compile_features(pdhybrid_theme PUBLIC cxx_std_17)
+set_target_properties(pdhybrid_theme PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ---------------------------------------------------------------------------
 # Plugin: JUCE wrapper around the DSP core. Ships VST3 + Standalone.
 # ---------------------------------------------------------------------------
 juce_add_plugin(PDHybridSynth
@@ -104,6 +115,7 @@ target_compile_definitions(PDHybridSynth PRIVATE
 target_link_libraries(PDHybridSynth
     PRIVATE
         pdhybrid_dsp
+        pdhybrid_theme
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC

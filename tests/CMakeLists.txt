@@ -44,6 +44,7 @@ add_executable(pdhybrid_tests
     dsp/arpeggiator_tests.cpp
     dsp/chord_mode_tests.cpp
     dsp/chord_namer_tests.cpp
+    theme/theme_palette_tests.cpp
     harness/Fft.cpp
     harness/Spectrum.cpp
 )
@@ -55,6 +56,7 @@ target_include_directories(pdhybrid_tests PRIVATE
 
 target_link_libraries(pdhybrid_tests PRIVATE
     pdhybrid_dsp
+    pdhybrid_theme
     Catch2::Catch2WithMain
 )
 

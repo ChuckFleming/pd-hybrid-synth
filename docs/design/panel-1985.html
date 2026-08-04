@@ -1,0 +1,429 @@
+<title>Panel 1985 — Six Finishes</title>
+
+<style>
+/* ============================================================ PAGE CHROME */
+:root{
+  --page-bg:#0d0e11; --page-panel:#15171c; --page-ink:#e8eaee;
+  --page-dim:#8b919d; --page-faint:#5b616d; --page-accent:#c08a4a; --page-rule:#1e2229;
+  --ui: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+@media (prefers-color-scheme: light){
+  :root{ --page-bg:#f7f6f4; --page-panel:#ffffff; --page-ink:#1a1c20;
+         --page-dim:#5f646d; --page-faint:#8b909a; --page-accent:#8a5a1c; --page-rule:#e8e5e0; }
+}
+:root[data-theme="dark"]{
+  --page-bg:#0d0e11; --page-panel:#15171c; --page-ink:#e8eaee;
+  --page-dim:#8b919d; --page-faint:#5b616d; --page-accent:#c08a4a; --page-rule:#1e2229;
+}
+:root[data-theme="light"]{
+  --page-bg:#f7f6f4; --page-panel:#ffffff; --page-ink:#1a1c20;
+  --page-dim:#5f646d; --page-faint:#8b909a; --page-accent:#8a5a1c; --page-rule:#e8e5e0;
+}
+
+*{box-sizing:border-box}
+body{margin:0; background:var(--page-bg); color:var(--page-ink);
+  font-family:var(--ui); line-height:1.55; -webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px; margin:0 auto; padding:0 24px 96px}
+
+.mast{padding:60px 0 34px; border-bottom:1px solid var(--page-rule)}
+.eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.18em;
+  text-transform:uppercase; color:var(--page-accent); margin:0 0 18px}
+h1{font-family:var(--serif); font-weight:600; font-size:clamp(32px,5vw,50px);
+  line-height:1.06; margin:0 0 18px; text-wrap:balance; letter-spacing:-.01em}
+.lede{max-width:64ch; color:var(--page-dim); font-size:17px; margin:0 0 10px}
+.lede strong{color:var(--page-ink); font-weight:600}
+
+.fixed{margin-top:28px; padding:14px 18px; border-left:2px solid var(--page-accent);
+  background:var(--page-panel); font-size:13.5px; color:var(--page-dim); max-width:72ch}
+.fixed b{color:var(--page-ink)}
+
+.sec{margin:54px 0 20px}
+.sec h2{font-family:var(--mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--page-faint); font-weight:500; margin:0 0 6px}
+.sec p{margin:0; color:var(--page-dim); font-size:14px; max-width:64ch}
+
+.grid{display:grid; grid-template-columns:1fr; gap:32px}
+@media (min-width:1000px){ .grid{grid-template-columns:1fr 1fr} }
+
+.opt{background:var(--page-panel); border:1px solid var(--page-rule);
+  border-radius:4px; overflow:hidden; display:flex; flex-direction:column}
+.opt-head{padding:18px 20px 13px; display:flex; gap:13px; align-items:baseline}
+.num{font-family:var(--mono); font-size:11px; color:var(--page-faint);
+  letter-spacing:.1em; padding-top:3px; flex:none}
+.opt-head h3{margin:0 0 3px; font-size:19px; font-weight:600}
+.opt-head p{margin:0; font-size:13.5px; color:var(--page-dim); max-width:46ch}
+.stage{padding:0 20px 18px}
+.tags{display:flex; flex-wrap:wrap; gap:6px; padding:0 20px 18px; margin-top:auto}
+.tag{font-family:var(--mono); font-size:10px; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--page-dim); border:1px solid var(--page-rule); padding:3px 8px;
+  border-radius:2px; white-space:nowrap}
+.tag.keep{color:var(--page-accent); border-color:#4a3a26}
+@media (prefers-color-scheme: light){ .tag.keep{border-color:#e6d5bc} }
+
+.swatches{display:flex; gap:0; margin:0 20px 14px; border-radius:2px; overflow:hidden}
+.sw{height:7px; flex:1}
+
+/* ============================================================ THE MOCKUP */
+.panel{
+  --radius:2px; --knob-size:46px;
+  /* Defaults; skins override. These three were the bug in the first study:
+     one token was serving both the dark display wells and the light select
+     fields, so on a light panel the selects came out dark-on-dark. */
+  --p-sel-bg:var(--p-well); --p-sel-ink:var(--p-ink); --p-trace:var(--p-accent);
+  font-family:var(--p-ui); background:var(--p-bg); color:var(--p-ink);
+  border:1px solid var(--p-edge); border-radius:var(--radius);
+  padding:12px; overflow:hidden; position:relative;
+}
+.p-top{display:flex; align-items:center; gap:10px; margin-bottom:10px}
+.p-logo{font-family:var(--p-label); font-weight:700; font-size:13px;
+  letter-spacing:.16em; color:var(--p-ink)}
+.p-ver{font-family:var(--p-num); font-size:9px; color:var(--p-faint)}
+.p-preset{margin-left:auto; display:flex; gap:6px; align-items:center}
+.p-chip{font-family:var(--p-label); font-size:10px; letter-spacing:.06em; padding:4px 10px;
+  border:1px solid var(--p-edge); border-radius:var(--radius);
+  background:var(--p-chip-bg); color:var(--p-dim)}
+.p-chip.wide{min-width:104px; text-align:center; color:var(--p-ink)}
+
+.p-strip{display:flex; gap:8px; align-items:center; background:var(--p-card);
+  border:1px solid var(--p-edge); border-radius:var(--radius);
+  padding:10px 12px; margin-bottom:9px}
+.p-knobcell{display:flex; flex-direction:column; align-items:center; gap:4px; flex:none}
+.p-knobcell .lab{font-family:var(--p-label); font-size:8.5px; letter-spacing:var(--p-ls);
+  text-transform:var(--p-tt); color:var(--p-dim); white-space:nowrap}
+.p-knobcell .val{font-family:var(--p-num); font-size:10px; color:var(--p-ink);
+  font-variant-numeric:tabular-nums}
+
+.knob{width:var(--knob-size); height:var(--knob-size); border-radius:50%;
+  position:relative; flex:none;
+  background:conic-gradient(from 215deg, var(--p-knob-fill) 0 var(--kdeg),
+    var(--p-knob-track) var(--kdeg) 290deg, transparent 290deg 360deg)}
+.knob::before{content:""; position:absolute; inset:5px; border-radius:50%;
+  background:radial-gradient(circle at 38% 28%, var(--p-cap1), var(--p-cap2) 62%, var(--p-cap3) 100%);
+  box-shadow:0 2px 3px rgba(0,0,0,.34)}
+.knob::after{content:""; position:absolute; left:50%; top:8px; width:2px; height:38%;
+  margin-left:-1px; background:var(--p-pointer); border-radius:1px;
+  transform-origin:50% 100%; transform:rotate(var(--krot))}
+
+.p-meter{flex:1; min-width:0; height:52px; border:1px solid var(--p-edge);
+  border-radius:var(--radius); background:var(--p-well); position:relative; overflow:hidden}
+.p-meter svg{display:block; width:100%; height:100%}
+.p-meter .cap{position:absolute; top:4px; left:7px; font-family:var(--p-label);
+  font-size:8px; letter-spacing:var(--p-ls); text-transform:var(--p-tt); color:var(--p-screen-dim)}
+
+.p-tabs{display:flex; gap:4px; margin-bottom:9px}
+.p-tab{font-family:var(--p-label); font-size:9.5px; letter-spacing:var(--p-ls);
+  text-transform:var(--p-tt); padding:5px 12px; color:var(--p-dim);
+  border:1px solid var(--p-edge); border-radius:var(--radius); background:var(--p-tab-bg)}
+.p-tab.on{color:var(--p-tab-on-ink); background:var(--p-tab-on-bg); border-color:var(--p-tab-on-edge)}
+
+.p-card{background:var(--p-card); border:1px solid var(--p-edge);
+  border-radius:var(--radius); padding:10px 12px 12px;
+  box-shadow:inset 0 1px 0 var(--p-highlight)}
+.p-cardhead{display:flex; align-items:center; gap:8px; margin-bottom:9px}
+.p-cardhead h4{margin:0; font-family:var(--p-label); font-size:10px; letter-spacing:var(--p-ls);
+  text-transform:var(--p-tt); font-weight:600; color:var(--p-ink)}
+.p-leds{margin-left:auto; display:flex; gap:5px}
+.led{font-family:var(--p-label); font-size:8.5px; letter-spacing:.08em; padding:3px 8px;
+  border:1px solid var(--p-edge); border-radius:var(--radius);
+  color:var(--p-faint); background:var(--p-chip-bg)}
+.led.on{color:var(--p-led-ink); background:var(--p-led-bg); border-color:var(--p-led-edge)}
+
+.p-selects{display:flex; gap:6px; margin-bottom:10px}
+.sel{flex:1; min-width:0; font-family:var(--p-ui); font-size:10.5px; padding:5px 9px;
+  border:1px solid var(--p-edge); border-radius:var(--radius);
+  background:var(--p-sel-bg); color:var(--p-sel-ink);
+  display:flex; align-items:center; gap:6px; overflow:hidden; white-space:nowrap}
+.sel::after{content:"▾"; margin-left:auto; opacity:.55; font-size:9px}
+.sel.off{opacity:.4}
+
+.p-wave{height:44px; border:1px solid var(--p-edge); border-radius:var(--radius);
+  background:var(--p-well); margin-bottom:10px; overflow:hidden; position:relative}
+.p-wave svg{display:block; width:100%; height:100%}
+.p-wave .cap{position:absolute; top:3px; left:6px; font-family:var(--p-label);
+  font-size:7.5px; letter-spacing:var(--p-ls); text-transform:var(--p-tt); color:var(--p-screen-dim)}
+.p-knobrow{display:flex; gap:6px; justify-content:space-between}
+
+.p-foot{display:flex; align-items:center; gap:10px; margin-top:9px; padding-top:8px;
+  border-top:1px solid var(--p-edge); font-family:var(--p-label); font-size:9px;
+  letter-spacing:var(--p-ls); text-transform:var(--p-tt); color:var(--p-faint)}
+.p-chord{margin:0 auto; font-family:var(--p-num); font-size:14px; letter-spacing:.04em;
+  color:var(--p-live); text-transform:none}
+
+/* ---- shared Panel-1985 construction: legend stripe, moulded plastic, ridges ---- */
+.hw{
+  --p-ui:var(--ui); --p-label:var(--ui); --p-num:var(--mono);
+  --p-ls:.1em; --p-tt:uppercase;
+  background-image:repeating-linear-gradient(90deg,
+    var(--p-grain) 0 1px, transparent 1px 3px);
+  box-shadow:inset 0 1px 0 var(--p-highlight), inset 0 -2px 4px rgba(0,0,0,.20);
+}
+.hw .p-top{border-bottom:3px solid var(--p-accent); padding-bottom:8px}
+
+/* ============================================================== 2a CREAM */
+.s-cream{
+  --p-bg:#c9c4b8; --p-card:#d5d1c6; --p-well:#3a3a38; --p-edge:#a09a8c;
+  --p-ink:#26251f; --p-dim:#5a564c; --p-faint:#7d786c;
+  --p-accent:#b4472e; --p-live:#b4472e; --p-trace:#e8734f;
+  --p-chip-bg:#c2bdb0; --p-tab-bg:#bdb8aa;
+  --p-tab-on-bg:#26251f; --p-tab-on-ink:#e8e3d6; --p-tab-on-edge:#26251f;
+  --p-knob-track:#a8a294; --p-knob-fill:#b4472e;
+  --p-cap1:#56544c; --p-cap2:#2b2a25; --p-cap3:#191815; --p-pointer:#e8e3d6;
+  --p-led-bg:#b4472e; --p-led-ink:#f5efe2; --p-led-edge:#8a3221;
+  --p-sel-bg:#e0dbcd; --p-sel-ink:#26251f;
+  --p-screen-dim:#8f8d84; --p-grain:rgba(255,255,255,.14); --p-highlight:rgba(255,255,255,.5);
+}
+/* ============================================================ 2b GRAPHITE */
+.s-graphite{
+  --p-bg:#2a2c2e; --p-card:#323538; --p-well:#131416; --p-edge:#494d52;
+  --p-ink:#e6e4de; --p-dim:#a5a9ae; --p-faint:#787c81;
+  --p-accent:#d4552f; --p-live:#d4552f; --p-trace:#e8734f;
+  --p-chip-bg:#2f3235; --p-tab-bg:#2f3235;
+  --p-tab-on-bg:#e6e4de; --p-tab-on-ink:#1d1f21; --p-tab-on-edge:#e6e4de;
+  --p-knob-track:#3d4145; --p-knob-fill:#d4552f;
+  --p-cap1:#6e7278; --p-cap2:#3a3d41; --p-cap3:#222528; --p-pointer:#f2f0ea;
+  --p-led-bg:#d4552f; --p-led-ink:#fdf3ec; --p-led-edge:#a03d1e;
+  --p-sel-bg:#212326; --p-sel-ink:#e6e4de;
+  --p-screen-dim:#6e7278; --p-grain:rgba(255,255,255,.045); --p-highlight:rgba(255,255,255,.10);
+}
+/* ============================================================ 2c MIDNIGHT */
+.s-midnight{
+  --p-bg:#1b1f2a; --p-card:#232836; --p-well:#0c0f16; --p-edge:#3b4353;
+  --p-ink:#eae5d8; --p-dim:#9ea6b6; --p-faint:#6f7789;
+  --p-accent:#e8a13c; --p-live:#e8a13c; --p-trace:#f0b862;
+  --p-chip-bg:#1f2431; --p-tab-bg:#1f2431;
+  --p-tab-on-bg:#e8a13c; --p-tab-on-ink:#1b1f2a; --p-tab-on-edge:#e8a13c;
+  --p-knob-track:#2d3444; --p-knob-fill:#e8a13c;
+  --p-cap1:#e6e0d0; --p-cap2:#c3bda9; --p-cap3:#8f8a78; --p-pointer:#1b1f2a;
+  --p-led-bg:#e8a13c; --p-led-ink:#241a09; --p-led-edge:#b57722;
+  --p-sel-bg:#161a24; --p-sel-ink:#eae5d8;
+  --p-screen-dim:#66708a; --p-grain:rgba(255,255,255,.04); --p-highlight:rgba(255,255,255,.09);
+}
+/* ============================================================== 2d CARBON */
+.s-carbon{
+  --p-bg:#16171a; --p-card:#1d1f22; --p-well:#0a0b0c; --p-edge:#34373c;
+  --p-ink:#dedcd6; --p-dim:#9a9c9f; --p-faint:#6a6c70;
+  --p-accent:#cc2f26; --p-live:#e8b53c; --p-trace:#e05a4e;
+  --p-chip-bg:#1a1c1f; --p-tab-bg:#1a1c1f;
+  --p-tab-on-bg:#cc2f26; --p-tab-on-ink:#fdf0ee; --p-tab-on-edge:#cc2f26;
+  --p-knob-track:#2b2e33; --p-knob-fill:#cc2f26;
+  --p-cap1:#5c5f65; --p-cap2:#2c2f33; --p-cap3:#161719; --p-pointer:#eceae4;
+  --p-led-bg:#3a2409; --p-led-ink:#e8b53c; --p-led-edge:#7d5a18;
+  --p-sel-bg:#111214; --p-sel-ink:#dedcd6;
+  --p-screen-dim:#62656a; --p-grain:rgba(255,255,255,.035); --p-highlight:rgba(255,255,255,.08);
+}
+/* ============================================================= 2e LAB TEAL */
+.s-teal{
+  --p-bg:#242a2c; --p-card:#2c3336; --p-well:#0f1415; --p-edge:#454e52;
+  --p-ink:#e0e5e6; --p-dim:#9ba5a9; --p-faint:#6d777b;
+  --p-accent:#33b3a6; --p-live:#f0c05a; --p-trace:#4fd3c4;
+  --p-chip-bg:#282f31; --p-tab-bg:#282f31;
+  --p-tab-on-bg:#33b3a6; --p-tab-on-ink:#0d1a19; --p-tab-on-edge:#33b3a6;
+  --p-knob-track:#374044; --p-knob-fill:#33b3a6;
+  --p-cap1:#6b7679; --p-cap2:#343c3f; --p-cap3:#1e2426; --p-pointer:#eef3f3;
+  --p-led-bg:#3a3117; --p-led-ink:#f0c05a; --p-led-edge:#7d6a22;
+  --p-sel-bg:#1a2022; --p-sel-ink:#e0e5e6;
+  --p-screen-dim:#65706f; --p-grain:rgba(255,255,255,.04); --p-highlight:rgba(255,255,255,.09);
+}
+/* ================================================================ 2f SAND */
+.s-sand{
+  --p-bg:#ddd4c2; --p-card:#e9e2d3; --p-well:#33302a; --p-edge:#b6ab95;
+  --p-ink:#2b261d; --p-dim:#615949; --p-faint:#89806d;
+  --p-accent:#7a2233; --p-live:#7a2233; --p-trace:#c46a52;
+  --p-chip-bg:#d6ccb9; --p-tab-bg:#d2c8b4;
+  --p-tab-on-bg:#2b261d; --p-tab-on-ink:#ece5d6; --p-tab-on-edge:#2b261d;
+  --p-knob-track:#bdb29c; --p-knob-fill:#7a2233;
+  --p-cap1:#e8e2d4; --p-cap2:#c9c1ae; --p-cap3:#9d9482; --p-pointer:#2b261d;
+  --p-led-bg:#7a2233; --p-led-ink:#f7ecec; --p-led-edge:#5a1523;
+  --p-sel-bg:#f0eade; --p-sel-ink:#2b261d;
+  --p-screen-dim:#8a857b; --p-grain:rgba(255,255,255,.16); --p-highlight:rgba(255,255,255,.55);
+}
+
+/* ========================================== reference: 10 PHOSPHOR MK II */
+.s-phosphor{
+  --p-bg:#04120c; --p-card:#07190f; --p-well:#020c07; --p-edge:#154a30;
+  --p-ink:#7df0ad; --p-dim:#3f9e6b; --p-faint:#2a6b48;
+  --p-accent:#7df0ad; --p-live:#ffb340; --p-trace:#7df0ad;
+  --p-chip-bg:#06160d; --p-tab-bg:transparent;
+  --p-tab-on-bg:#0b2a1a; --p-tab-on-ink:#b6ffd6; --p-tab-on-edge:#2b7a51;
+  --p-knob-track:#0e3521; --p-knob-fill:#7df0ad;
+  --p-cap1:#0a2416; --p-cap2:#04120c; --p-cap3:#020a06; --p-pointer:#ffb340;
+  --p-led-bg:#0d3520; --p-led-ink:#ffb340; --p-led-edge:#7a5a20;
+  --p-sel-bg:#020c07; --p-sel-ink:#7df0ad;
+  --p-screen-dim:#2a6b48; --p-highlight:transparent;
+  --p-ui:var(--mono); --p-label:var(--mono); --p-num:var(--mono);
+  --p-ls:.14em; --p-tt:uppercase;
+}
+.s-phosphor::after{content:""; position:absolute; inset:0; pointer-events:none;
+  background:repeating-linear-gradient(180deg, rgba(0,0,0,.30) 0 1px, transparent 1px 3px)}
+
+.close{margin-top:60px; padding-top:26px; border-top:1px solid var(--page-rule)}
+.close h2{font-family:var(--serif); font-size:25px; margin:0 0 12px; font-weight:600}
+.close p{color:var(--page-dim); max-width:66ch; margin:0 0 14px; font-size:15px}
+.close ul{color:var(--page-dim); max-width:66ch; font-size:14.5px; padding-left:19px}
+.close li{margin-bottom:8px}
+.close b{color:var(--page-ink)}
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <p class="eyebrow">PD Hybrid · direction 02 · finish study</p>
+    <h1>Panel 1985, in six finishes</h1>
+    <p class="lede">
+      Same construction throughout — silkscreen legends, a coloured legend stripe under the
+      wordmark, moulded plastic with a fine vertical grain, physical knob caps with a light
+      pointer. <strong>Only the finish changes.</strong> That is exactly how the real hardware
+      ranged: one tooling, several colourways.
+    </p>
+    <p class="lede">
+      Since you're leaning towards multiple display options, these are drawn as a family that
+      could all ship together rather than as rival one-offs.
+    </p>
+    <div class="fixed">
+      <b>Fixed since the last study:</b> the dropdown fields were dark-on-dark and the waveform
+      traces vanished on dark panels. Both came from one token doing two jobs — display wells and
+      select fields shared a colour. They're separate now, so every panel below is legible.
+      <b>Nothing from the first study was discarded</b>; the original ten are still on file.
+    </div>
+  </header>
+
+  <section class="sec">
+    <h2>The original, for reference</h2>
+    <p>Unchanged apart from the legibility fix.</p>
+  </section>
+
+  <div class="grid">
+    <article class="opt">
+      <div class="opt-head">
+        <span class="num">2a</span>
+        <div><h3>Cream</h3>
+          <p>The one you picked. Warm grey plastic, vermilion stripe, dark metal caps.</p></div>
+      </div>
+      <div class="swatches">
+        <span class="sw" style="background:#c9c4b8"></span><span class="sw" style="background:#d5d1c6"></span>
+        <span class="sw" style="background:#3a3a38"></span><span class="sw" style="background:#b4472e"></span>
+        <span class="sw" style="background:#26251f"></span>
+      </div>
+      <div class="stage"><div class="panel hw s-cream" ><div class="p-top"><span class="p-logo">PD_HYBRID</span><span class="p-ver">v7</span><span class="p-preset"><span class="p-chip wide">Glass Bell</span><span class="p-chip">A/B</span><span class="p-chip">SAVE</span></span></div><div class="p-strip"><div class="p-knobcell"><div class="knob" style="--kdeg:168deg; --krot:23deg"></div><div class="lab">Cutoff</div><div class="val">439 Hz</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:82deg; --krot:-63deg"></div><div class="lab">Reso</div><div class="val">28 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:4deg; --krot:-141deg"></div><div class="lab">Macro 1</div><div class="val">0 %</div></div><div class="p-meter"><span class="cap">Out · Spectrum</span><svg viewBox="0 0 240 52" preserveAspectRatio="none" aria-hidden="true"><rect x="2" y="30.9" width="5" height="21.1" fill="var(--p-trace)" opacity="0.64"/><rect x="10" y="19.8" width="5" height="32.2" fill="var(--p-trace)" opacity="0.82"/><rect x="18" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="26" y="9.8" width="5" height="42.2" fill="var(--p-trace)" opacity="0.98"/><rect x="34" y="16.7" width="5" height="35.3" fill="var(--p-trace)" opacity="0.87"/><rect x="42" y="24.7" width="5" height="27.3" fill="var(--p-trace)" opacity="0.74"/><rect x="50" y="7.4" width="5" height="44.6" fill="var(--p-trace)" opacity="1.02"/><rect x="58" y="14.8" width="5" height="37.2" fill="var(--p-trace)" opacity="0.90"/><rect x="66" y="28.4" width="5" height="23.6" fill="var(--p-trace)" opacity="0.68"/><rect x="74" y="21.6" width="5" height="30.4" fill="var(--p-trace)" opacity="0.79"/><rect x="82" y="12.9" width="5" height="39.1" fill="var(--p-trace)" opacity="0.93"/><rect x="90" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="98" y="34.0" width="5" height="18.0" fill="var(--p-trace)" opacity="0.59"/><rect x="106" y="23.5" width="5" height="28.5" fill="var(--p-trace)" opacity="0.76"/><rect x="114" y="30.3" width="5" height="21.7" fill="var(--p-trace)" opacity="0.65"/><rect x="122" y="37.1" width="5" height="14.9" fill="var(--p-trace)" opacity="0.54"/><rect x="130" y="32.8" width="5" height="19.2" fill="var(--p-trace)" opacity="0.61"/><rect x="138" y="38.4" width="5" height="13.6" fill="var(--p-trace)" opacity="0.52"/><rect x="146" y="35.3" width="5" height="16.7" fill="var(--p-trace)" opacity="0.57"/><rect x="154" y="40.8" width="5" height="11.2" fill="var(--p-trace)" opacity="0.48"/><rect x="162" y="37.7" width="5" height="14.3" fill="var(--p-trace)" opacity="0.53"/><rect x="170" y="42.7" width="5" height="9.3" fill="var(--p-trace)" opacity="0.45"/><rect x="178" y="40.2" width="5" height="11.8" fill="var(--p-trace)" opacity="0.49"/><rect x="186" y="44.6" width="5" height="7.4" fill="var(--p-trace)" opacity="0.42"/><rect x="194" y="42.1" width="5" height="9.9" fill="var(--p-trace)" opacity="0.46"/><rect x="202" y="45.8" width="5" height="6.2" fill="var(--p-trace)" opacity="0.40"/><rect x="210" y="43.9" width="5" height="8.1" fill="var(--p-trace)" opacity="0.43"/><rect x="218" y="47.0" width="5" height="5.0" fill="var(--p-trace)" opacity="0.38"/><rect x="226" y="45.2" width="5" height="6.8" fill="var(--p-trace)" opacity="0.41"/><rect x="234" y="47.7" width="5" height="4.3" fill="var(--p-trace)" opacity="0.37"/></svg></div><div class="p-knobcell"><div class="knob" style="--kdeg:214deg; --krot:69deg"></div><div class="lab">Master</div><div class="val">0 dB</div></div></div><div class="p-tabs"><span class="p-tab on">Voice</span><span class="p-tab">Shape</span><span class="p-tab">Mod</span><span class="p-tab">Out</span></div><div class="p-card"><div class="p-cardhead"><h4>Osc A</h4><span class="p-leds"><span class="led on">ON</span><span class="led">CMB</span></span></div><div class="p-selects"><span class="sel">Phase Distortion</span><span class="sel">Sawtooth</span><span class="sel off">Sawtooth</span></div><div class="p-wave"><span class="cap">Cycle</span><svg viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 38 C 24 38, 30 6, 54 6 S 84 38, 108 38 S 138 6, 162 6 S 192 38, 216 38 L 240 38" fill="none" stroke="var(--p-trace)" stroke-width="1.5"/></svg></div><div class="p-knobrow"><div class="p-knobcell"><div class="knob" style="--kdeg:87deg; --krot:-58deg"></div><div class="lab">PD Amt</div><div class="val">30 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Width</div><div class="val">50 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:290deg; --krot:145deg"></div><div class="lab">Level</div><div class="val">100 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Oct</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Semi</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Fine</div><div class="val">0 ct</div></div></div></div><div class="p-foot"><span>Voice 1/4</span><span class="p-chord">Cmaj7</span><span>3 routes</span></div></div></div>
+      <div class="tags"><span class="tag keep">original</span><span class="tag">light ground</span>
+        <span class="tag">most period-correct</span></div>
+    </article>
+
+    <article class="opt">
+      <div class="opt-head">
+        <span class="num">2b</span>
+        <div><h3>Graphite</h3>
+          <p>The straight darker answer. Same panel, same stripe, charcoal instead of cream.</p></div>
+      </div>
+      <div class="swatches">
+        <span class="sw" style="background:#2a2c2e"></span><span class="sw" style="background:#323538"></span>
+        <span class="sw" style="background:#131416"></span><span class="sw" style="background:#d4552f"></span>
+        <span class="sw" style="background:#e6e4de"></span>
+      </div>
+      <div class="stage"><div class="panel hw s-graphite" ><div class="p-top"><span class="p-logo">PD_HYBRID</span><span class="p-ver">v7</span><span class="p-preset"><span class="p-chip wide">Glass Bell</span><span class="p-chip">A/B</span><span class="p-chip">SAVE</span></span></div><div class="p-strip"><div class="p-knobcell"><div class="knob" style="--kdeg:168deg; --krot:23deg"></div><div class="lab">Cutoff</div><div class="val">439 Hz</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:82deg; --krot:-63deg"></div><div class="lab">Reso</div><div class="val">28 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:4deg; --krot:-141deg"></div><div class="lab">Macro 1</div><div class="val">0 %</div></div><div class="p-meter"><span class="cap">Out · Spectrum</span><svg viewBox="0 0 240 52" preserveAspectRatio="none" aria-hidden="true"><rect x="2" y="30.9" width="5" height="21.1" fill="var(--p-trace)" opacity="0.64"/><rect x="10" y="19.8" width="5" height="32.2" fill="var(--p-trace)" opacity="0.82"/><rect x="18" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="26" y="9.8" width="5" height="42.2" fill="var(--p-trace)" opacity="0.98"/><rect x="34" y="16.7" width="5" height="35.3" fill="var(--p-trace)" opacity="0.87"/><rect x="42" y="24.7" width="5" height="27.3" fill="var(--p-trace)" opacity="0.74"/><rect x="50" y="7.4" width="5" height="44.6" fill="var(--p-trace)" opacity="1.02"/><rect x="58" y="14.8" width="5" height="37.2" fill="var(--p-trace)" opacity="0.90"/><rect x="66" y="28.4" width="5" height="23.6" fill="var(--p-trace)" opacity="0.68"/><rect x="74" y="21.6" width="5" height="30.4" fill="var(--p-trace)" opacity="0.79"/><rect x="82" y="12.9" width="5" height="39.1" fill="var(--p-trace)" opacity="0.93"/><rect x="90" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="98" y="34.0" width="5" height="18.0" fill="var(--p-trace)" opacity="0.59"/><rect x="106" y="23.5" width="5" height="28.5" fill="var(--p-trace)" opacity="0.76"/><rect x="114" y="30.3" width="5" height="21.7" fill="var(--p-trace)" opacity="0.65"/><rect x="122" y="37.1" width="5" height="14.9" fill="var(--p-trace)" opacity="0.54"/><rect x="130" y="32.8" width="5" height="19.2" fill="var(--p-trace)" opacity="0.61"/><rect x="138" y="38.4" width="5" height="13.6" fill="var(--p-trace)" opacity="0.52"/><rect x="146" y="35.3" width="5" height="16.7" fill="var(--p-trace)" opacity="0.57"/><rect x="154" y="40.8" width="5" height="11.2" fill="var(--p-trace)" opacity="0.48"/><rect x="162" y="37.7" width="5" height="14.3" fill="var(--p-trace)" opacity="0.53"/><rect x="170" y="42.7" width="5" height="9.3" fill="var(--p-trace)" opacity="0.45"/><rect x="178" y="40.2" width="5" height="11.8" fill="var(--p-trace)" opacity="0.49"/><rect x="186" y="44.6" width="5" height="7.4" fill="var(--p-trace)" opacity="0.42"/><rect x="194" y="42.1" width="5" height="9.9" fill="var(--p-trace)" opacity="0.46"/><rect x="202" y="45.8" width="5" height="6.2" fill="var(--p-trace)" opacity="0.40"/><rect x="210" y="43.9" width="5" height="8.1" fill="var(--p-trace)" opacity="0.43"/><rect x="218" y="47.0" width="5" height="5.0" fill="var(--p-trace)" opacity="0.38"/><rect x="226" y="45.2" width="5" height="6.8" fill="var(--p-trace)" opacity="0.41"/><rect x="234" y="47.7" width="5" height="4.3" fill="var(--p-trace)" opacity="0.37"/></svg></div><div class="p-knobcell"><div class="knob" style="--kdeg:214deg; --krot:69deg"></div><div class="lab">Master</div><div class="val">0 dB</div></div></div><div class="p-tabs"><span class="p-tab on">Voice</span><span class="p-tab">Shape</span><span class="p-tab">Mod</span><span class="p-tab">Out</span></div><div class="p-card"><div class="p-cardhead"><h4>Osc A</h4><span class="p-leds"><span class="led on">ON</span><span class="led">CMB</span></span></div><div class="p-selects"><span class="sel">Phase Distortion</span><span class="sel">Sawtooth</span><span class="sel off">Sawtooth</span></div><div class="p-wave"><span class="cap">Cycle</span><svg viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 38 C 24 38, 30 6, 54 6 S 84 38, 108 38 S 138 6, 162 6 S 192 38, 216 38 L 240 38" fill="none" stroke="var(--p-trace)" stroke-width="1.5"/></svg></div><div class="p-knobrow"><div class="p-knobcell"><div class="knob" style="--kdeg:87deg; --krot:-58deg"></div><div class="lab">PD Amt</div><div class="val">30 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Width</div><div class="val">50 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:290deg; --krot:145deg"></div><div class="lab">Level</div><div class="val">100 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Oct</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Semi</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Fine</div><div class="val">0 ct</div></div></div></div><div class="p-foot"><span>Voice 1/4</span><span class="p-chord">Cmaj7</span><span>3 routes</span></div></div></div>
+      <div class="tags"><span class="tag keep">the dark version you asked for</span>
+        <span class="tag">neutral</span><span class="tag">sits well in a dark DAW</span></div>
+    </article>
+
+    <article class="opt">
+      <div class="opt-head">
+        <span class="num">2c</span>
+        <div><h3>Midnight</h3>
+          <p>Blue-black with amber and cream caps — the Juno end of the decade rather than the Casio end.</p></div>
+      </div>
+      <div class="swatches">
+        <span class="sw" style="background:#1b1f2a"></span><span class="sw" style="background:#232836"></span>
+        <span class="sw" style="background:#0c0f16"></span><span class="sw" style="background:#e8a13c"></span>
+        <span class="sw" style="background:#eae5d8"></span>
+      </div>
+      <div class="stage"><div class="panel hw s-midnight" ><div class="p-top"><span class="p-logo">PD_HYBRID</span><span class="p-ver">v7</span><span class="p-preset"><span class="p-chip wide">Glass Bell</span><span class="p-chip">A/B</span><span class="p-chip">SAVE</span></span></div><div class="p-strip"><div class="p-knobcell"><div class="knob" style="--kdeg:168deg; --krot:23deg"></div><div class="lab">Cutoff</div><div class="val">439 Hz</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:82deg; --krot:-63deg"></div><div class="lab">Reso</div><div class="val">28 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:4deg; --krot:-141deg"></div><div class="lab">Macro 1</div><div class="val">0 %</div></div><div class="p-meter"><span class="cap">Out · Spectrum</span><svg viewBox="0 0 240 52" preserveAspectRatio="none" aria-hidden="true"><rect x="2" y="30.9" width="5" height="21.1" fill="var(--p-trace)" opacity="0.64"/><rect x="10" y="19.8" width="5" height="32.2" fill="var(--p-trace)" opacity="0.82"/><rect x="18" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="26" y="9.8" width="5" height="42.2" fill="var(--p-trace)" opacity="0.98"/><rect x="34" y="16.7" width="5" height="35.3" fill="var(--p-trace)" opacity="0.87"/><rect x="42" y="24.7" width="5" height="27.3" fill="var(--p-trace)" opacity="0.74"/><rect x="50" y="7.4" width="5" height="44.6" fill="var(--p-trace)" opacity="1.02"/><rect x="58" y="14.8" width="5" height="37.2" fill="var(--p-trace)" opacity="0.90"/><rect x="66" y="28.4" width="5" height="23.6" fill="var(--p-trace)" opacity="0.68"/><rect x="74" y="21.6" width="5" height="30.4" fill="var(--p-trace)" opacity="0.79"/><rect x="82" y="12.9" width="5" height="39.1" fill="var(--p-trace)" opacity="0.93"/><rect x="90" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="98" y="34.0" width="5" height="18.0" fill="var(--p-trace)" opacity="0.59"/><rect x="106" y="23.5" width="5" height="28.5" fill="var(--p-trace)" opacity="0.76"/><rect x="114" y="30.3" width="5" height="21.7" fill="var(--p-trace)" opacity="0.65"/><rect x="122" y="37.1" width="5" height="14.9" fill="var(--p-trace)" opacity="0.54"/><rect x="130" y="32.8" width="5" height="19.2" fill="var(--p-trace)" opacity="0.61"/><rect x="138" y="38.4" width="5" height="13.6" fill="var(--p-trace)" opacity="0.52"/><rect x="146" y="35.3" width="5" height="16.7" fill="var(--p-trace)" opacity="0.57"/><rect x="154" y="40.8" width="5" height="11.2" fill="var(--p-trace)" opacity="0.48"/><rect x="162" y="37.7" width="5" height="14.3" fill="var(--p-trace)" opacity="0.53"/><rect x="170" y="42.7" width="5" height="9.3" fill="var(--p-trace)" opacity="0.45"/><rect x="178" y="40.2" width="5" height="11.8" fill="var(--p-trace)" opacity="0.49"/><rect x="186" y="44.6" width="5" height="7.4" fill="var(--p-trace)" opacity="0.42"/><rect x="194" y="42.1" width="5" height="9.9" fill="var(--p-trace)" opacity="0.46"/><rect x="202" y="45.8" width="5" height="6.2" fill="var(--p-trace)" opacity="0.40"/><rect x="210" y="43.9" width="5" height="8.1" fill="var(--p-trace)" opacity="0.43"/><rect x="218" y="47.0" width="5" height="5.0" fill="var(--p-trace)" opacity="0.38"/><rect x="226" y="45.2" width="5" height="6.8" fill="var(--p-trace)" opacity="0.41"/><rect x="234" y="47.7" width="5" height="4.3" fill="var(--p-trace)" opacity="0.37"/></svg></div><div class="p-knobcell"><div class="knob" style="--kdeg:214deg; --krot:69deg"></div><div class="lab">Master</div><div class="val">0 dB</div></div></div><div class="p-tabs"><span class="p-tab on">Voice</span><span class="p-tab">Shape</span><span class="p-tab">Mod</span><span class="p-tab">Out</span></div><div class="p-card"><div class="p-cardhead"><h4>Osc A</h4><span class="p-leds"><span class="led on">ON</span><span class="led">CMB</span></span></div><div class="p-selects"><span class="sel">Phase Distortion</span><span class="sel">Sawtooth</span><span class="sel off">Sawtooth</span></div><div class="p-wave"><span class="cap">Cycle</span><svg viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 38 C 24 38, 30 6, 54 6 S 84 38, 108 38 S 138 6, 162 6 S 192 38, 216 38 L 240 38" fill="none" stroke="var(--p-trace)" stroke-width="1.5"/></svg></div><div class="p-knobrow"><div class="p-knobcell"><div class="knob" style="--kdeg:87deg; --krot:-58deg"></div><div class="lab">PD Amt</div><div class="val">30 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Width</div><div class="val">50 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:290deg; --krot:145deg"></div><div class="lab">Level</div><div class="val">100 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Oct</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Semi</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Fine</div><div class="val">0 ct</div></div></div></div><div class="p-foot"><span>Voice 1/4</span><span class="p-chord">Cmaj7</span><span>3 routes</span></div></div></div>
+      <div class="tags"><span class="tag">warmest dark</span><span class="tag">cream knob caps</span>
+        <span class="tag">amber accent</span></div>
+    </article>
+
+    <article class="opt">
+      <div class="opt-head">
+        <span class="num">2d</span>
+        <div><h3>Carbon</h3>
+          <p>Near-black with a red stripe and an amber readout. The blackest a real CZ actually got.</p></div>
+      </div>
+      <div class="swatches">
+        <span class="sw" style="background:#16171a"></span><span class="sw" style="background:#1d1f22"></span>
+        <span class="sw" style="background:#0a0b0c"></span><span class="sw" style="background:#cc2f26"></span>
+        <span class="sw" style="background:#e8b53c"></span>
+      </div>
+      <div class="stage"><div class="panel hw s-carbon" ><div class="p-top"><span class="p-logo">PD_HYBRID</span><span class="p-ver">v7</span><span class="p-preset"><span class="p-chip wide">Glass Bell</span><span class="p-chip">A/B</span><span class="p-chip">SAVE</span></span></div><div class="p-strip"><div class="p-knobcell"><div class="knob" style="--kdeg:168deg; --krot:23deg"></div><div class="lab">Cutoff</div><div class="val">439 Hz</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:82deg; --krot:-63deg"></div><div class="lab">Reso</div><div class="val">28 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:4deg; --krot:-141deg"></div><div class="lab">Macro 1</div><div class="val">0 %</div></div><div class="p-meter"><span class="cap">Out · Spectrum</span><svg viewBox="0 0 240 52" preserveAspectRatio="none" aria-hidden="true"><rect x="2" y="30.9" width="5" height="21.1" fill="var(--p-trace)" opacity="0.64"/><rect x="10" y="19.8" width="5" height="32.2" fill="var(--p-trace)" opacity="0.82"/><rect x="18" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="26" y="9.8" width="5" height="42.2" fill="var(--p-trace)" opacity="0.98"/><rect x="34" y="16.7" width="5" height="35.3" fill="var(--p-trace)" opacity="0.87"/><rect x="42" y="24.7" width="5" height="27.3" fill="var(--p-trace)" opacity="0.74"/><rect x="50" y="7.4" width="5" height="44.6" fill="var(--p-trace)" opacity="1.02"/><rect x="58" y="14.8" width="5" height="37.2" fill="var(--p-trace)" opacity="0.90"/><rect x="66" y="28.4" width="5" height="23.6" fill="var(--p-trace)" opacity="0.68"/><rect x="74" y="21.6" width="5" height="30.4" fill="var(--p-trace)" opacity="0.79"/><rect x="82" y="12.9" width="5" height="39.1" fill="var(--p-trace)" opacity="0.93"/><rect x="90" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="98" y="34.0" width="5" height="18.0" fill="var(--p-trace)" opacity="0.59"/><rect x="106" y="23.5" width="5" height="28.5" fill="var(--p-trace)" opacity="0.76"/><rect x="114" y="30.3" width="5" height="21.7" fill="var(--p-trace)" opacity="0.65"/><rect x="122" y="37.1" width="5" height="14.9" fill="var(--p-trace)" opacity="0.54"/><rect x="130" y="32.8" width="5" height="19.2" fill="var(--p-trace)" opacity="0.61"/><rect x="138" y="38.4" width="5" height="13.6" fill="var(--p-trace)" opacity="0.52"/><rect x="146" y="35.3" width="5" height="16.7" fill="var(--p-trace)" opacity="0.57"/><rect x="154" y="40.8" width="5" height="11.2" fill="var(--p-trace)" opacity="0.48"/><rect x="162" y="37.7" width="5" height="14.3" fill="var(--p-trace)" opacity="0.53"/><rect x="170" y="42.7" width="5" height="9.3" fill="var(--p-trace)" opacity="0.45"/><rect x="178" y="40.2" width="5" height="11.8" fill="var(--p-trace)" opacity="0.49"/><rect x="186" y="44.6" width="5" height="7.4" fill="var(--p-trace)" opacity="0.42"/><rect x="194" y="42.1" width="5" height="9.9" fill="var(--p-trace)" opacity="0.46"/><rect x="202" y="45.8" width="5" height="6.2" fill="var(--p-trace)" opacity="0.40"/><rect x="210" y="43.9" width="5" height="8.1" fill="var(--p-trace)" opacity="0.43"/><rect x="218" y="47.0" width="5" height="5.0" fill="var(--p-trace)" opacity="0.38"/><rect x="226" y="45.2" width="5" height="6.8" fill="var(--p-trace)" opacity="0.41"/><rect x="234" y="47.7" width="5" height="4.3" fill="var(--p-trace)" opacity="0.37"/></svg></div><div class="p-knobcell"><div class="knob" style="--kdeg:214deg; --krot:69deg"></div><div class="lab">Master</div><div class="val">0 dB</div></div></div><div class="p-tabs"><span class="p-tab on">Voice</span><span class="p-tab">Shape</span><span class="p-tab">Mod</span><span class="p-tab">Out</span></div><div class="p-card"><div class="p-cardhead"><h4>Osc A</h4><span class="p-leds"><span class="led on">ON</span><span class="led">CMB</span></span></div><div class="p-selects"><span class="sel">Phase Distortion</span><span class="sel">Sawtooth</span><span class="sel off">Sawtooth</span></div><div class="p-wave"><span class="cap">Cycle</span><svg viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 38 C 24 38, 30 6, 54 6 S 84 38, 108 38 S 138 6, 162 6 S 192 38, 216 38 L 240 38" fill="none" stroke="var(--p-trace)" stroke-width="1.5"/></svg></div><div class="p-knobrow"><div class="p-knobcell"><div class="knob" style="--kdeg:87deg; --krot:-58deg"></div><div class="lab">PD Amt</div><div class="val">30 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Width</div><div class="val">50 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:290deg; --krot:145deg"></div><div class="lab">Level</div><div class="val">100 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Oct</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Semi</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Fine</div><div class="val">0 ct</div></div></div></div><div class="p-foot"><span>Voice 1/4</span><span class="p-chord">Cmaj7</span><span>3 routes</span></div></div></div>
+      <div class="tags"><span class="tag">darkest</span><span class="tag">red control / amber live</span>
+        <span class="tag">two-colour signalling</span></div>
+    </article>
+
+    <article class="opt">
+      <div class="opt-head">
+        <span class="num">2e</span>
+        <div><h3>Lab</h3>
+          <p>Cool slate with teal. The test-equipment side of 80s design rather than the consumer side.</p></div>
+      </div>
+      <div class="swatches">
+        <span class="sw" style="background:#242a2c"></span><span class="sw" style="background:#2c3336"></span>
+        <span class="sw" style="background:#0f1415"></span><span class="sw" style="background:#33b3a6"></span>
+        <span class="sw" style="background:#f0c05a"></span>
+      </div>
+      <div class="stage"><div class="panel hw s-teal" ><div class="p-top"><span class="p-logo">PD_HYBRID</span><span class="p-ver">v7</span><span class="p-preset"><span class="p-chip wide">Glass Bell</span><span class="p-chip">A/B</span><span class="p-chip">SAVE</span></span></div><div class="p-strip"><div class="p-knobcell"><div class="knob" style="--kdeg:168deg; --krot:23deg"></div><div class="lab">Cutoff</div><div class="val">439 Hz</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:82deg; --krot:-63deg"></div><div class="lab">Reso</div><div class="val">28 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:4deg; --krot:-141deg"></div><div class="lab">Macro 1</div><div class="val">0 %</div></div><div class="p-meter"><span class="cap">Out · Spectrum</span><svg viewBox="0 0 240 52" preserveAspectRatio="none" aria-hidden="true"><rect x="2" y="30.9" width="5" height="21.1" fill="var(--p-trace)" opacity="0.64"/><rect x="10" y="19.8" width="5" height="32.2" fill="var(--p-trace)" opacity="0.82"/><rect x="18" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="26" y="9.8" width="5" height="42.2" fill="var(--p-trace)" opacity="0.98"/><rect x="34" y="16.7" width="5" height="35.3" fill="var(--p-trace)" opacity="0.87"/><rect x="42" y="24.7" width="5" height="27.3" fill="var(--p-trace)" opacity="0.74"/><rect x="50" y="7.4" width="5" height="44.6" fill="var(--p-trace)" opacity="1.02"/><rect x="58" y="14.8" width="5" height="37.2" fill="var(--p-trace)" opacity="0.90"/><rect x="66" y="28.4" width="5" height="23.6" fill="var(--p-trace)" opacity="0.68"/><rect x="74" y="21.6" width="5" height="30.4" fill="var(--p-trace)" opacity="0.79"/><rect x="82" y="12.9" width="5" height="39.1" fill="var(--p-trace)" opacity="0.93"/><rect x="90" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="98" y="34.0" width="5" height="18.0" fill="var(--p-trace)" opacity="0.59"/><rect x="106" y="23.5" width="5" height="28.5" fill="var(--p-trace)" opacity="0.76"/><rect x="114" y="30.3" width="5" height="21.7" fill="var(--p-trace)" opacity="0.65"/><rect x="122" y="37.1" width="5" height="14.9" fill="var(--p-trace)" opacity="0.54"/><rect x="130" y="32.8" width="5" height="19.2" fill="var(--p-trace)" opacity="0.61"/><rect x="138" y="38.4" width="5" height="13.6" fill="var(--p-trace)" opacity="0.52"/><rect x="146" y="35.3" width="5" height="16.7" fill="var(--p-trace)" opacity="0.57"/><rect x="154" y="40.8" width="5" height="11.2" fill="var(--p-trace)" opacity="0.48"/><rect x="162" y="37.7" width="5" height="14.3" fill="var(--p-trace)" opacity="0.53"/><rect x="170" y="42.7" width="5" height="9.3" fill="var(--p-trace)" opacity="0.45"/><rect x="178" y="40.2" width="5" height="11.8" fill="var(--p-trace)" opacity="0.49"/><rect x="186" y="44.6" width="5" height="7.4" fill="var(--p-trace)" opacity="0.42"/><rect x="194" y="42.1" width="5" height="9.9" fill="var(--p-trace)" opacity="0.46"/><rect x="202" y="45.8" width="5" height="6.2" fill="var(--p-trace)" opacity="0.40"/><rect x="210" y="43.9" width="5" height="8.1" fill="var(--p-trace)" opacity="0.43"/><rect x="218" y="47.0" width="5" height="5.0" fill="var(--p-trace)" opacity="0.38"/><rect x="226" y="45.2" width="5" height="6.8" fill="var(--p-trace)" opacity="0.41"/><rect x="234" y="47.7" width="5" height="4.3" fill="var(--p-trace)" opacity="0.37"/></svg></div><div class="p-knobcell"><div class="knob" style="--kdeg:214deg; --krot:69deg"></div><div class="lab">Master</div><div class="val">0 dB</div></div></div><div class="p-tabs"><span class="p-tab on">Voice</span><span class="p-tab">Shape</span><span class="p-tab">Mod</span><span class="p-tab">Out</span></div><div class="p-card"><div class="p-cardhead"><h4>Osc A</h4><span class="p-leds"><span class="led on">ON</span><span class="led">CMB</span></span></div><div class="p-selects"><span class="sel">Phase Distortion</span><span class="sel">Sawtooth</span><span class="sel off">Sawtooth</span></div><div class="p-wave"><span class="cap">Cycle</span><svg viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 38 C 24 38, 30 6, 54 6 S 84 38, 108 38 S 138 6, 162 6 S 192 38, 216 38 L 240 38" fill="none" stroke="var(--p-trace)" stroke-width="1.5"/></svg></div><div class="p-knobrow"><div class="p-knobcell"><div class="knob" style="--kdeg:87deg; --krot:-58deg"></div><div class="lab">PD Amt</div><div class="val">30 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Width</div><div class="val">50 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:290deg; --krot:145deg"></div><div class="lab">Level</div><div class="val">100 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Oct</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Semi</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Fine</div><div class="val">0 ct</div></div></div></div><div class="p-foot"><span>Voice 1/4</span><span class="p-chord">Cmaj7</span><span>3 routes</span></div></div></div>
+      <div class="tags"><span class="tag">coolest dark</span><span class="tag">teal + gold</span>
+        <span class="tag">most distinct from 10</span></div>
+    </article>
+
+    <article class="opt">
+      <div class="opt-head">
+        <span class="num">2f</span>
+        <div><h3>Sand</h3>
+          <p>The second light option: warmer paper-toned panel, oxblood instead of vermilion, cream caps.</p></div>
+      </div>
+      <div class="swatches">
+        <span class="sw" style="background:#ddd4c2"></span><span class="sw" style="background:#e9e2d3"></span>
+        <span class="sw" style="background:#33302a"></span><span class="sw" style="background:#7a2233"></span>
+        <span class="sw" style="background:#2b261d"></span>
+      </div>
+      <div class="stage"><div class="panel hw s-sand" ><div class="p-top"><span class="p-logo">PD_HYBRID</span><span class="p-ver">v7</span><span class="p-preset"><span class="p-chip wide">Glass Bell</span><span class="p-chip">A/B</span><span class="p-chip">SAVE</span></span></div><div class="p-strip"><div class="p-knobcell"><div class="knob" style="--kdeg:168deg; --krot:23deg"></div><div class="lab">Cutoff</div><div class="val">439 Hz</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:82deg; --krot:-63deg"></div><div class="lab">Reso</div><div class="val">28 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:4deg; --krot:-141deg"></div><div class="lab">Macro 1</div><div class="val">0 %</div></div><div class="p-meter"><span class="cap">Out · Spectrum</span><svg viewBox="0 0 240 52" preserveAspectRatio="none" aria-hidden="true"><rect x="2" y="30.9" width="5" height="21.1" fill="var(--p-trace)" opacity="0.64"/><rect x="10" y="19.8" width="5" height="32.2" fill="var(--p-trace)" opacity="0.82"/><rect x="18" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="26" y="9.8" width="5" height="42.2" fill="var(--p-trace)" opacity="0.98"/><rect x="34" y="16.7" width="5" height="35.3" fill="var(--p-trace)" opacity="0.87"/><rect x="42" y="24.7" width="5" height="27.3" fill="var(--p-trace)" opacity="0.74"/><rect x="50" y="7.4" width="5" height="44.6" fill="var(--p-trace)" opacity="1.02"/><rect x="58" y="14.8" width="5" height="37.2" fill="var(--p-trace)" opacity="0.90"/><rect x="66" y="28.4" width="5" height="23.6" fill="var(--p-trace)" opacity="0.68"/><rect x="74" y="21.6" width="5" height="30.4" fill="var(--p-trace)" opacity="0.79"/><rect x="82" y="12.9" width="5" height="39.1" fill="var(--p-trace)" opacity="0.93"/><rect x="90" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="98" y="34.0" width="5" height="18.0" fill="var(--p-trace)" opacity="0.59"/><rect x="106" y="23.5" width="5" height="28.5" fill="var(--p-trace)" opacity="0.76"/><rect x="114" y="30.3" width="5" height="21.7" fill="var(--p-trace)" opacity="0.65"/><rect x="122" y="37.1" width="5" height="14.9" fill="var(--p-trace)" opacity="0.54"/><rect x="130" y="32.8" width="5" height="19.2" fill="var(--p-trace)" opacity="0.61"/><rect x="138" y="38.4" width="5" height="13.6" fill="var(--p-trace)" opacity="0.52"/><rect x="146" y="35.3" width="5" height="16.7" fill="var(--p-trace)" opacity="0.57"/><rect x="154" y="40.8" width="5" height="11.2" fill="var(--p-trace)" opacity="0.48"/><rect x="162" y="37.7" width="5" height="14.3" fill="var(--p-trace)" opacity="0.53"/><rect x="170" y="42.7" width="5" height="9.3" fill="var(--p-trace)" opacity="0.45"/><rect x="178" y="40.2" width="5" height="11.8" fill="var(--p-trace)" opacity="0.49"/><rect x="186" y="44.6" width="5" height="7.4" fill="var(--p-trace)" opacity="0.42"/><rect x="194" y="42.1" width="5" height="9.9" fill="var(--p-trace)" opacity="0.46"/><rect x="202" y="45.8" width="5" height="6.2" fill="var(--p-trace)" opacity="0.40"/><rect x="210" y="43.9" width="5" height="8.1" fill="var(--p-trace)" opacity="0.43"/><rect x="218" y="47.0" width="5" height="5.0" fill="var(--p-trace)" opacity="0.38"/><rect x="226" y="45.2" width="5" height="6.8" fill="var(--p-trace)" opacity="0.41"/><rect x="234" y="47.7" width="5" height="4.3" fill="var(--p-trace)" opacity="0.37"/></svg></div><div class="p-knobcell"><div class="knob" style="--kdeg:214deg; --krot:69deg"></div><div class="lab">Master</div><div class="val">0 dB</div></div></div><div class="p-tabs"><span class="p-tab on">Voice</span><span class="p-tab">Shape</span><span class="p-tab">Mod</span><span class="p-tab">Out</span></div><div class="p-card"><div class="p-cardhead"><h4>Osc A</h4><span class="p-leds"><span class="led on">ON</span><span class="led">CMB</span></span></div><div class="p-selects"><span class="sel">Phase Distortion</span><span class="sel">Sawtooth</span><span class="sel off">Sawtooth</span></div><div class="p-wave"><span class="cap">Cycle</span><svg viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 38 C 24 38, 30 6, 54 6 S 84 38, 108 38 S 138 6, 162 6 S 192 38, 216 38 L 240 38" fill="none" stroke="var(--p-trace)" stroke-width="1.5"/></svg></div><div class="p-knobrow"><div class="p-knobcell"><div class="knob" style="--kdeg:87deg; --krot:-58deg"></div><div class="lab">PD Amt</div><div class="val">30 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Width</div><div class="val">50 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:290deg; --krot:145deg"></div><div class="lab">Level</div><div class="val">100 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Oct</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Semi</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Fine</div><div class="val">0 ct</div></div></div></div><div class="p-foot"><span>Voice 1/4</span><span class="p-chord">Cmaj7</span><span>3 routes</span></div></div></div>
+      <div class="tags"><span class="tag">light ground</span><span class="tag">quietest accent</span>
+        <span class="tag">softer than 2a</span></div>
+    </article>
+  </div>
+
+  <section class="sec">
+    <h2>Your other finalist, unchanged</h2>
+    <p>Here at the same scale so you can judge how a themed set would feel with both in it.</p>
+  </section>
+
+  <div class="grid">
+    <article class="opt">
+      <div class="opt-head">
+        <span class="num">10</span>
+        <div><h3>Phosphor Mk II</h3>
+          <p>Green CRT, but amber owns live state so the hierarchy actually reads.</p></div>
+      </div>
+      <div class="stage"><div class="panel s-phosphor" ><div class="p-top"><span class="p-logo">PD_HYBRID</span><span class="p-ver">v7</span><span class="p-preset"><span class="p-chip wide">Glass Bell</span><span class="p-chip">A/B</span><span class="p-chip">SAVE</span></span></div><div class="p-strip"><div class="p-knobcell"><div class="knob" style="--kdeg:168deg; --krot:23deg"></div><div class="lab">Cutoff</div><div class="val">439 Hz</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:82deg; --krot:-63deg"></div><div class="lab">Reso</div><div class="val">28 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:4deg; --krot:-141deg"></div><div class="lab">Macro 1</div><div class="val">0 %</div></div><div class="p-meter"><span class="cap">Out · Spectrum</span><svg viewBox="0 0 240 52" preserveAspectRatio="none" aria-hidden="true"><rect x="2" y="30.9" width="5" height="21.1" fill="var(--p-trace)" opacity="0.64"/><rect x="10" y="19.8" width="5" height="32.2" fill="var(--p-trace)" opacity="0.82"/><rect x="18" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="26" y="9.8" width="5" height="42.2" fill="var(--p-trace)" opacity="0.98"/><rect x="34" y="16.7" width="5" height="35.3" fill="var(--p-trace)" opacity="0.87"/><rect x="42" y="24.7" width="5" height="27.3" fill="var(--p-trace)" opacity="0.74"/><rect x="50" y="7.4" width="5" height="44.6" fill="var(--p-trace)" opacity="1.02"/><rect x="58" y="14.8" width="5" height="37.2" fill="var(--p-trace)" opacity="0.90"/><rect x="66" y="28.4" width="5" height="23.6" fill="var(--p-trace)" opacity="0.68"/><rect x="74" y="21.6" width="5" height="30.4" fill="var(--p-trace)" opacity="0.79"/><rect x="82" y="12.9" width="5" height="39.1" fill="var(--p-trace)" opacity="0.93"/><rect x="90" y="26.6" width="5" height="25.4" fill="var(--p-trace)" opacity="0.71"/><rect x="98" y="34.0" width="5" height="18.0" fill="var(--p-trace)" opacity="0.59"/><rect x="106" y="23.5" width="5" height="28.5" fill="var(--p-trace)" opacity="0.76"/><rect x="114" y="30.3" width="5" height="21.7" fill="var(--p-trace)" opacity="0.65"/><rect x="122" y="37.1" width="5" height="14.9" fill="var(--p-trace)" opacity="0.54"/><rect x="130" y="32.8" width="5" height="19.2" fill="var(--p-trace)" opacity="0.61"/><rect x="138" y="38.4" width="5" height="13.6" fill="var(--p-trace)" opacity="0.52"/><rect x="146" y="35.3" width="5" height="16.7" fill="var(--p-trace)" opacity="0.57"/><rect x="154" y="40.8" width="5" height="11.2" fill="var(--p-trace)" opacity="0.48"/><rect x="162" y="37.7" width="5" height="14.3" fill="var(--p-trace)" opacity="0.53"/><rect x="170" y="42.7" width="5" height="9.3" fill="var(--p-trace)" opacity="0.45"/><rect x="178" y="40.2" width="5" height="11.8" fill="var(--p-trace)" opacity="0.49"/><rect x="186" y="44.6" width="5" height="7.4" fill="var(--p-trace)" opacity="0.42"/><rect x="194" y="42.1" width="5" height="9.9" fill="var(--p-trace)" opacity="0.46"/><rect x="202" y="45.8" width="5" height="6.2" fill="var(--p-trace)" opacity="0.40"/><rect x="210" y="43.9" width="5" height="8.1" fill="var(--p-trace)" opacity="0.43"/><rect x="218" y="47.0" width="5" height="5.0" fill="var(--p-trace)" opacity="0.38"/><rect x="226" y="45.2" width="5" height="6.8" fill="var(--p-trace)" opacity="0.41"/><rect x="234" y="47.7" width="5" height="4.3" fill="var(--p-trace)" opacity="0.37"/></svg></div><div class="p-knobcell"><div class="knob" style="--kdeg:214deg; --krot:69deg"></div><div class="lab">Master</div><div class="val">0 dB</div></div></div><div class="p-tabs"><span class="p-tab on">Voice</span><span class="p-tab">Shape</span><span class="p-tab">Mod</span><span class="p-tab">Out</span></div><div class="p-card"><div class="p-cardhead"><h4>Osc A</h4><span class="p-leds"><span class="led on">ON</span><span class="led">CMB</span></span></div><div class="p-selects"><span class="sel">Phase Distortion</span><span class="sel">Sawtooth</span><span class="sel off">Sawtooth</span></div><div class="p-wave"><span class="cap">Cycle</span><svg viewBox="0 0 240 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 38 C 24 38, 30 6, 54 6 S 84 38, 108 38 S 138 6, 162 6 S 192 38, 216 38 L 240 38" fill="none" stroke="var(--p-trace)" stroke-width="1.5"/></svg></div><div class="p-knobrow"><div class="p-knobcell"><div class="knob" style="--kdeg:87deg; --krot:-58deg"></div><div class="lab">PD Amt</div><div class="val">30 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Width</div><div class="val">50 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:290deg; --krot:145deg"></div><div class="lab">Level</div><div class="val">100 %</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Oct</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Semi</div><div class="val">0</div></div><div class="p-knobcell"><div class="knob" style="--kdeg:145deg; --krot:0deg"></div><div class="lab">Fine</div><div class="val">0 ct</div></div></div></div><div class="p-foot"><span>Voice 1/4</span><span class="p-chord">Cmaj7</span><span>3 routes</span></div></div></div>
+      <div class="tags"><span class="tag keep">other finalist</span><span class="tag">all mono</span>
+        <span class="tag">keeps the current identity</span></div>
+    </article>
+  </div>
+
+  <section class="close">
+    <h2>Notes</h2>
+    <ul>
+      <li><b>2b Graphite is the literal answer</b> to "darker Panel 1985" — nothing changes but the plastic. If you want the pick you already made, just at night, it's this one.</li>
+      <li><b>2d Carbon goes furthest</b> and is the only one using two accents with real jobs: red for controls, amber for live values. That's the same split that makes 10 work, which makes the two sit together well as a pair.</li>
+      <li><b>2c and 2e are the ones with a point of view.</b> Midnight is warm and forgiving; Lab is cool and clinical. Lab is also the most different from Phosphor, so a set of {Lab, Phosphor, Cream} would cover a lot of ground with three themes.</li>
+      <li><b>If you ship a themed set, three or four is the sweet spot</b> — one light, one neutral dark, one committed. More than that and they stop feeling curated.</li>
+      <li>Knob caps are worth deciding separately from the panel: dark metal (2a, 2b, 2d, 2e) reads as pro gear, cream (2c, 2f) reads as vintage consumer. It's a bigger tonal lever than it looks.</li>
+    </ul>
+    <p>
+      Tell me which finishes you want to keep, and whether you'd like the themed set to be
+      three or four. Then we can move on to the layout, which is the part that will actually
+      make it easier to use.
+    </p>
+  </section>
+
+</div>

@@ -22,3 +22,6 @@ build_*.log
 Thumbs.db
 .DS_Store
 .superpowers/
+
+# Subagent-driven development scratch (ledgers, briefs, review packages)
+.superpowers/

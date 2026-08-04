@@ -103,6 +103,10 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::NormalisableRange<float> (-100.0f, 100.0f), 0.0f, cnt);
         pf (id + "Level", label + " Level",
             juce::NormalisableRange<float> (0.0f, 1.0f), defLevel, pct);
+        // Mixer mute. Defaults to on, so presets saved before it existed load
+        // with the oscillator audible and sound exactly as they did.
+        params.push_back (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { id + "On", 1 }, label + " On", true));
         const juce::NormalisableRange<float> eqRange (-18.0f, 18.0f);
         pf (id + "EqLow",  label + " EQ Low",  eqRange, 0.0f, db);
         pf (id + "EqMid",  label + " EQ Mid",  eqRange, 0.0f, db);
@@ -659,6 +663,8 @@ void PDHybridAudioProcessor::pushParams()
     p.oscBEngine  = apvts.getRawParameterValue ("oscBEngine")->load();
     p.oscAExcite  = static_cast<int> (apvts.getRawParameterValue ("oscAExcite")->load());
     p.oscBExcite  = static_cast<int> (apvts.getRawParameterValue ("oscBExcite")->load());
+    p.oscAOn      = apvts.getRawParameterValue ("oscAOn")->load() > 0.5f;
+    p.oscBOn      = apvts.getRawParameterValue ("oscBOn")->load() > 0.5f;
     p.noiseLevel  = apvts.getRawParameterValue ("noiseLevel")->load();
     p.ringModLevel = apvts.getRawParameterValue ("ringMod")->load();
     p.oscCrossMod    = static_cast<int> (apvts.getRawParameterValue ("oscCrossMod")->load());

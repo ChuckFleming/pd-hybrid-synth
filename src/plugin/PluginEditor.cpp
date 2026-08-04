@@ -945,7 +945,8 @@ void PDHybridEditor::buildSections()
     oscA.combos = { &addCombo ("oscAType", kOscTypeNames), &addCombo ("oscAWave", kPdWaveNames),
                     &addCombo ("oscAWave2", kPdWaveNames),
                     &addCombo ("oscAExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
-    oscA.toggles = { &addToggle ("oscACombine", "CMB") };
+    // ON is the mixer mute: it silences the oscillator without moving its Level.
+    oscA.toggles = { &addToggle ("oscAOn", "ON"), &addToggle ("oscACombine", "CMB") };
     // NOTE: updateOscControls() addresses knobs 0/1/2 as amount / width / engine.
     oscA.knobs  = { &addKnob ("oscAAmount", "PD Amt", 2, KnobSize::Large),
                     &addKnob ("oscAPulseWidth", "Width"),
@@ -964,7 +965,7 @@ void PDHybridEditor::buildSections()
     oscB.combos = { &addCombo ("oscBType", kOscTypeNames), &addCombo ("oscBWave", kPdWaveNames),
                     &addCombo ("oscBWave2", kPdWaveNames),
                     &addCombo ("oscBExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
-    oscB.toggles = { &addToggle ("oscBCombine", "CMB") };
+    oscB.toggles = { &addToggle ("oscBOn", "ON"), &addToggle ("oscBCombine", "CMB") };
     oscB.knobs  = { &addKnob ("oscBAmount", "PD Amt", 2, KnobSize::Large),
                     &addKnob ("oscBPulseWidth", "Width"),
                     &addKnob ("oscBEngine", "Engine"),
@@ -2321,10 +2322,14 @@ void PDHybridEditor::updateOscControls()
         comboActive (sec.combos[1], type == 0);
         comboActive (sec.combos[2], type == 0);
         comboActive (sec.combos[3], roles.exciteActive);
-        for (auto* t : sec.toggles)
+        // Toggles are ON / Combine. Only Combine is PD-only; ON is the mixer
+        // mute and has to stay live for every engine -- greying it out would
+        // leave a non-PD oscillator with no way to silence it.
+        if (sec.toggles.size() > 1)
         {
-            t->setEnabled (type == 0);
-            t->setAlpha (type == 0 ? 1.0f : 0.4f);
+            auto* combine = sec.toggles[1];
+            combine->setEnabled (type == 0);
+            combine->setAlpha (type == 0 ? 1.0f : 0.4f);
         }
         // The three shared timbre knobs relabel to the active engine's role and
         // grey out when it doesn't use them.

@@ -158,8 +158,13 @@ TEST_CASE ("Ring modulation adds sum/difference sidebands", "[voice][ringmod]")
         SynthParams p = cleanParams();
         p.oscAType   = pdhybrid::OscType::Triangle;   // simple, mostly-fundamental tones
         p.oscBType   = pdhybrid::OscType::Triangle;
-        p.oscBLevel  = 0.0;         // B not mixed directly...
-        p.oscBSemi   = 7;           // ...B a fifth above A
+        // Both oscillators are mixed. Ring mod is the product of the two, so it
+        // is now gated by both mixer levels: an oscillator turned down is
+        // silent everywhere, the ring path included. This test used to run with
+        // oscBLevel at 0, which is exactly the case that made "level 0" audible
+        // -- see the mixer tests in gain_structure_tests.cpp.
+        p.oscBLevel  = 1.0;
+        p.oscBSemi   = 7;           // B a fifth above A
         p.ringModLevel = ring;
         p.cutoffHz   = 18000.0;
         v.setParams (p);

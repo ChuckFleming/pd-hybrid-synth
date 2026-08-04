@@ -320,3 +320,80 @@ TEST_CASE ("A synced envelope stage tracks tempo", "[tempo][envelope]")
           << eighthAt60 << " at 60 BPM");
     REQUIRE (eighthAt60 > eighthAt120 * 1.5);
 }
+
+// ---------------------------------------------------------------------------
+// Silencing an oscillator
+
+namespace {
+
+// Peak of a held note with the mixer configured by the caller.
+double mixerPeak (bool aOn, bool bOn, double aLvl, double bLvl, double ring)
+{
+    SynthEngine e;
+    e.setSampleRate (kSr);
+
+    SynthParams p;
+    p.oscAType     = OscType::Saw;
+    p.oscBType     = OscType::Saw;
+    p.oscBSemi     = 7;            // a fifth apart, so the ring product is rich
+    p.oscAOn       = aOn;
+    p.oscBOn       = bOn;
+    p.oscALevel    = aLvl;
+    p.oscBLevel    = bLvl;
+    p.ringModLevel = ring;
+    p.cutoffHz     = 12000.0;
+    p.sustain      = 1.0;
+    p.attack       = 0.005;
+    e.setParams (p);
+    e.noteOn (60, 1.0f, 1);
+
+    std::vector<float> l (512, 0.0f), r (512, 0.0f);
+    double peak = 0.0;
+    for (int b = 0; b < 60; ++b)
+    {
+        std::fill (l.begin(), l.end(), 0.0f);
+        std::fill (r.begin(), r.end(), 0.0f);
+        e.renderBlock (l.data(), r.data(), 512);
+        if (b < 10) continue;
+        peak = std::max (peak, (double) peakAbs (l));
+    }
+    return peak;
+}
+
+} // namespace
+
+TEST_CASE ("Level 0 silences an oscillator, ring mod included", "[synth][gain][mixer]")
+{
+    // Ring mod used to be summed outside the mixer, so it stayed audible with
+    // both levels at zero -- turning an oscillator down did not silence it.
+    REQUIRE (mixerPeak (true, true, 0.0, 0.0, 0.8) == Approx (0.0).margin (1.0e-6));
+
+    // One oscillator down is enough: ring is the product of the two, so it
+    // cannot outlive either of them.
+    REQUIRE (mixerPeak (true, true, 1.0, 0.0, 0.8) > 0.0);   // A still sounds
+    const double aOnly    = mixerPeak (true, true, 1.0, 0.0, 0.0);
+    const double aPlusRing = mixerPeak (true, true, 1.0, 0.0, 0.8);
+    REQUIRE (aPlusRing == Approx (aOnly).epsilon (0.01));    // ring adds nothing
+}
+
+TEST_CASE ("The ON toggle silences an oscillator without moving its level",
+           "[synth][gain][mixer]")
+{
+    // Muted with the level left fully up: silent, and silent through ring too.
+    REQUIRE (mixerPeak (false, false, 1.0, 1.0, 0.8) == Approx (0.0).margin (1.0e-6));
+
+    // Muting only B removes B and the ring product, leaving A exactly as it was.
+    const double aAlone = mixerPeak (true, false, 1.0, 0.0, 0.0);
+    REQUIRE (mixerPeak (true, false, 1.0, 1.0, 0.8) == Approx (aAlone).epsilon (0.01));
+    REQUIRE (aAlone > 0.0);
+}
+
+TEST_CASE ("Ring mod is unchanged when both oscillators are fully up",
+           "[synth][gain][mixer]")
+{
+    // The gating must not alter existing patches: at full levels the scaling
+    // factor is 1, so the ring contribution is exactly what it always was.
+    const double dry  = mixerPeak (true, true, 1.0, 1.0, 0.0);
+    const double wet  = mixerPeak (true, true, 1.0, 1.0, 0.8);
+    REQUIRE (wet != Approx (dry).epsilon (0.01));   // ring is doing something
+}

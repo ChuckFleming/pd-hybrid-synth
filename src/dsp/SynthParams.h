@@ -212,6 +212,12 @@ struct SynthParams
     double  oscBEqLow = 0.0, oscBEqMid = 0.0, oscBEqHigh = 0.0;   // per-osc EQ, dB
 
     // --- Mixer (independent sum) ---
+    // oscAOn / oscBOn are mixer mutes: they silence the oscillator's audible
+    // contribution without disturbing its level knob. They deliberately do NOT
+    // stop it cross-modulating -- phase mod and hard sync want a modulator you
+    // cannot hear, which is exactly what a muted oscillator is.
+    bool    oscAOn     = true;
+    bool    oscBOn     = true;
     double  oscALevel  = 1.0;
     double  oscBLevel  = 0.0;   // B silent by default -> single-osc patches unchanged
     double  noiseLevel = 0.0;

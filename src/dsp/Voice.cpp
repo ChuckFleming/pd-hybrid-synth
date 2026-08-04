@@ -274,10 +274,22 @@ void Voice::applyModulation() noexcept
     // Velocity scaling of the amp level (0 sens = velocity ignored).
     velAmp_ = (1.0 - params_.ampVelSens) + params_.ampVelSens * velGain_;
 
-    // Mixer levels after matrix modulation.
-    oscALevelMod_  = std::clamp (params_.oscALevel + md (ModDest::OscALevel), 0.0, 1.0);
-    oscBLevelMod_  = std::clamp (params_.oscBLevel + md (ModDest::OscBLevel), 0.0, 1.0);
+    // Mixer levels after matrix modulation. The mute buttons fold in here, so
+    // everything downstream -- the mix, the ring product and the constant-power
+    // normalisation -- sees a muted oscillator as simply being at zero.
+    oscALevelMod_  = params_.oscAOn
+                   ? std::clamp (params_.oscALevel + md (ModDest::OscALevel), 0.0, 1.0) : 0.0;
+    oscBLevelMod_  = params_.oscBOn
+                   ? std::clamp (params_.oscBLevel + md (ModDest::OscBLevel), 0.0, 1.0) : 0.0;
     noiseLevelMod_ = std::clamp (params_.noiseLevel + md (ModDest::NoiseLevel), 0.0, 1.0);
+
+    // Ring mod is the product of the two oscillators, so it belongs to both of
+    // them: gate it by their mixer levels. Without this an oscillator turned
+    // fully down was still plainly audible through the ring path -- level 0 did
+    // not mean silent. Scaling (rather than switching at a threshold) keeps the
+    // ring fading out smoothly as a level is pulled down, and leaves patches
+    // with both oscillators up sounding exactly as before.
+    ringModMod_ *= oscALevelMod_ * oscBLevelMod_;
 
     // Constant-power mixer: turning every source up used to stack their levels,
     // so a patch could leave the mixer several times hotter than a single

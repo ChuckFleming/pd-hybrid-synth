@@ -1,19 +1,26 @@
 #include "CrtOverlay.h"
 
 namespace {
-// --- CRT tuning. Strong enough that the whole screen always reads as an old
-//     monitor, while staying readable; nudge these to taste. ---
+// --- CRT tuning. The screen should read as an old monitor without washing out.
+//     The tint is the brightness control and the scanlines are the contrast
+//     control, and they pull against each other: a wash laid over everything
+//     lifts the blacks, so turning it up makes the panel both brighter and
+//     flatter. Keeping the wash low and the scanlines deep buys a darker tube
+//     that still has bite. Nudge to taste. ---
 constexpr int   kScanPeriod   = 3;      // scanline group repeats every N pixels
-constexpr float kScanDark     = 0.30f;  // darkness of the hard scan line (0..1)
-constexpr float kScanSoft     = 0.12f;  // darkness of the soft falloff row
+constexpr float kScanDark     = 0.44f;  // darkness of the hard scan line (0..1)
+constexpr float kScanSoft     = 0.20f;  // darkness of the soft falloff row
 
-constexpr float kTintAlpha    = 0.10f;  // faint green phosphor wash over everything
-constexpr float kVignetteAlpha = 0.55f; // corner darkening at the very edge
-constexpr float kVignetteInner = 0.38f; // fraction of the radius that stays clear
+constexpr float kTintAlpha    = 0.035f; // faint green phosphor wash over everything
+constexpr float kVignetteAlpha = 0.68f; // corner darkening at the very edge
+constexpr float kVignetteInner = 0.30f; // fraction of the radius that stays clear
 
 // Green cast shared by the scanlines, tint and vignette (phosphor look).
+// The tint is a dim phosphor rather than a bright one: at this alpha a
+// saturated green reads as haze sitting in front of the panel instead of a
+// tube the panel is being displayed on.
 const juce::Colour kPhosphorDark { 0xff02120a };
-const juce::Colour kPhosphorTint { 0xff0aff7a };
+const juce::Colour kPhosphorTint { 0xff0f8f52 };
 }
 
 CrtOverlay::CrtOverlay()

@@ -78,7 +78,7 @@ private:
         juce::Component* custom2 = nullptr;
         int customH2 = 0;
         int knobSplit = -1;       // knobs before this index go above custom2
-        juce::Colour titleCol { 0xff4be08a };   // amber marks a modulation source
+        juce::Colour titleCol {};   // set from the theme when the section is built
         juce::Rectangle<int> bounds;
     };
 

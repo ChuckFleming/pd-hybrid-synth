@@ -43,6 +43,12 @@ Theme Theme::fromId (pdtheme::ThemeId id)
 
 void Theme::applyTo (juce::LookAndFeel& lnf) const
 {
+    // A default-constructed Theme (never given a palette via fromId()) has a
+    // null pal_. Nothing builds one that way today, but this guards the next
+    // caller that does instead of crashing on the dereference below.
+    if (pal_ == nullptr)
+        return;
+
     const auto& p = *pal_;
 
     lnf.setColour (panelBg,        c (p.bg));

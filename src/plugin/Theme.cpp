@@ -46,6 +46,7 @@ void Theme::applyTo (juce::LookAndFeel& lnf) const
     // A default-constructed Theme (never given a palette via fromId()) has a
     // null pal_. Nothing builds one that way today, but this guards the next
     // caller that does instead of crashing on the dereference below.
+    jassert (pal_ != nullptr);
     if (pal_ == nullptr)
         return;
 

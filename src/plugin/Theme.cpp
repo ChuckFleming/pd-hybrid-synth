@@ -26,7 +26,6 @@ Theme Theme::fromId (pdtheme::ThemeId id)
         t.traits.mixedTypography = false;
         t.traits.physicalKnobs   = false;
         t.traits.legendStripe    = false;
-        t.traits.crt             = Traits::Crt::WholePanel;
         t.traits.cornerRadius    = 2.0f;
     }
     else
@@ -34,8 +33,6 @@ Theme Theme::fromId (pdtheme::ThemeId id)
         t.traits.mixedTypography = true;
         t.traits.physicalKnobs   = true;
         t.traits.legendStripe    = true;
-        // Scanlines belong on the display windows, not on moulded plastic.
-        t.traits.crt             = Traits::Crt::ScreensOnly;
         t.traits.cornerRadius    = 2.0f;
     }
     return t;

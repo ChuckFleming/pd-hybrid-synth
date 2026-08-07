@@ -64,9 +64,6 @@ struct Traits
     bool physicalKnobs = true;
     /** True to rule a coloured legend stripe under the wordmark. */
     bool legendStripe = true;
-    /** Where the CRT overlay may draw. */
-    enum class Crt { Never, ScreensOnly, WholePanel };
-    Crt crt = Crt::ScreensOnly;
     /** Corner radius for cards and fields, in pixels. */
     float cornerRadius = 2.0f;
 };

@@ -12,7 +12,6 @@
     output. It pulls the most recent samples from a lock-free tap (via the
     supplied reader), zero-crossing triggers them so the trace stays put, and
     draws the waveform over a log-frequency magnitude spectrum. It lives under
-    the CRT overlay, so the scanlines fall over it for free.
 */
 class ScopeDisplay : public juce::Component,
                      private juce::Timer

@@ -2103,25 +2103,9 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         abButton.setButtonText (abSlot_ == 0 ? "A/B: A" : "A/B: B");
     };
 
-    // CRT effect toggle (persisted as a non-automatable property on the state
-    // tree, so it survives reopening the editor without being a synth param).
-    addAndMakeVisible (crtButton);
-    crtButton.setClickingTogglesState (true);
-    const bool crtOn = (bool) proc.apvts.state.getProperty ("crtEnabled", true);
-    crtButton.setToggleState (crtOn, juce::dontSendNotification);
-    crtOverlay.setEffectEnabled (crtOn);
-    crtButton.onClick = [this]
-    {
-        const bool on = crtButton.getToggleState();
-        crtOverlay.setEffectEnabled (on);
-        proc.apvts.state.setProperty ("crtEnabled", on, nullptr);
-    };
-    crtOverlay.setScope (pdui::themeOf (*this).traits.crt);
-
     // Theme is a display preference, not a patch setting: it is stored as a
     // property on the state tree rather than as a parameter, so it is neither
-    // automatable nor swapped by A/B compare -- the same treatment crtEnabled
-    // already gets.
+    // automatable nor swapped by A/B compare.
     addAndMakeVisible (themeBox);
     for (int i = 0; i < pdtheme::kNumThemes; ++i)
         themeBox.addItem (pdtheme::themeName (static_cast<pdtheme::ThemeId> (i)), i + 1);
@@ -2221,18 +2205,18 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // where a control sits now tells you when it happens. Global settings sit
     // off the path entirely.
     std::vector<Page> layout {
-        { "1 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " VOICE",
+        { "VOICE",
                         { &oscA, &oscB, &mixer, &bassSec, &pluckSec, &unison, &glideSec, &chordSec },
                                                                                 nullptr, {}, 0 },
-        { "2 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " SHAPE",
+        { "SHAPE",
                         { &filter, &filter2, &routingSec, &drive },              nullptr, {}, 0 },
-        { "3 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " MOD",
+        { "MOD",
                         { &stageEnvSec, &lfo, &lfo2,
                           &modEnv, &vibratoSec, &arpSec },                      nullptr, {}, 0 },
-        { "4 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " OUT",
+        { "OUT",
                         { &chorusSec, &delaySec, &reverbSec,
                           &globalEqSec, &comp, &stereo },                        nullptr, {}, 0 },
-        { juce::String (juce::CharPointer_UTF8 ("\xe2\x9a\x99")) + " GLOBAL",
+        { "GLOBAL",
                         { &voiceSec, &tuningSec, &globalLfoSec, &tempoSec, &qualitySec },  nullptr, {}, 0 },
     };
 
@@ -2290,9 +2274,6 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     refreshModRings();
     startTimerHz (12);   // live meters + ring/route refresh
 
-    // Added last so it sits on top of the tabs; it never intercepts the mouse.
-    addAndMakeVisible (crtOverlay);
-
     setResizable (true, true);
     setResizeLimits (1040, 620, 2600, 1900);
     // Open at whatever size the *tallest* page actually needs, so nothing has to
@@ -2348,7 +2329,12 @@ void PDHybridEditor::applyTheme (pdtheme::ThemeId id)
     tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::tabTextColourId, findColour (pdui::textDim));
     tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::frontTextColourId, findColour (pdui::accentCol));
 
-    crtOverlay.setScope (theme.traits.crt);
+    // addTab() copies a background colour into each tab, so those copies are
+    // stuck on whichever skin was live when the tabs were built -- which left
+    // the whole page area showing the other theme's panel colour after a
+    // switch. Re-stamp every tab, not just the TabbedComponent's own id.
+    for (int i = 0; i < tabs.getNumTabs(); ++i)
+        tabs.setTabBackgroundColour (i, findColour (pdui::panelBg));
 
     // Pushes a lookAndFeelChanged() through the whole tree, so every child
     // re-reads its colours. Without this the change only lands on repaint of
@@ -2546,7 +2532,7 @@ void PDHybridEditor::paintFooter (juce::Graphics& g)
     g.setColour (findColour (pdui::panelEdge));
     g.fillRect (0, 0, r.getWidth(), 1);
 
-    static const char* names[] = { "VOICE 1/4", "SHAPE 2/4", "MOD 3/4", "OUT 4/4", "GLOBAL" };
+    static const char* names[] = { "VOICE", "SHAPE", "MOD", "OUT", "GLOBAL" };
     const int page = juce::jlimit (0, 4, tabs.getCurrentTabIndex());
 
     g.setFont (pdui::labelFont (*this, 9.0f));
@@ -2733,7 +2719,6 @@ void PDHybridEditor::resized()
     // is an item inside the preset menu, where the preset it deletes is named.
     int x = top.getRight() - 76;
     initButton.setBounds (x, y, 64, 26);
-    x -= 52;  crtButton.setBounds  (x, y, 46, 26);
     x -= 126; themeBox.setBounds   (x, y, 120, 26);
     x -= 70;  saveButton.setBounds (x, y, 64, 26);
     x -= 58;  abButton.setBounds   (x, y, 52, 26);
@@ -2750,15 +2735,6 @@ void PDHybridEditor::resized()
     // The overlay covers everything below the title bar, so the dimmed backdrop
     // reads as "the rest of the editor is inactive".
     matrixHolder.setBounds (getLocalBounds().withTrimmedTop (kTopBar));
-    crtOverlay.setBounds (getLocalBounds());
-
-    // The display windows the CRT effect is allowed to touch.
-    juce::Array<juce::Rectangle<int>> screens;
-    for (auto* c : { (juce::Component*) &scope_, (juce::Component*) &oscACycle,
-                     (juce::Component*) &oscBCycle })
-        if (c->isVisible())
-            screens.add (getLocalArea (c, c->getLocalBounds()));
-    crtOverlay.setScreenAreas (screens);
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)

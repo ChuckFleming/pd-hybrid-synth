@@ -4,7 +4,6 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
 #include "SynthLookAndFeel.h"
-#include "CrtOverlay.h"
 #include "ScopeDisplay.h"
 #include "Displays.h"
 #include "dsp/ChordNamer.h"
@@ -228,7 +227,6 @@ private:
     juce::TextButton prevButton { "<" };
     juce::TextButton nextButton { ">" };
     juce::TextButton abButton { "A/B: A" };
-    juce::TextButton crtButton { "CRT" };
     juce::ComboBox   themeBox;
     juce::TextButton presetButton { "Presets" };   // opens the hierarchical preset menu
 
@@ -288,7 +286,6 @@ private:
     std::vector<std::unique_ptr<ScrollPanel>>  scrollers;
 
     ScopeDisplay scope_ { [this] (float* d, int n) { proc.readScope (d, n); } };  // master output scope
-    CrtOverlay crtOverlay;   // click-through CRT effect layered over everything
 
     // Fixed performance strip above the tab bar: the controls reached on every
     // patch, so they never leave the screen whichever page is showing.

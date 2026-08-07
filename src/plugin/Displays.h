@@ -43,7 +43,7 @@ inline juce::Rectangle<float> drawFrame (juce::Graphics& g, juce::Rectangle<floa
     g.setColour (edge);                                g.drawRect (r, 1.0f);
     if (caption.isNotEmpty())
     {
-        g.setFont (monoF (8.0f));
+        g.setFont (pdui::labelFont (owner, 8.0f));
         g.setColour (owner.findColour (pdui::screenDim).withAlpha (0.75f));
         g.drawText (caption, r.reduced (5.0f, 3.0f), juce::Justification::topLeft);
     }

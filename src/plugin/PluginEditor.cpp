@@ -26,12 +26,6 @@ constexpr int kStripCapH = 13;   // caption band along the strip's top edge
 // involved. Call findColour(...) directly at each site — every site below is
 // inside a Component member function or a paint lambda that captures `this`.
 
-juce::Font monoFont (float height, bool bold = false)
-{
-    return juce::Font (juce::Font::getDefaultMonospacedFontName(), height,
-                       bold ? juce::Font::bold : juce::Font::plain);
-}
-
 const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh", "Supersaw", "Harmonic", "PAF", "Granular", "Wavetable" };
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                         "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
@@ -416,7 +410,7 @@ void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
         g.drawRect (b, 1);
 
         // Title label sits in a black notch breaking the top border.
-        g.setFont (monoFont (11.5f));
+        g.setFont (pdui::labelFont (*this, 11.5f));
         const int tw = g.getCurrentFont().getStringWidth (title) + 14;
         juce::Rectangle<int> tag (b.getX() + 12, b.getY() - 1, tw, kHeaderH - 6);
         g.setColour (findColour (pdui::panelCard));
@@ -733,11 +727,11 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
             g.fillRect (seg.getRight(), seg.getY(), 1, seg.getHeight());
 
             auto inner = seg.reduced (8, 3);
-            g.setFont (monoFont (10.0f));
+            g.setFont (pdui::labelFont (*this, 10.0f));
             g.setColour (on ? banks[(std::size_t) i].colour : findColour (pdui::textDim).withAlpha (0.65f));
             g.drawText (banks[(std::size_t) i].name, inner.removeFromTop (13),
                         juce::Justification::centredLeft);
-            g.setFont (monoFont (8.0f));
+            g.setFont (pdui::labelFont (*this, 8.0f));
             g.setColour (on ? findColour (pdui::textDim) : findColour (pdui::textDim).withAlpha (0.45f));
             g.drawText (banks[(std::size_t) i].dest, inner, juce::Justification::topLeft);
         }
@@ -745,7 +739,7 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
         // Trailing segment: what the graph is and how to drive it, including
         // the sustain stage the envelope is actually holding on.
         auto hint = selectorArea().withTrimmedLeft (static_cast<int> (banks.size()) * kEnvSegW + 10);
-        g.setFont (monoFont (8.5f));
+        g.setFont (pdui::labelFont (*this, 8.5f));
         g.setColour (findColour (pdui::textDim).withAlpha (0.6f));
         const juce::String dot (juce::CharPointer_UTF8 ("\xc2\xb7"));
         g.drawText ("8 STAGES  " + dot + "  SUSTAIN AT " + juce::String (susStage)
@@ -760,13 +754,13 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
         g.fillRect (ex);
         g.setColour (expanded ? findColour (pdui::accentCol) : findColour (pdui::panelEdge));
         g.drawRect (ex, 1);
-        g.setFont (monoFont (8.5f));
+        g.setFont (pdui::labelFont (*this, 8.5f));
         g.setColour (findColour (pdui::accentCol));
         g.drawText (juce::String (expanded ? juce::CharPointer_UTF8 ("\xe2\x96\xbe")
                                            : juce::CharPointer_UTF8 ("\xe2\x96\xb8")) + " NUMERIC",
                     ex, juce::Justification::centred);
 
-        g.setFont (monoFont (8.0f));
+        g.setFont (pdui::labelFont (*this, 8.0f));
         g.setColour (findColour (pdui::textDim).withAlpha (0.5f));
         g.drawText ("all 18 params still automatable",
                     ex.withX (ex.getRight() + 8).withWidth (260), juce::Justification::centredLeft);
@@ -811,7 +805,7 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
         g.setColour (col.withAlpha (0.55f));
         for (float y = frame.getY() + 2.0f; y < frame.getBottom() - 2.0f; y += 6.0f)
             g.fillRect (sx, y, 1.0f, 3.0f);
-        g.setFont (monoFont (9.0f));
+        g.setFont (pdui::labelFont (*this, 9.0f));
         g.drawText ("SUS", juce::Rectangle<float> (sx + 3.0f, (float) frame.getY() + 2.0f, 30.0f, 11.0f),
                     juce::Justification::centredLeft);
     }
@@ -837,7 +831,7 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
             + "   L" + juce::String (hoverNode + 1) + " "
             + (lp != nullptr ? lp->getCurrentValueAsText() : juce::String());
 
-        g.setFont (monoFont (9.5f));
+        g.setFont (pdui::valueFont (*this, 9.5f));
         const int tw = g.getCurrentFont().getStringWidth (txt) + 12;
         auto box = juce::Rectangle<int> ((int) np.x + 8, (int) np.y - 9, tw, 17);
         if (box.getRight() > frame.getRight() - 2) box.setX ((int) np.x - 8 - tw);
@@ -847,7 +841,7 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
     }
 
     // Stage numbers along the bottom edge of the graph.
-    g.setFont (monoFont (8.5f));
+    g.setFont (pdui::valueFont (*this, 8.5f));
     g.setColour (findColour (pdui::textDim).withAlpha (0.7f));
     for (int i = 0; i < 8; ++i)
     {
@@ -893,7 +887,7 @@ PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramI
     knob->label.setText (text, juce::dontSendNotification);
     knob->label.setJustificationType (juce::Justification::centred);
     // Large knobs get the bright accent label so the promoted controls read first.
-    knob->label.setFont (monoFont (size == KnobSize::Large ? 11.0f : 10.5f));
+    knob->label.setFont (pdui::labelFont (*this, size == KnobSize::Large ? 11.0f : 10.5f));
     knob->label.setColour (juce::Label::textColourId,
                            size == KnobSize::Large ? findColour (pdui::accentCol) : findColour (pdui::textDim));
 
@@ -1426,12 +1420,13 @@ const std::vector<MeterRow> kMeterRows {
 // A free function (no Component in scope), so the card background is passed
 // in rather than looked up here; every caller is a Component member that can
 // resolve it via findColour.
-void drawInspCard (juce::Graphics& g, juce::Rectangle<int> b, const juce::String& title,
-                   juce::Colour cardBg, juce::Colour edge, juce::Colour titleCol)
+void drawInspCard (juce::Graphics& g, const juce::Component& owner, juce::Rectangle<int> b,
+                   const juce::String& title, juce::Colour cardBg, juce::Colour edge,
+                   juce::Colour titleCol)
 {
     g.setColour (cardBg);   g.fillRect (b);
     g.setColour (edge);     g.drawRect (b, 1);
-    g.setFont (monoFont (8.5f));
+    g.setFont (pdui::labelFont (owner, 8.5f));
     const int tw = g.getCurrentFont().getStringWidth (title) + 12;
     juce::Rectangle<int> tag (b.getX() + 8, b.getY() - 1, tw, 12);
     g.setColour (cardBg);   g.fillRect (tag);
@@ -1729,7 +1724,7 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
 
     auto r = full.reduced (8, 6);
 
-    g.setFont (monoFont (9.0f));
+    g.setFont (pdui::labelFont (*this, 9.0f));
     g.setColour (findColour (pdui::textDim));
     g.drawText ("INSPECTOR", r.removeFromTop (16), juce::Justification::centredLeft);
     r.removeFromTop (18 + 4);                 // the direction toggle (buttons paint themselves)
@@ -1740,21 +1735,21 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
     // The selected card is amber-edged when it is showing a modulation object,
     // matching the amber rings on the panel.
     const bool amber = showDestinations || dest != 0;
-    drawInspCard (g, selCard_,
+    drawInspCard (g, *this, selCard_,
                   showDestinations ? kSrcNames[selectedSource].toUpperCase() + "  MODULATOR"
                                    : "SELECTED",
                   findColour (pdui::panelCard),
                   amber ? findColour (pdui::liveCol).withAlpha (0.55f) : findColour (pdui::panelEdge),
                   amber ? findColour (pdui::liveCol) : findColour (pdui::textInk));
-    drawInspCard (g, srcCard_, "MODULATORS " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7"))
+    drawInspCard (g, *this, srcCard_, "MODULATORS " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7"))
                                  + " LIVE", findColour (pdui::panelCard),
                   findColour (pdui::panelEdge), findColour (pdui::textInk));
-    drawInspCard (g, matrixCard_, "MATRIX " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7"))
+    drawInspCard (g, *this, matrixCard_, "MATRIX " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7"))
                                     + " " + juce::String ((int) routes_.size())
                                     + " / " + juce::String (kNumModRows), findColour (pdui::panelCard),
                   findColour (pdui::panelEdge), findColour (pdui::textInk));
 
-    g.setFont (monoFont (8.0f));
+    g.setFont (pdui::labelFont (*this, 8.0f));
     g.setColour (findColour (pdui::textDim).withAlpha (0.55f));
     g.drawFittedText ("Amber rings on the panel mark every knob a route points at. "
                       "Click one to inspect its sources.",
@@ -1765,12 +1760,12 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
 
     // --- what is selected ------------------------------------------------
     auto nameRow = r.removeFromTop (kInspRowH);
-    g.setFont (monoFont (10.5f));
+    g.setFont (pdui::labelFont (*this, 10.5f));
     if (showDestinations)
     {
         g.setColour (findColour (pdui::liveCol));
         g.drawText (kSrcNames[selectedSource], nameRow, juce::Justification::centredLeft);
-        g.setFont (monoFont (8.5f));
+        g.setFont (pdui::labelFont (*this, 8.5f));
         g.setColour (findColour (pdui::textDim));
         g.drawText ("modulator", nameRow, juce::Justification::centredRight);
     }
@@ -1781,7 +1776,7 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
                     nameRow, juce::Justification::centredLeft);
         if (auto* p = proc.apvts.getParameter (selectedParam))
         {
-            g.setFont (monoFont (9.0f));
+            g.setFont (pdui::valueFont (*this, 9.0f));
             g.setColour (findColour (pdui::textDim));
             g.drawText (p->getCurrentValueAsText(), nameRow, juce::Justification::centredRight);
         }
@@ -1792,10 +1787,11 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
     {
         const auto& rt = routes_[(std::size_t) row.routeIndex];
 
-        g.setFont (monoFont (9.0f));
+        g.setFont (pdui::labelFont (*this, 9.0f));
         g.setColour (findColour (pdui::accentCol));
         g.drawText (showDestinations ? kDstNames[rt.dest] : kSrcNames[rt.source],
                     row.text, juce::Justification::centredLeft);
+        g.setFont (pdui::valueFont (*this, 9.0f));
         g.setColour (findColour (pdui::textDim));
         g.drawText (juce::String (rt.depth, 2), row.text, juce::Justification::centredRight);
 
@@ -1811,7 +1807,7 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
 
     if (routeRows_.empty())
     {
-        g.setFont (monoFont (9.0f));
+        g.setFont (pdui::labelFont (*this, 9.0f));
         g.setColour (findColour (pdui::textDim).withAlpha (0.65f));
         const juce::String msg = showDestinations
             ? "Goes nowhere yet."
@@ -1948,7 +1944,7 @@ void PDHybridEditor::buildStrip()
 
         // One card title in a notch, exactly like a page card — no per-cluster
         // captions; the dividers already group the clusters.
-        g.setFont (monoFont (9.5f));
+        g.setFont (pdui::labelFont (*this, 9.5f));
         {
             const juce::String title = "PERFORMANCE - ALWAYS VISIBLE";
             const int tw = g.getCurrentFont().getStringWidth (title) + 14;
@@ -1967,7 +1963,7 @@ void PDHybridEditor::buildStrip()
         if (stripPoly != nullptr)
             if (auto* p = proc.apvts.getParameter ("polyphony"))
             {
-                g.setFont (monoFont (9.0f));
+                g.setFont (pdui::valueFont (*this, 9.0f));
                 g.setColour (findColour (pdui::textDim));
                 g.drawText (p->getCurrentValueAsText() + " VOICES",
                             stripPoly->getBounds().translated (0, -12).withHeight (11),
@@ -2432,17 +2428,17 @@ void PDHybridEditor::paintMatrix (juce::Graphics& g)
     g.drawRect (matrixPanel_, 1);
 
     auto head = matrixPanel_.reduced (kCardPad + 4, kCardPad).removeFromTop (kHeaderH);
-    g.setFont (monoFont (11.0f));
+    g.setFont (pdui::labelFont (*this, 11.0f));
     g.setColour (findColour (pdui::textInk));
     g.drawText ("MODULATION MATRIX", head, juce::Justification::centredLeft);
-    g.setFont (monoFont (9.0f));
+    g.setFont (pdui::labelFont (*this, 9.0f));
     g.setColour (findColour (pdui::textDim));
     g.drawText (juce::String ((int) routes_.size()) + " / " + juce::String (kNumModRows)
                     + " SLOTS IN USE",
                 head, juce::Justification::centredRight);
 
     // Column headings, aligned to the widgets beneath them.
-    g.setFont (monoFont (8.0f));
+    g.setFont (pdui::labelFont (*this, 8.0f));
     g.setColour (findColour (pdui::textDim).withAlpha (0.7f));
     if (kNumModRows > 0)
     {
@@ -2461,7 +2457,7 @@ void PDHybridEditor::paintMatrix (juce::Graphics& g)
         for (const auto& rt : routes_)
             if (rt.slot == i + 1) { used = true; break; }
 
-        g.setFont (monoFont (9.0f));
+        g.setFont (pdui::valueFont (*this, 9.0f));
         g.setColour (used ? findColour (pdui::liveCol) : findColour (pdui::textDim).withAlpha (0.45f));
         g.drawText (juce::String (i + 1),
                     modSrcBox[i].getX() - 22, modSrcBox[i].getY(), 18, modSrcBox[i].getHeight(),
@@ -2486,7 +2482,7 @@ void PDHybridEditor::paintFooter (juce::Graphics& g)
     static const char* names[] = { "VOICE 1/4", "SHAPE 2/4", "MOD 3/4", "OUT 4/4", "GLOBAL" };
     const int page = juce::jlimit (0, 4, tabs.getCurrentTabIndex());
 
-    g.setFont (monoFont (9.0f));
+    g.setFont (pdui::labelFont (*this, 9.0f));
     g.setColour (findColour (pdui::textDim));
     g.drawText (names[page], r.withTrimmedLeft (6), juce::Justification::centredLeft);
 
@@ -2504,7 +2500,7 @@ void PDHybridEditor::paintFooter (juce::Graphics& g)
         char nameBuf[pdhybrid::ChordNamer::kMaxName] = { 0 };
         pdhybrid::ChordNamer::name (notes, n, nameBuf, pdhybrid::ChordNamer::kMaxName);
 
-        g.setFont (monoFont (12.0f));
+        g.setFont (pdui::valueFont (*this, 12.0f));
         g.setColour (findColour (pdui::liveCol));
         g.drawText (nameBuf, r, juce::Justification::centred);
     }
@@ -2713,10 +2709,10 @@ void PDHybridEditor::paint (juce::Graphics& g)
 
     auto top = getLocalBounds().removeFromTop (kTopBar);
     g.setColour (findColour (pdui::textInk));
-    g.setFont (monoFont (18.0f));
+    g.setFont (pdui::labelFont (*this, 18.0f));
     g.drawText ("  PD_HYBRID", top, juce::Justification::centredLeft);
     g.setColour (findColour (pdui::textDim));
-    g.setFont (monoFont (11.0f));
+    g.setFont (pdui::labelFont (*this, 11.0f));
     g.drawText ("v7", top.withTrimmedLeft (150), juce::Justification::centredLeft);
 
     // The coloured legend stripe that ran under the badge on every panel of the

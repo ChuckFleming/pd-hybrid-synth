@@ -121,4 +121,21 @@ const Theme& themeOf (const juce::Component& comp) noexcept
     return fallbackTheme();
 }
 
+juce::Font labelFont (const juce::Component& comp, float height, bool bold)
+{
+    const auto& t = themeOf (comp);
+    const auto flags = bold ? juce::Font::bold : juce::Font::plain;
+    if (! t.traits.mixedTypography)
+        return juce::Font (juce::Font::getDefaultMonospacedFontName(), height, flags);
+    return juce::Font (juce::Font::getDefaultSansSerifFontName(), height, flags);
+}
+
+juce::Font valueFont (const juce::Component&, float height, bool bold)
+{
+    // Always monospaced: a readout that reflows as digits change is worse than
+    // one that does not match the labels.
+    return juce::Font (juce::Font::getDefaultMonospacedFontName(), height,
+                       bold ? juce::Font::bold : juce::Font::plain);
+}
+
 } // namespace pdui

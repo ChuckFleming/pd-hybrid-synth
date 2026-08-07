@@ -93,4 +93,9 @@ private:
     null-check. */
 const Theme& themeOf (const juce::Component& c) noexcept;
 
+/** Silkscreen legends and headings. Sans on Panel 1985, mono on Phosphor. */
+juce::Font labelFont (const juce::Component& c, float height, bool bold = false);
+/** Numeric readouts. Always mono, so digits line up in both skins. */
+juce::Font valueFont (const juce::Component& c, float height, bool bold = false);
+
 } // namespace pdui

@@ -65,9 +65,10 @@ private:
         std::vector<juce::Button*> toggles;
         int cols = 4;
         int span = 2;             // grid columns (the page grid is kGridCols wide)
-        // Consecutive sections sharing a non-zero stackId occupy one block of
-        // `span` columns and split its height between them, so a short card can
-        // sit above another instead of claiming a whole row.
+        // Stacking is obsolete under column packing: the packer already keeps
+        // columns level, and forcing two cards into one unit defeats it -- LFO 1
+        // and LFO 2 shared an id and so both landed in the same column, leaving
+        // it 220 px longer than its neighbour. Kept at 0 for every section.
         int stackId = 0;
         juce::Component* custom = nullptr;
         int customH = 0;          // height reserved for `custom`, 0 = none
@@ -177,6 +178,11 @@ private:
 
         std::vector<Bank> banks;
         bool expanded = true;    // NUMERIC row of R/L knobs showing
+        // How many rows the sixteen numeric knobs actually took last layout.
+        // preferredHeight has to agree with resized(), and resized() only knows
+        // once it has a width -- so it records the answer here and fires
+        // onHeightChanged when it changes.
+        int  numericRows = 1;
         int  active = 0;
         int  dragNode = -1;      // node being dragged, -1 = none
         int  hoverNode = -1;
@@ -228,6 +234,9 @@ private:
     juce::TextButton nextButton { ">" };
     juce::TextButton abButton { "A/B: A" };
     juce::ComboBox   themeBox;
+    // The Inspector is a drawer now, not a reserved column; this is its latch.
+    juce::TextButton inspectorButton { "INSP" };
+    bool             inspectorOpen_ = false;
     juce::TextButton presetButton { "Presets" };   // opens the hierarchical preset menu
 
     /** Installs a skin at runtime: pushes it onto the LookAndFeel, re-applies

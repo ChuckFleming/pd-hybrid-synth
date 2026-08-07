@@ -1,25 +1,33 @@
 #include "PluginEditor.h"
 
 namespace {
-// Layout is on an 8-point grid so vertical/horizontal rhythm stays consistent.
-constexpr int kKnobW    = 64;
-constexpr int kKnobH    = 64;   // rotary + text box below
-constexpr int kLabelH   = 16;
-constexpr int kCellW    = 72;   // one knob cell (knob + gutter)
-constexpr int kCellH    = kLabelH + kKnobH;   // 80
-constexpr int kHeaderH  = 24;   // card title strip
-constexpr int kComboRowH = 24;
-constexpr int kCardPad  = 8;    // inner padding of a card
-constexpr int kGap      = 8;    // gap between cards
-constexpr int kMargin   = 16;   // panel outer margin
+// Layout metrics, sized so every page fits 1280 x 800 without scrolling -- the
+// editor used to open at 1348 x 1382, taller than a 1080p screen.
+//
+// kKnobH covers the rotary AND the value text box beneath it; kLabelH is the
+// caption on top. So one cell is 61 px tall, not 48. That distinction matters:
+// a row's height is set by the tallest *cell* in it, which means shrinking a
+// display next to a knob buys nothing until the knob shrinks too.
+constexpr int kKnobW    = 48;
+constexpr int kKnobH    = 48;   // rotary + text box below
+constexpr int kLabelH   = 13;
+constexpr int kCellW    = 58;   // one knob cell (knob + gutter)
+constexpr int kCellH    = kLabelH + kKnobH;   // 61
+constexpr int kHeaderH  = 19;   // card title strip
+constexpr int kComboRowH = 21;
+constexpr int kCardPad  = 6;    // inner padding of a card
+constexpr int kGap      = 6;    // gap between cards
+constexpr int kMargin   = 10;   // panel outer margin
 constexpr int kMatrixRowH = 26;
-constexpr int kTopBar   = 48;   // title bar above the tabs
-constexpr int kGridCols = 6;    // every tab page uses this fixed column count
-constexpr int kStripH    = 150;  // fixed performance strip between title bar and tabs
-constexpr int kFooterH   = 24;   // page indicator / route count / panic + rand
+constexpr int kTopBar   = 40;   // title bar above the tabs
+// Three columns, packed shortest-first rather than laid out in rows. A card
+// whose span reaches this count takes a full-width band of its own.
+constexpr int kGridCols = 3;
+constexpr int kStripH    = 110;  // fixed performance strip between title bar and tabs
+constexpr int kFooterH   = 20;   // page indicator / route count / panic + rand
 constexpr int kDeletePresetId = 9000;   // menu id, kept clear of the preset ids
-constexpr int kStripCurveH = 42; // amp-envelope curve, above its row of knobs
-constexpr int kStripCapH = 13;   // caption band along the strip's top edge
+constexpr int kStripCurveH = 34; // amp-envelope curve, above its row of knobs
+constexpr int kStripCapH = 11;   // caption band along the strip's top edge
 
 // Palette lookups read through the editor's LookAndFeel (pdui::ColourIds, see
 // Theme.h), so a theme change repaints into the new skin with no other code
@@ -290,85 +298,72 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
         units.push_back (std::move (u));
     }
 
-    // Pack units into rows of the fixed grid.
-    std::vector<int> unitRow (units.size(), 0), unitCol (units.size(), 0);
+    // Column pack. The old grid laid units out in rows and padded every card in
+    // a row to the tallest card in it -- which is where the wasted space came
+    // from: a one-knob Mixer beside a Mono Bass with an envelope display was
+    // stretched to match it. Here each card keeps its own natural height and
+    // drops into whichever column is currently shortest, so a short card no
+    // longer inherits a tall neighbour's height.
+    //
+    // `colBottom[c]` is the next free y in column c.
+    std::vector<int> colBottom ((std::size_t) numCols, kMargin);
+
+    auto highestOf = [&] (int first, int sp)
     {
-        int col = 0, row = 0;
-        for (std::size_t u = 0; u < units.size(); ++u)
+        int y = colBottom[(std::size_t) first];
+        for (int c = first + 1; c < first + sp; ++c)
+            y = juce::jmax (y, colBottom[(std::size_t) c]);
+        return y;
+    };
+
+    // Places one unit's members top-to-bottom at their natural heights.
+    auto emit = [&] (const Unit& u, int cx, int cw, int top)
+    {
+        int yy = top;
+        for (int idx : u.members)
         {
-            if (col > 0 && col + units[u].span > numCols) { ++row; col = 0; }
-            unitRow[u] = row; unitCol[u] = col; col += units[u].span;
+            Section& s = sections[(std::size_t) idx];
+            const int rows = comboRowsFor (s, cw);
+            const int h    = sectionHeight (s, rows);
+            if (apply)
+                placeCard (s, { cx, yy, cw, h }, rows);
+            yy += h + kGap;
         }
-    }
-    const int numRows = units.empty() ? 0 : (unitRow.back() + 1);
+        return yy - kGap;   // bottom of the last member
+    };
 
-    // A row shares one combo-zone depth and one height, so card bottoms line up.
-    // Stacked units keep their own compact combo zones.
-    std::vector<int> rowComboRows (juce::jmax (1, numRows), 0), rowHeight (juce::jmax (1, numRows), 0);
-    for (std::size_t u = 0; u < units.size(); ++u)
-        if (units[u].members.size() == 1)
-            rowComboRows[unitRow[u]] = juce::jmax (rowComboRows[unitRow[u]],
-                comboRowsFor (sections[units[u].members[0]], cardW (units[u].span)));
-
-    for (std::size_t u = 0; u < units.size(); ++u)
+    for (const auto& u : units)
     {
-        const int cw = cardW (units[u].span);
-        int h = 0;
-        if (units[u].members.size() == 1)
-            h = sectionHeight (sections[units[u].members[0]], rowComboRows[unitRow[u]]);
-        else
-            for (int idx : units[u].members)   // stacked: heights add, plus gaps
-                h += sectionHeight (sections[(std::size_t) idx],
-                                    comboRowsFor (sections[(std::size_t) idx], cw)) + kGap;
-        rowHeight[unitRow[u]] = juce::jmax (rowHeight[unitRow[u]], h);
-    }
+        // A unit asking for the whole grid takes a band of its own across the
+        // full width. This is not a nicety: the CZ stage-envelope card carries
+        // sixteen numeric knobs in one row, which needs more width than any
+        // single column can offer, so it cannot be packed like the others.
+        const bool band = u.span >= numCols;
+        const int  sp   = band ? numCols : u.span;
 
-    std::vector<int> rowY (juce::jmax (1, numRows), kMargin);
-    { int yy = kMargin; for (int r = 0; r < numRows; ++r) { rowY[r] = yy; yy += rowHeight[r] + kGap; } }
-
-    if (apply)
-        for (std::size_t u = 0; u < units.size(); ++u)
+        int best = 0;
+        if (! band)
         {
-            const int r  = unitRow[u];
-            const int cx = kMargin + unitCol[u] * colPitch;
-            const int cw = cardW (units[u].span);
-
-            if (units[u].members.size() == 1)
+            int bestY = highestOf (0, sp);
+            for (int c = 1; c + sp <= numCols; ++c)
             {
-                placeCard (sections[units[u].members[0]], { cx, rowY[r], cw, rowHeight[r] },
-                           rowComboRows[r]);
-            }
-            else
-            {
-                // Share the row height between the stacked members in proportion
-                // to what each actually needs — an even split starves a tall card
-                // (a compressor with a meter and two knob rows) to pad a short one.
-                const int n = static_cast<int> (units[u].members.size());
-                std::vector<int> natural;
-                int total = 0;
-                for (int idx : units[u].members)
-                {
-                    const Section& s = sections[(std::size_t) idx];
-                    const int h = sectionHeight (s, comboRowsFor (s, cw));
-                    natural.push_back (h);
-                    total += h;
-                }
-
-                const int avail = rowHeight[r] - (n - 1) * kGap;
-                int yy = rowY[r], used = 0;
-                for (int i = 0; i < n; ++i)
-                {
-                    Section& s = sections[(std::size_t) units[u].members[(std::size_t) i]];
-                    const int mh = (i == n - 1) ? (avail - used)
-                                                : (natural[(std::size_t) i] * avail / juce::jmax (1, total));
-                    placeCard (s, { cx, yy, cw, mh }, comboRowsFor (s, cw));
-                    yy += mh + kGap;
-                    used += mh;
-                }
+                const int y = highestOf (c, sp);
+                if (y < bestY) { bestY = y; best = c; }   // ties keep the left-most
             }
         }
 
-    int y = numRows > 0 ? (rowY[numRows - 1] + rowHeight[numRows - 1]) : kMargin;
+        const int top = highestOf (best, sp);
+        const int cx  = kMargin + best * colPitch;
+        const int cw  = cardW (sp);
+        const int bot = emit (u, cx, cw, top);
+
+        for (int c = best; c < best + sp; ++c)
+            colBottom[(std::size_t) c] = bot + kGap;
+    }
+
+    int y = kMargin;
+    for (int c = 0; c < numCols; ++c)
+        y = juce::jmax (y, colBottom[(std::size_t) c] - kGap);
 
     if (trailing != nullptr)
     {
@@ -438,12 +433,12 @@ void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
 //  StageEnvelopePanel — the three CZ 8-stage envelopes as one draggable curve
 //==============================================================================
 namespace {
-constexpr int kEnvSelH   = 32;    // stage-selector row (button + destination caption)
-constexpr int kEnvGraphH = 118;   // curve area
+constexpr int kEnvSelH   = 26;    // stage-selector row (button + destination caption)
+constexpr int kEnvGraphH = 88;   // curve area
 // The 16 rate/level knobs use a compact cell: they are reference numbers under
 // the graph, not the primary way to edit the envelope.
-constexpr int kEnvKnobH  = 62;
-constexpr int kEnvSegW   = 104;   // one stage-selector segment
+constexpr int kEnvKnobH  = 50;
+constexpr int kEnvSegW   = 92;   // one stage-selector segment
 constexpr float kNodeR   = 4.5f;  // breakpoint handle radius
 }
 
@@ -452,9 +447,11 @@ PDHybridEditor::StageEnvelopePanel::~StageEnvelopePanel() { stopTimer(); }
 
 int PDHybridEditor::StageEnvelopePanel::preferredHeight() const
 {
-    // selector + graph + the AMT / SUS PT row, then the two collapsible rows of
-    // numeric knobs (R1..R8 then L1..L8).
-    return kEnvSelH + kEnvGraphH + kCardPad + kEnvKnobH + (expanded ? 2 * kEnvKnobH : 0);
+    // Selector + graph + the AMT / SUS PT row, then the collapsible numerics.
+    // As a full-width band all sixteen fit on one row, so this asks for one --
+    // see resized(), which falls back to two rows only if the card is narrowed.
+    return kEnvSelH + kEnvGraphH + kCardPad + kEnvKnobH
+         + (expanded ? numericRows * kEnvKnobH : 0);
 }
 
 juce::Rectangle<int> PDHybridEditor::StageEnvelopePanel::selectorArea() const
@@ -684,15 +681,28 @@ void PDHybridEditor::StageEnvelopePanel::resized()
         knobs[(std::size_t) (16 + i)]->slider.setBounds (cell);
     }
 
-    // Then a clean row of eight rates and a clean row of eight levels.
-    const int cellW = r.getWidth() / 8;
-    for (int row = 0; row < 2; ++row)
+    // All sixteen rates and levels on one row when the card is wide enough to
+    // hold them, which it is as a full-width band -- 16 * kCellW is under any
+    // realistic content width. Falling back to two rows of eight keeps this
+    // correct if the card is ever narrowed.
+    const bool oneRow = r.getWidth() >= 16 * kCellW;
+    const int  perRow = oneRow ? 16 : 8;
+    const int  rows   = oneRow ? 1 : 2;
+    const int  cellW  = r.getWidth() / perRow;
+
+    if (rows != numericRows)
+    {
+        numericRows = rows;
+        if (onHeightChanged) onHeightChanged();
+    }
+
+    for (int row = 0; row < rows; ++row)
     {
         auto krow = r.removeFromTop (kEnvKnobH);
-        for (int c = 0; c < 8; ++c)
+        for (int c = 0; c < perRow; ++c)
         {
             auto cell = krow.removeFromLeft (cellW);
-            auto* k = knobs[(std::size_t) (row * 8 + c)];
+            auto* k = knobs[(std::size_t) (row * perRow + c)];
             k->label.setBounds  (cell.removeFromTop (kLabelH - 2));
             k->slider.setBounds (cell);
         }
@@ -934,9 +944,9 @@ void PDHybridEditor::buildSections()
     oscACycle.attach (proc.apvts, "oscA");
     oscA.title  = "Osc A";
     oscA.cols   = 6;
-    oscA.span   = 3;
+    oscA.span   = 1;
     oscA.custom = &oscACycle;
-    oscA.customH = 56;
+    oscA.customH = 42;
     oscA.combos = { &addCombo ("oscAType", kOscTypeNames), &addCombo ("oscAWave", kPdWaveNames),
                     &addCombo ("oscAWave2", kPdWaveNames),
                     &addCombo ("oscAExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
@@ -954,9 +964,9 @@ void PDHybridEditor::buildSections()
     oscBCycle.attach (proc.apvts, "oscB");
     oscB.title  = "Osc B";
     oscB.cols   = 6;
-    oscB.span   = 3;
+    oscB.span   = 1;
     oscB.custom = &oscBCycle;
-    oscB.customH = 56;
+    oscB.customH = 42;
     oscB.combos = { &addCombo ("oscBType", kOscTypeNames), &addCombo ("oscBWave", kPdWaveNames),
                     &addCombo ("oscBWave2", kPdWaveNames),
                     &addCombo ("oscBExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
@@ -971,7 +981,7 @@ void PDHybridEditor::buildSections()
 
     mixer.title  = "Mixer";
     mixer.cols   = 4;
-    mixer.span   = 2;
+    mixer.span   = 1;
     mixer.combos = { &addCombo ("oscCrossMod", { "No Cross Mod", "Hard Sync", "Phase Mod" }) };
     mixer.knobs  = { &addKnob ("noiseLevel", "Noise"), &addKnob ("ringMod", "Ring"),
                      &addKnob ("noiseMod", "N.Mod"), &addKnob ("crossModAmount", "X-Amt") };
@@ -988,9 +998,9 @@ void PDHybridEditor::buildSections()
                       [this] (int* out, int maxOut) { return proc.chordVoicedNotes (out, maxOut); });
     chordSec.title   = "Chord";
     chordSec.cols    = 3;
-    chordSec.span    = 3;
+    chordSec.span    = 1;
     chordSec.custom  = &chordKeys;
-    chordSec.customH = 92;
+    chordSec.customH = 70;
     chordSec.toggles = { &addToggle ("chordOn", "ON") };
     // Must match the chordVoicing choice parameter exactly, in order.
     chordSec.combos  = { &addCombo ("chordVoicing", { "Voice-Led", "Root Position",
@@ -1002,9 +1012,9 @@ void PDHybridEditor::buildSections()
     bassCurve.attach (proc.apvts, "bassAttack", "bassDecay", "bassSustain", "bassRelease");
     bassSec.title   = "Mono Bass";
     bassSec.cols    = 5;
-    bassSec.span    = 4;
+    bassSec.span    = 1;
     bassSec.custom  = &bassCurve;
-    bassSec.customH = 46;
+    bassSec.customH = 42;
     bassSec.toggles = { &addToggle ("bassOn", "ON") };
     bassSec.combos  = { &addCombo ("bassWave", { "Saw", "Square", "Triangle", "Pulse" }),
                         &addCombo ("bassPriority", { "Last", "Top", "Bottom" }) };
@@ -1016,7 +1026,7 @@ void PDHybridEditor::buildSections()
 
     unison.title = "Unison / Drift";
     unison.cols  = 4;
-    unison.span  = 2;
+    unison.span  = 1;
     unison.knobs = { &addKnob ("unisonVoices", "Voices", 0), &addKnob ("unisonDetune", "Detune"),
                      &addKnob ("unisonWidth", "Width"), &addKnob ("unisonSpread", "Spread"),
                      &addKnob ("drift", "Drift"), &addKnob ("fxSend", "FX Send") };
@@ -1031,7 +1041,7 @@ void PDHybridEditor::buildSections()
     // Signal topology gets its own card instead of hiding in three unrelated ones.
     routingSec.title   = "Routing";
     routingSec.cols    = 1;
-    routingSec.span    = 3;
+    routingSec.span    = 1;
     routingSec.combos  = { &addCombo ("filterRouting", { "Single Filter", "Filters Series", "Filters Parallel" }),
                            &addCombo ("drivePos", { "Drive Post Filter", "Drive Pre Filter" }),
                            &addCombo ("fxRouting", { "Delay -> Reverb", "Reverb -> Delay", "Reverb, Dry Delay" }) };
@@ -1039,11 +1049,11 @@ void PDHybridEditor::buildSections()
     // the whole point of collecting them here.
     routingDiagram.attach (proc.apvts);
     routingSec.custom  = &routingDiagram;
-    routingSec.customH = 78;
+    routingSec.customH = 62;
 
     pluckSec.title   = "Pluck";
     pluckSec.cols    = 4;
-    pluckSec.span    = 2;
+    pluckSec.span    = 1;
     pluckSec.toggles = { &addToggle ("pluckOn", "ON") };
     pluckSec.knobs   = { &addKnob ("pluckDecay", "Decay"), &addKnob ("pluckDamp", "Damp"),
                          &addKnob ("pluckDispersion", "Disp"), &addKnob ("pluckBurst", "Burst", 1) };
@@ -1051,9 +1061,9 @@ void PDHybridEditor::buildSections()
     driveCurve.attach (proc.apvts, "driveType", "drive", "bias");
     drive.title   = "Overdrive";
     drive.cols    = 3;
-    drive.span    = 3;
+    drive.span    = 1;
     drive.custom  = &driveCurve;
-    drive.customH = 68;
+    drive.customH = 52;
     drive.toggles = { &addToggle ("driveOn", "ON") };
     drive.combos  = { &addCombo ("driveType",
                        { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz", "Rectify",
@@ -1069,11 +1079,11 @@ void PDHybridEditor::buildSections()
     filt1Curve.attach (proc.apvts, "filterEnvA", "filterEnvD", "filterEnvS", "filterEnvR");
     filter.title    = "Filter 1";
     filter.cols     = 5;
-    filter.span     = 3;
+    filter.span     = 1;
     filter.custom   = &filt1Resp;
-    filter.customH  = 68;
+    filter.customH  = 52;
     filter.custom2  = &filt1Curve;
-    filter.customH2 = 50;
+    filter.customH2 = 40;
     filter.knobSplit = 5;
     filter.combos = { &addCombo ("filterType", kFilterTypeNames) };
     filter.toggles = { &addToggle ("filtEnvSync", "SYNC") };
@@ -1090,11 +1100,11 @@ void PDHybridEditor::buildSections()
     filt2Curve.attach (proc.apvts, "filter2EnvA", "filter2EnvD", "filter2EnvS", "filter2EnvR");
     filter2.title    = "Filter 2";
     filter2.cols     = 5;
-    filter2.span     = 3;
+    filter2.span     = 1;
     filter2.custom   = &filt2Resp;
-    filter2.customH  = 68;
+    filter2.customH  = 52;
     filter2.custom2  = &filt2Curve;
-    filter2.customH2 = 50;
+    filter2.customH2 = 40;
     filter2.knobSplit = 4;
     filter2.combos = { &addCombo ("filter2Type", kFilterTypeNames) };
     filter2.toggles = { &addToggle ("filt2EnvSync", "SYNC") };
@@ -1115,9 +1125,9 @@ void PDHybridEditor::buildSections()
     modCurve.attach (proc.apvts, "modEnvA", "modEnvD", "modEnvS", "modEnvR");
     modEnv.title   = "Mod Env";
     modEnv.cols    = 4;
-    modEnv.span    = 2;
+    modEnv.span    = 1;
     modEnv.custom  = &modCurve;
-    modEnv.customH = 62;
+    modEnv.customH = 48;
     modEnv.toggles = { &addToggle ("modEnvSync", "SYNC") };
     modEnv.knobs = { &addKnob ("modEnvA", "Atk"), &addKnob ("modEnvD", "Dec"),
                      &addKnob ("modEnvS", "Sus"), &addKnob ("modEnvR", "Rel") };
@@ -1127,7 +1137,9 @@ void PDHybridEditor::buildSections()
     // *is* a modulation source, the same way modulated knobs are ringed amber.
     stageEnvSec.title     = "Multi-Stage Envelopes (CZ)";
     stageEnvSec.titleCol  = findColour (pdui::liveCol);
-    stageEnvSec.span      = 4;   // LFO 1 / LFO 2 stack beside it in the other two
+    // Full-width band: the sixteen numeric knobs need more width than one
+    // column can give, so this card takes a row of its own.
+    stageEnvSec.span      = kGridCols;
     stageEnvSec.custom    = &stageEnv;
     stageEnvSec.customH   = stageEnv.preferredHeight();
 
@@ -1141,12 +1153,11 @@ void PDHybridEditor::buildSections()
     });
     lfo.title   = "LFO 1";
     lfo.cols    = 3;
-    lfo.span    = 2;
+    lfo.span    = 1;
     lfo.toggles = { &addToggle ("lfoRetrig", "RETRIG") };
     lfo.combos  = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames) };
     lfo.custom  = &lfo1Head;
     lfo.customH = kCellH;
-    lfo.stackId = 1;   // LFO 1 above LFO 2, beside the envelope card
     lfo.cols    = 2;
     lfo.knobs   = { &addKnob ("lfoFade", "Fade"), &addKnob ("lfoPhase", "Phase") };
     {
@@ -1173,12 +1184,11 @@ void PDHybridEditor::buildSections()
     });
     lfo2.title   = "LFO 2";
     lfo2.cols    = 3;
-    lfo2.span    = 2;
+    lfo2.span    = 1;
     lfo2.toggles = { &addToggle ("lfo2Retrig", "RETRIG") };
     lfo2.combos  = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames) };
     lfo2.custom  = &lfo2Head;
     lfo2.customH = kCellH;
-    lfo2.stackId = 1;
     lfo2.cols    = 2;
     lfo2.knobs   = { &addKnob ("lfo2Fade", "Fade"), &addKnob ("lfo2Phase", "Phase") };
     {
@@ -1199,7 +1209,7 @@ void PDHybridEditor::buildSections()
     // --- Vibrato (Casio CZ-style) ---
     vibratoSec.title   = "Vibrato";
     vibratoSec.cols    = 3;
-    vibratoSec.span    = 2;
+    vibratoSec.span    = 1;
     vibratoSec.toggles = { &addToggle ("vibratoOn", "ON") };
     vibratoSec.combos  = { &addCombo ("vibratoWave", { "Triangle", "Square", "Ramp Up", "Ramp Down" }) };
     vibratoSec.knobs   = { &addKnob ("vibratoRate", "Rate"), &addKnob ("vibratoDepth", "Depth", 0),
@@ -1208,7 +1218,7 @@ void PDHybridEditor::buildSections()
     // --- Arpeggiator ---
     arpSec.title   = "Arpeggiator";
     arpSec.cols    = 2;
-    arpSec.span    = 2;
+    arpSec.span    = 1;
     arpSec.toggles = { &addToggle ("arpOn", "ON"), &addToggle ("arpLatch", "LATCH") };
     arpSec.combos  = { &addCombo ("arpMode", { "Up", "Down", "Up-Down", "Random", "As Played" }),
                        &addCombo ("arpRate", { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8.", "1/4T", "1/8T" }),
@@ -1218,7 +1228,7 @@ void PDHybridEditor::buildSections()
     // ------------------------------------------------------------------ OUT --
     chorusSec.title   = "Chorus";
     chorusSec.cols    = 3;
-    chorusSec.span    = 2;
+    chorusSec.span    = 1;
     chorusSec.toggles = { &addToggle ("chorusOn", "ON") };
     chorusSec.combos  = { &addCombo ("chorusMode", { "Mode I", "Mode II", "Mode I+II" }) };
     chorusSec.knobs   = { &addKnob ("chorusRate", "Rate"), &addKnob ("chorusDepth", "Depth"),
@@ -1227,9 +1237,9 @@ void PDHybridEditor::buildSections()
     delayTaps.attach (proc.apvts);
     delaySec.title   = "Delay";
     delaySec.cols    = 3;
-    delaySec.span    = 2;
+    delaySec.span    = 1;
     delaySec.custom  = &delayTaps;
-    delaySec.customH = 56;
+    delaySec.customH = 44;
     delaySec.toggles = { &addToggle ("delayOn", "ON"), &addToggle ("delaySync", "SYNC") };
     delaySec.combos  = { &addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" }) };
     delaySec.knobs   = { &addKnob ("delayTimeL", "Time L"), &addKnob ("delayTimeR", "Time R"),
@@ -1239,9 +1249,9 @@ void PDHybridEditor::buildSections()
     reverbDecay.attach (proc.apvts);
     reverbSec.title   = "Reverb";
     reverbSec.cols    = 4;
-    reverbSec.span    = 2;
+    reverbSec.span    = 1;
     reverbSec.custom  = &reverbDecay;
-    reverbSec.customH = 46;
+    reverbSec.customH = 36;
     reverbSec.toggles = { &addToggle ("reverbOn", "ON") };
     reverbSec.knobs   = { &addKnob ("reverbSize", "Size"), &addKnob ("reverbDamp", "Damp"),
                           &addKnob ("reverbWidth", "Width"), &addKnob ("reverbMix", "Mix") };
@@ -1249,21 +1259,20 @@ void PDHybridEditor::buildSections()
     grMeter.setReader ([this] { return proc.gainReductionDb(); });
     comp.title   = "Compressor";
     comp.cols    = 3;
-    comp.span    = 2;
+    comp.span    = 1;
     comp.custom  = &grMeter;
-    comp.customH = 34;
+    comp.customH = 28;
     comp.toggles = { &addToggle ("compOn", "ON") };
     comp.knobs   = { &addKnob ("compThreshold", "Thr", 1, KnobSize::Large),
                      &addKnob ("compRatio", "Ratio"), &addKnob ("compMakeup", "Gain"),
                      &addKnob ("compAttack", "Atk"), &addKnob ("compRelease", "Rel") };
-    comp.stackId = 2;   // sits above Stereo in one grid column
 
     eqResp.attach (proc.apvts);
     globalEqSec.title   = "Global EQ";
     globalEqSec.cols    = 8;
-    globalEqSec.span    = 4;
+    globalEqSec.span    = 1;
     globalEqSec.custom  = &eqResp;
-    globalEqSec.customH = 72;
+    globalEqSec.customH = 56;
     globalEqSec.toggles = { &addToggle ("globalEqOn", "ON") };
     globalEqSec.knobs = { &addKnob ("geLowFreq", "Lo Hz", 0),  &addKnob ("geLowGain", "Lo dB", 1),
                           &addKnob ("geMid1Freq", "M1 Hz", 0), &addKnob ("geMid1Gain", "M1 dB", 1),
@@ -1272,8 +1281,7 @@ void PDHybridEditor::buildSections()
 
     stereo.title   = "Stereo";
     stereo.cols    = 2;
-    stereo.span    = 2;
-    stereo.stackId = 2;
+    stereo.span    = 1;
     stereo.knobs   = { &addKnob ("pan", "Pan"), &addKnob ("panSpread", "Spread") };
 
     // --------------------------------------------------------------- GLOBAL --
@@ -1282,14 +1290,14 @@ void PDHybridEditor::buildSections()
     // "Voice" tab did. (voiceMode lives in the performance strip.)
     voiceSec.title = "Voice Allocation";
     voiceSec.cols  = 3;
-    voiceSec.span  = 3;
+    voiceSec.span  = 1;
     voiceSec.toggles = { &addToggle ("monoRetrigger", "RETRIG") };
     voiceSec.combos = { &addCombo ("notePriority", { "Priority: Last", "Priority: Top", "Priority: Bottom" }),
                         &addCombo ("stealPolicy", { "Steal Oldest", "Steal Quietest" }),
                         &addCombo ("velCurve", { "Vel Linear", "Vel Soft", "Vel Hard", "Vel Fixed" }) };
     velCurveDisp.attach (proc.apvts, "velCurve");
     voiceSec.custom  = &velCurveDisp;
-    voiceSec.customH = 72;
+    voiceSec.customH = 56;
     voiceSec.knobs = { &addKnob ("polyphony", "Poly", 0, KnobSize::Large),
                        &addKnob ("ampVelSens", "Vel Sens"),
                        &addKnob ("pitchBendRange", "Bend", 0) };
@@ -1297,9 +1305,9 @@ void PDHybridEditor::buildSections()
     scaleDisp.attach (proc.apvts, "tuningScale");
     tuningSec.title  = "Tuning";
     tuningSec.cols   = 3;
-    tuningSec.span   = 3;
+    tuningSec.span   = 1;
     tuningSec.custom  = &scaleDisp;
-    tuningSec.customH = 72;
+    tuningSec.customH = 56;
     tuningSec.combos = { &addCombo ("tuningScale", { "Equal Temperament", "Just Intonation", "Pythagorean" }) };
     tuningSec.knobs  = { &addKnob ("masterTune", "Tune", 1), &addKnob ("transpose", "Transpose", 0) };
 
@@ -1314,7 +1322,7 @@ void PDHybridEditor::buildSections()
     });
     globalLfoSec.title  = "Global LFO";
     globalLfoSec.cols   = 1;
-    globalLfoSec.span   = 4;
+    globalLfoSec.span   = 1;
     globalLfoSec.custom  = &globalLfoHead;
     globalLfoSec.customH = kCellH;
     globalLfoSec.combos = { &addCombo ("globalLfoWave", kLfoWaveNames) };
@@ -1335,7 +1343,7 @@ void PDHybridEditor::buildSections()
 
     qualitySec.title  = "Quality";
     qualitySec.cols   = 1;
-    qualitySec.span   = 2;
+    qualitySec.span   = 1;
     qualitySec.combos = { &addCombo ("osQuality", { "Oversampling 1x", "Oversampling 2x",
                                                     "Oversampling 4x", "Oversampling 8x" }) };
 
@@ -1343,7 +1351,7 @@ void PDHybridEditor::buildSections()
     // present, which is the standalone case.
     tempoSec.title  = "Tempo";
     tempoSec.cols   = 1;
-    tempoSec.span   = 2;
+    tempoSec.span   = 1;
     tempoSec.combos = { &addCombo ("tempoMode", { "Tempo: Host", "Tempo: Local" }) };
     tempoSec.knobs  = { &addKnob ("internalBpm", "BPM", 1, KnobSize::Large) };
 
@@ -2106,6 +2114,19 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // Theme is a display preference, not a patch setting: it is stored as a
     // property on the state tree rather than as a parameter, so it is neither
     // automatable nor swapped by A/B compare.
+    // Inspector drawer toggle. Stored on the state tree beside the theme: a
+    // display preference, not a patch setting.
+    addAndMakeVisible (inspectorButton);
+    inspectorButton.setClickingTogglesState (true);
+    inspectorOpen_ = (bool) proc.apvts.state.getProperty ("inspectorOpen", false);
+    inspectorButton.setToggleState (inspectorOpen_, juce::dontSendNotification);
+    inspectorButton.onClick = [this]
+    {
+        inspectorOpen_ = inspectorButton.getToggleState();
+        proc.apvts.state.setProperty ("inspectorOpen", inspectorOpen_, nullptr);
+        resized();
+    };
+
     addAndMakeVisible (themeBox);
     for (int i = 0; i < pdtheme::kNumThemes; ++i)
         themeBox.addItem (pdtheme::themeName (static_cast<pdtheme::ThemeId> (i)), i + 1);
@@ -2275,20 +2296,14 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     startTimerHz (12);   // live meters + ring/route refresh
 
     setResizable (true, true);
-    setResizeLimits (1040, 620, 2600, 1900);
-    // Open at whatever size the *tallest* page actually needs, so nothing has to
-    // be scrolled to be reached. Asking the pages rather than hard-coding a
-    // number means this stays right when cards are added or resized later.
-    {
-        const int w        = 1340;
-        const int contentW = w - kInspW - 12;
-        int tallest = 0;
-        for (auto& page : pages)
-            tallest = juce::jmax (tallest, page->preferredHeight (contentW));
-
-        const int h = kTopBar + kStripH + tabs.getTabBarDepth() + tallest + kFooterH + 6;
-        setSize (w, juce::jlimit (700, 1900, h));
-    }
+    setResizeLimits (1100, 700, 2600, 1600);
+    // A fixed opening size, not one derived from the content. The editor used to
+    // grow to fit its tallest page so that nothing ever had to be scrolled --
+    // which produced a 1382 px window, taller than a 1080p screen, and so the
+    // whole editor could not be seen at once. The pages are now packed to fit
+    // this size instead; the Viewport underneath stays as a safety net for
+    // someone who drags the window smaller than the minimum content.
+    setSize (1280, 800);
 }
 
 void PDHybridEditor::applyTheme (pdtheme::ThemeId id)
@@ -2719,6 +2734,7 @@ void PDHybridEditor::resized()
     // is an item inside the preset menu, where the preset it deletes is named.
     int x = top.getRight() - 76;
     initButton.setBounds (x, y, 64, 26);
+    x -= 56;  inspectorButton.setBounds (x, y, 50, 26);
     x -= 126; themeBox.setBounds   (x, y, 120, 26);
     x -= 70;  saveButton.setBounds (x, y, 64, 26);
     x -= 58;  abButton.setBounds   (x, y, 52, 26);
@@ -2728,10 +2744,16 @@ void PDHybridEditor::resized()
 
     strip.setBounds (r.removeFromTop (kStripH).reduced (kMargin, 4));
     footer.setBounds (r.removeFromBottom (kFooterH).reduced (kMargin, 0));
-    // The Inspector is a column, not a page: it spans the tab area's full height
-    // so nothing in it competes with the strip for the same row.
-    inspector.setBounds (r.removeFromRight (kInspW).reduced (6, 6));
+    // The Inspector is a drawer, not a reserved column. It used to hold 236 px
+    // on every page whether or not anything was selected; the pages need that
+    // width far more than a panel that is empty most of the time. Open, it
+    // overlays the right-hand side rather than squeezing the cards, so the
+    // layout underneath never reflows when it is toggled.
     tabs.setBounds (r);
+    inspector.setBounds (r.removeFromRight (kInspW).reduced (6, 6));
+    inspector.setVisible (inspectorOpen_);
+    if (inspectorOpen_)
+        inspector.toFront (false);
     // The overlay covers everything below the title bar, so the dimmed backdrop
     // reads as "the rest of the editor is inactive".
     matrixHolder.setBounds (getLocalBounds().withTrimmedTop (kTopBar));

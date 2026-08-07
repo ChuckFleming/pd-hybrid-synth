@@ -7,6 +7,7 @@
 #include "dsp/FilterUnit.h"
 #include "dsp/GlobalEq.h"
 #include "dsp/Waveshaper.h"
+#include "dsp/ChordNamer.h"
 #include "Theme.h"
 #include <array>
 #include <algorithm>
@@ -1756,6 +1757,117 @@ private:
     juce::AudioProcessorValueTreeState* apvts_ = nullptr;
     std::function<int()> heldRoot_;
     std::function<int (int*, int)> voiced_;
+};
+
+//==============================================================================
+/** Names whatever is currently sounding.
+
+    Reads the processor's sounding-note set and runs it through ChordNamer, so
+    it names anything played -- a chord built by chord mode, a triad played by
+    hand with chord mode off, a single note, or a bare interval. Three lines: the
+    name at display size, the notes with their octaves, and a one-octave strip
+    lighting the pitch classes that are down.
+
+    Idle it shows a dim dash rather than emptying: a readout that blanks and
+    refills pulls the eye on every note-off, which is distracting on a page you
+    are editing.
+*/
+class ChordReadout : public juce::Component,
+                     private juce::Timer
+{
+public:
+    ChordReadout() { setInterceptsMouseClicks (false, false); }
+    ~ChordReadout() override { stopTimer(); }
+
+    void attach (std::function<int (int*, int)> sounding)
+    {
+        sounding_ = std::move (sounding);
+        startTimerHz (20);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds();
+        g.setColour (findColour (pdui::screenBg));
+        g.fillRect (r);
+        g.setColour (findColour (pdui::panelEdge));
+        g.drawRect (r, 1);
+
+        r = r.reduced (6, 4);
+
+        g.setFont (juce::Font (juce::Font::getDefaultSansSerifFontName(), 8.0f, juce::Font::plain));
+        g.setColour (findColour (pdui::screenDim));
+        g.drawText ("SOUNDING", r.removeFromTop (10), juce::Justification::topLeft);
+
+        int notes[32];
+        const int n = sounding_ ? sounding_ (notes, 32) : 0;
+
+        // The lit-key strip sits at the bottom whatever else happens, so the
+        // readout keeps one shape instead of reflowing as notes come and go.
+        auto keys = r.removeFromBottom (20);
+
+        char name[pdhybrid::ChordNamer::kMaxName] = { 0 };
+        if (n > 0)
+            pdhybrid::ChordNamer::name (notes, n, name, pdhybrid::ChordNamer::kMaxName);
+
+        auto line = r.reduced (0, 1);
+        g.setFont (juce::Font (juce::Font::getDefaultMonospacedFontName(), 25.0f, juce::Font::plain));
+        if (n > 0)
+        {
+            g.setColour (findColour (pdui::liveCol));
+            g.drawText (name, line, juce::Justification::centredLeft);
+
+            juce::String spelled;
+            for (int i = 0; i < n && i < 6; ++i)
+            {
+                char nn[pdhybrid::ChordNamer::kMaxName] = { 0 };
+                pdhybrid::ChordNamer::noteName (notes[i], nn, pdhybrid::ChordNamer::kMaxName);
+                spelled += (i ? " " : "") + juce::String (nn);
+            }
+            if (n > 6) spelled += " ...";
+
+            g.setFont (juce::Font (juce::Font::getDefaultMonospacedFontName(), 10.0f, juce::Font::plain));
+            g.setColour (findColour (pdui::screenDim));
+            g.drawText (spelled, line, juce::Justification::centredRight);
+        }
+        else
+        {
+            g.setColour (findColour (pdui::screenDim).withAlpha (0.45f));
+            g.drawText ("--", line, juce::Justification::centredLeft);
+        }
+
+        // One octave of keys, lighting the pitch classes that are sounding.
+        bool lit[12] = { false };
+        for (int i = 0; i < n; ++i)
+            lit[((notes[i] % 12) + 12) % 12] = true;
+
+        static const int kWhitePc[7] = { 0, 2, 4, 5, 7, 9, 11 };
+        static const int kBlackPc[5] = { 1, 3, 6, 8, 10 };
+        static const float kBlackAt[5] = { 0.5f, 1.5f, 3.5f, 4.5f, 5.5f };
+
+        const float wk = keys.getWidth() / 7.0f;
+        for (int i = 0; i < 7; ++i)
+        {
+            juce::Rectangle<float> k ((float) keys.getX() + i * wk, (float) keys.getY(),
+                                      wk - 1.0f, (float) keys.getHeight());
+            g.setColour (lit[kWhitePc[i]] ? findColour (pdui::liveCol)
+                                          : findColour (pdui::screenBg).brighter (0.16f));
+            g.fillRect (k);
+        }
+        for (int i = 0; i < 5; ++i)
+        {
+            juce::Rectangle<float> k ((float) keys.getX() + kBlackAt[i] * wk + wk * 0.30f,
+                                      (float) keys.getY(), wk * 0.52f,
+                                      keys.getHeight() * 0.62f);
+            g.setColour (lit[kBlackPc[i]] ? findColour (pdui::liveCol)
+                                          : findColour (pdui::screenBg).darker (0.5f));
+            g.fillRect (k);
+        }
+    }
+
+private:
+    void timerCallback() override { repaint(); }
+    std::function<int (int*, int)> sounding_;
 };
 
 } // namespace pdui

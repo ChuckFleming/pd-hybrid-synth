@@ -1022,6 +1022,19 @@ void PDHybridEditor::buildSections()
                          &addKnob ("chordSpread", "Spread"),
                          &addKnob ("chordOctave", "Octave", 0) };
 
+    // Names whatever is sounding, chord mode or not: hold a triad by hand with
+    // chord mode off and it still reads it. Sits under Chord because that is
+    // where the space is and where you look while setting a split up, but it is
+    // fed from every note reaching the synth, not from ChordMode's output.
+    chordReadout.attach ([this] (int* out, int maxOut)
+                         { return proc.soundingNotes (out, maxOut); });
+    chordIdSec.title   = "Chord ID";
+    chordIdSec.cols    = 1;
+    chordIdSec.span    = 1;
+    chordIdSec.column  = 2;
+    chordIdSec.custom  = &chordReadout;
+    chordIdSec.customH = 64;
+
     bassCurve.attach (proc.apvts, "bassAttack", "bassDecay", "bassSustain", "bassRelease");
     bassSec.title   = "Mono Bass";
     bassSec.cols    = 5;
@@ -2329,7 +2342,8 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // off the path entirely.
     std::vector<Page> layout {
         { "VOICE",
-                        { &oscA, &oscB, &mixer, &bassSec, &pluckSec, &unison, &glideSec, &chordSec },
+                        { &oscA, &oscB, &mixer, &bassSec, &pluckSec, &unison, &glideSec, &chordSec,
+                          &chordIdSec },
                                                                                 nullptr, {}, 0 },
         { "SHAPE",
                         { &filter, &filter2, &routingSec, &drive },              nullptr, {}, 0 },

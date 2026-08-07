@@ -319,7 +319,7 @@ private:
     std::vector<std::pair<juce::String, juce::Rectangle<int>>> stripGroups_;
 
     // Named sections (built once, then handed to pages).
-    Section oscA, oscB, mixer, chordSec;                                  // Voice page
+    Section oscA, oscB, mixer, chordSec, chordIdSec;                      // Voice page
     Section glideSec, unison, bassSec;
     Section pluckSec, drive, routingSec, filter, filter2;   // Shape page
     Section stageEnvSec, modEnv, lfo, lfo2, vibratoSec, arpSec;   // Mod page
@@ -338,6 +338,7 @@ private:
     pdui::RoutingDiagram routingDiagram;
     pdui::WaveCyclePreview oscACycle, oscBCycle;
     pdui::ChordKeyboard    chordKeys;
+    pdui::ChordReadout     chordReadout;
     pdui::FilterResponse filt1Resp, filt2Resp;
     pdui::TransferCurve  driveCurve;
     pdui::EqResponse     eqResp;

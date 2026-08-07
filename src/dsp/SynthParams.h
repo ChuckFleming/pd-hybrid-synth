@@ -1,16 +1,24 @@
 #pragma once
 
 #include "ModMatrix.h"
+#include "WavetableOscillator.h"
+#include <cmath>
+#include <memory>
 
 namespace pdhybrid {
 
+// New entries are appended, never inserted: these are stored in presets and in
+// host automation by choice index.
 enum class FilterType
 {
     Ladder = 0,     // analog-modeled 4-pole ladder
     StateVariable,  // morphable TPT state-variable (LP/BP/HP)
     PdResonator,    // phase-distortion resonator
     Comb,           // tuned feedback comb / waveguide
-    Allpass         // allpass dispersion
+    Allpass,        // allpass dispersion / phaser
+    Formant,        // three-band vowel filter (A-E-I-O-U morph)
+    DiodeLadder,    // spread-pole diode ladder (acid flavour)
+    BandSplit       // vocoder-style band splitter
 };
 
 enum class OscType
@@ -23,7 +31,12 @@ enum class OscType
     VPS,                   // vector phaseshaping (movable 2D inflection point)
     Scanned,               // scanned synthesis (a plucked mass-spring ring)
     Vosim,                 // VOSIM (bursts of decaying sin^2 pulses -> formants)
-    Walsh                  // Walsh-function synthesis (sum of +/-1 sequency terms)
+    Walsh,                 // Walsh-function synthesis (sum of +/-1 sequency terms)
+    Supersaw,              // stack of detuned PolyBLEP saws
+    Harmonic,              // band-limited additive harmonic-window sweep
+    Paf,                   // phase-aligned formant (Puckette)
+    Granular,              // windowed sine grain cloud
+    Wavetable              // morphing wavetable with mip-mapped frames
 };
 
 enum class GlideMode
@@ -64,6 +77,90 @@ inline double syncedDelaySeconds (double bpm, int divIndex) noexcept
     return t < 0.001 ? 0.001 : (t > 2.0 ? 2.0 : t);
 }
 
+// Note divisions for envelope tempo sync, in beats (1 beat = a quarter note),
+// ascending. Deliberately a *separate*, much wider table than the nine values
+// the LFO/delay/arp sync share: an envelope time knob spans milliseconds to
+// tens of seconds, so a table that stopped at 1/1 left most of the knob's
+// travel clamped against the two ends. Straight, dotted and triplet values of
+// every length from 1/64 to eight bars.
+struct EnvDivision { double beats; const char* name; };
+
+inline const EnvDivision* envDivisions() noexcept
+{
+    static const EnvDivision kTable[] = {
+        {  0.0625,      "1/64"  },
+        {  1.0 / 12.0,  "1/32T" },
+        {  0.125,       "1/32"  },
+        {  1.0 / 6.0,   "1/16T" },
+        {  0.1875,      "1/32." },
+        {  0.25,        "1/16"  },
+        {  1.0 / 3.0,   "1/8T"  },
+        {  0.375,       "1/16." },
+        {  0.5,         "1/8"   },
+        {  2.0 / 3.0,   "1/4T"  },
+        {  0.75,        "1/8."  },
+        {  1.0,         "1/4"   },
+        {  4.0 / 3.0,   "1/2T"  },
+        {  1.5,         "1/4."  },
+        {  2.0,         "1/2"   },
+        {  3.0,         "1/2."  },
+        {  4.0,         "1/1"   },
+        {  8.0,         "2/1"   },
+        { 16.0,         "4/1"   },
+        { 32.0,         "8/1"   },
+    };
+    return kTable;
+}
+
+inline constexpr int kNumEnvDivisions = 20;
+
+/** Duration in seconds of envelope division `i` at `bpm`. */
+inline double envDivisionSeconds (int i, double bpm) noexcept
+{
+    if (i < 0) i = 0;
+    if (i >= kNumEnvDivisions) i = kNumEnvDivisions - 1;
+    return envDivisions()[i].beats * 60.0 / (bpm > 1.0 ? bpm : 120.0);
+}
+
+inline const char* envDivisionName (int i) noexcept
+{
+    if (i < 0) i = 0;
+    if (i >= kNumEnvDivisions) i = kNumEnvDivisions - 1;
+    return envDivisions()[i].name;
+}
+
+// Index of the division whose duration at `bpm` is closest to `seconds`,
+// compared on a log scale so "nearest" means nearest by ear rather than by raw
+// milliseconds. The time knobs keep their normal range and each control lands
+// on the division it is already closest to.
+//
+// `maxSeconds` bounds the search to divisions the caller can actually reach:
+// the delay line tops out at two seconds, and offering it divisions it would
+// only clamp back down would make two different choices read as the same time.
+inline int nearestDivisionIndex (double seconds, double bpm,
+                                 double maxSeconds = 1.0e9) noexcept
+{
+    int    best = 0;
+    double bestErr = 1.0e30;
+    for (int i = 0; i < kNumEnvDivisions; ++i)
+    {
+        const double d = envDivisionSeconds (i, bpm);
+        if (i > 0 && d > maxSeconds)
+            break;   // ascending table: everything after this is out of reach too
+        const double err = std::abs (std::log (d / (seconds > 1.0e-9 ? seconds : 1.0e-9)));
+        if (err < bestErr) { bestErr = err; best = i; }
+    }
+    return best;
+}
+
+/** The synced duration a time snaps to, or `seconds` when sync is off. */
+inline double syncedEnvTime (double seconds, double bpm, bool sync,
+                             double maxSeconds = 1.0e9) noexcept
+{
+    return sync ? envDivisionSeconds (nearestDivisionIndex (seconds, bpm, maxSeconds), bpm)
+                : seconds;
+}
+
 // Microtuning: cents deviation from 12-TET for a pitch class (0 = C .. 11 = B),
 // for a built-in temperament (0 = Equal, 1 = Just, 2 = Pythagorean). Equal
 // returns 0 so the default is bit-identical to standard tuning.
@@ -91,6 +188,10 @@ struct SynthParams
     double  oscAPulseWidth = 0.5;
     double  oscAEngine     = 0.4;    // per-engine extra (VOSIM pulses / Scanned morph / Walsh fold)
     int     oscAExcite     = 0;      // Scanned excite shape
+    // Analysed wavetable, shared by every voice. Null = the engine's built-in
+    // default set. Never reassigned on the audio thread: the processor swaps it
+    // on the message thread and retains the old one so nothing is freed here.
+    std::shared_ptr<WavetableOscillator::WavetableSet> wavetable;
     int     oscAOctave     = 0;
     int     oscASemi       = 0;
     double  oscAFine       = 0.0;    // cents
@@ -111,6 +212,12 @@ struct SynthParams
     double  oscBEqLow = 0.0, oscBEqMid = 0.0, oscBEqHigh = 0.0;   // per-osc EQ, dB
 
     // --- Mixer (independent sum) ---
+    // oscAOn / oscBOn are mixer mutes: they silence the oscillator's audible
+    // contribution without disturbing its level knob. They deliberately do NOT
+    // stop it cross-modulating -- phase mod and hard sync want a modulator you
+    // cannot hear, which is exactly what a muted oscillator is.
+    bool    oscAOn     = true;
+    bool    oscBOn     = true;
     double  oscALevel  = 1.0;
     double  oscBLevel  = 0.0;   // B silent by default -> single-osc patches unchanged
     double  noiseLevel = 0.0;
@@ -185,6 +292,13 @@ struct SynthParams
     int    unisonVoices = 1;    // 1..6 (1 = off)
     double unisonDetune = 15.0; // max detune in cents
     double unisonWidth  = 0.5;  // 0..1 stereo spread of the stack
+    // How the stack is distributed across the detune range: 0.5 = even,
+    // < 0.5 bunches toward the centre pitch, > 0.5 pushes to the edges.
+    double unisonSpread = 0.5;
+
+    // Per-voice send level into the global FX chain (0 = fully dry, 1 = the
+    // whole voice goes through the chain, which is the historical behaviour).
+    double fxSend = 1.0;
 
     // Glide / portamento.
     GlideMode glideMode  = GlideMode::Off;

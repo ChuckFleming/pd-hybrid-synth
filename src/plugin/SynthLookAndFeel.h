@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <cmath>
+#include "Theme.h"
 
 /**
     "CZ Terminal" look for the PD Hybrid Synth editor: pure-black background with
@@ -13,24 +14,18 @@ class SynthLookAndFeel : public juce::LookAndFeel_V4
 public:
     SynthLookAndFeel()
     {
-        setColour (juce::Slider::textBoxTextColourId,       juce::Colour (0xff4be08a));
-        setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xff000000));
-        setColour (juce::Slider::textBoxOutlineColourId,    juce::Colour (0xff17402c));
-
-        setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff000000));
-        setColour (juce::ComboBox::textColourId,       juce::Colour (0xff4be08a));
-        setColour (juce::ComboBox::outlineColourId,    juce::Colour (0xff2b6b46));
-        setColour (juce::ComboBox::arrowColourId,      juce::Colour (0xff4be08a));
-
-        setColour (juce::PopupMenu::backgroundColourId,            juce::Colour (0xff030503));
-        setColour (juce::PopupMenu::textColourId,                  juce::Colour (0xff37b06e));
-        setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colour (0xff123322));
-        setColour (juce::PopupMenu::highlightedTextColourId,       juce::Colour (0xff4be08a));
-
-        setColour (juce::TextButton::buttonColourId,   juce::Colour (0xff000000));
-        setColour (juce::TextButton::textColourOffId,  juce::Colour (0xff4be08a));
-        setColour (juce::TextButton::textColourOnId,   juce::Colour (0xff4be08a));
+        setTheme (theme_);
     }
+
+    /** Installs a skin. Call `sendLookAndFeelChange()` on the editor afterwards
+        so every child repaints. */
+    void setTheme (const pdui::Theme& t)
+    {
+        theme_ = t;
+        theme_.applyTo (*this);
+    }
+
+    const pdui::Theme& theme() const noexcept { return theme_; }
 
     static juce::Font mono (float h, bool bold = false)
     {
@@ -40,26 +35,37 @@ public:
 
     juce::Font getComboBoxFont (juce::ComboBox&) override          { return mono (11.5f); }
     juce::Font getPopupMenuFont () override                        { return mono (12.0f); }
-    juce::Font getLabelFont (juce::Label& l) override              { return mono (l.getFont().getHeight()); }
+    // Respect whatever face the label was explicitly given (pdui::labelFont /
+    // pdui::valueFont pick sans or mono per theme); forcing mono here would
+    // silently undo that split for every juce::Label in the editor.
+    juce::Font getLabelFont (juce::Label& l) override              { return l.getFont(); }
     juce::Font getTextButtonFont (juce::TextButton&, int) override { return mono (11.5f); }
 
     void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&,
                                bool over, bool down) override
     {
-        auto r = b.getLocalBounds();
-        const bool lit = b.getToggleState();   // toggle buttons show an "on" glow
-        g.setColour (down ? juce::Colour (0xff0d2a1c)
-                          : (lit ? juce::Colour (0xff123322)
-                                 : (over ? juce::Colour (0xff09190f) : juce::Colour (0xff000000))));
-        g.fillRect (r);
-        g.setColour (lit ? juce::Colour (0xff4be08a) : juce::Colour (0xff2b6b46));
-        g.drawRect (r, 1);
+        const bool lit = b.getToggleState();
+        const auto r = b.getLocalBounds().toFloat().reduced (0.5f);
+        const float rad = theme_.traits.cornerRadius;
+
+        auto fill = lit ? findColour (pdui::ledOnBg) : findColour (pdui::fieldBg);
+        if (down)      fill = fill.darker (0.25f);
+        else if (over) fill = fill.brighter (0.12f);
+
+        g.setColour (fill);
+        g.fillRoundedRectangle (r, rad);
+        g.setColour (lit ? findColour (pdui::ledOnEdge) : findColour (pdui::panelEdge));
+        g.drawRoundedRectangle (r, rad, 1.0f);
     }
 
     /** The editor tags each slider with a "knobSize" property (0 small,
         1 normal, 2 large). The slider's *bounds* stay a full layout cell so its
         value box never truncates; the drawn rotary is what scales, which is how
         the panel gets a size hierarchy without disturbing the grid. */
+    /** The editor tags each slider with a "knobSize" property (0 small,
+        1 normal, 2 large) and a "modded" flag when at least one modulation
+        route lands on it. Those signals are unchanged by the retheme; only
+        the colours and cap rendering are trait-driven now. */
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                            float pos, float startAngle, float endAngle,
                            juce::Slider& s) override
@@ -69,30 +75,53 @@ public:
         const bool modded = (bool) s.getProperties().getWithDefault ("modded", false);
         const float scale = sizeTag == 0 ? 0.70f : (large ? 1.0f : 0.85f);
 
-        const juce::Colour ring    = large ? juce::Colour (0xff4be08a) : juce::Colour (0xff2b6b46);
-        const juce::Colour face    (0xff04140c);
-        const juce::Colour pointer (0xff4be08a);
+        const auto boundsFull = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height).reduced (2.0f);
+        const float rFull = juce::jmin (boundsFull.getWidth(), boundsFull.getHeight()) * 0.5f;
+        const auto  c     = boundsFull.getCentre();
+        const float r     = rFull * scale;
+        const float angle = startAngle + pos * (endAngle - startAngle);
 
-        auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height).reduced (3.0f);
-        const float cx = bounds.getCentreX();
-        const float cy = bounds.getCentreY();
-        const float r  = (juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f - 2.0f) * scale;
-        const float ang = startAngle + pos * (endAngle - startAngle);
+        // The value arc, outside the cap. Same in both skins.
+        const float arcR = r - 1.0f;
+        juce::Path track, value;
+        track.addCentredArc (c.x, c.y, arcR, arcR, 0.0f, startAngle, endAngle, true);
+        value.addCentredArc (c.x, c.y, arcR, arcR, 0.0f, startAngle, angle,    true);
+        g.setColour (findColour (pdui::knobTrack));
+        g.strokePath (track, juce::PathStrokeType (large ? 2.5f : 2.0f));
+        g.setColour (findColour (pdui::knobFill));
+        g.strokePath (value, juce::PathStrokeType (large ? 2.5f : 2.0f));
 
-        g.setColour (face);
-        g.fillEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f);
-        g.setColour (ring);
-        g.drawEllipse (cx - r, cy - r, r * 2.0f, r * 2.0f, large ? 1.6f : 1.2f);
+        const float capR = r - 4.5f;
+        if (capR <= 1.0f)
+            return;
 
-        // Promoted controls also carry a value arc, so how far they are turned
-        // reads from across the room.
-        if (large)
+        if (theme_.traits.physicalKnobs)
         {
-            juce::Path arc;
-            arc.addCentredArc (cx, cy, r + 3.0f, r + 3.0f, 0.0f, startAngle, ang, true);
-            g.setColour (pointer);
-            g.strokePath (arc, juce::PathStrokeType (2.0f));
+            // A moulded cap, lit from the upper left.
+            juce::ColourGradient grad (findColour (pdui::knobCap1),
+                                       c.x - capR * 0.35f, c.y - capR * 0.45f,
+                                       findColour (pdui::knobCap3),
+                                       c.x + capR * 0.5f,  c.y + capR * 0.6f, true);
+            grad.addColour (0.62, findColour (pdui::knobCap2));
+            g.setGradientFill (grad);
+            g.fillEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f);
+            g.setColour (juce::Colours::black.withAlpha (0.28f));
+            g.drawEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f, 1.0f);
         }
+        else
+        {
+            g.setColour (findColour (pdui::knobCap2));
+            g.fillEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f);
+            g.setColour (findColour (pdui::panelEdge));
+            g.drawEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f, 1.0f);
+        }
+
+        // Pointer.
+        juce::Path p;
+        p.addRoundedRectangle (-1.0f, -capR + 1.5f, 2.0f, capR * 0.62f, 1.0f);
+        p.applyTransform (juce::AffineTransform::rotation (angle).translated (c.x, c.y));
+        g.setColour (findColour (pdui::knobPointer));
+        g.fillPath (p);
 
         // Amber ring: at least one modulation-matrix route lands on this knob.
         // This is what stops the matrix being write-only — the panel itself
@@ -100,14 +129,9 @@ public:
         if (modded)
         {
             const float mr = r + (large ? 6.0f : 4.0f);
-            g.setColour (juce::Colour (0xffe8a54b));
-            g.drawEllipse (cx - mr, cy - mr, mr * 2.0f, mr * 2.0f, 1.4f);
+            g.setColour (findColour (pdui::liveCol));
+            g.drawEllipse (c.x - mr, c.y - mr, mr * 2.0f, mr * 2.0f, 1.4f);
         }
-
-        const float px = cx + (r - 2.0f) * std::sin (ang);
-        const float py = cy - (r - 2.0f) * std::cos (ang);
-        g.setColour (pointer);
-        g.drawLine (cx, cy, px, py, large ? 2.4f : 2.0f);
     }
 
     void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
@@ -121,8 +145,8 @@ public:
             return;
         }
 
-        const juce::Colour accent (0xff4be08a);
-        const juce::Colour track  (0xff2b6b46);   // visible dim-green rail on black
+        const auto accent = findColour (pdui::knobFill);
+        const auto track  = findColour (pdui::knobTrack);
 
         const float cyf = (float) y + (float) height * 0.5f;
         const float x0  = minSliderPos;
@@ -134,4 +158,7 @@ public:
         g.fillRect (x0, cyf - 1.5f, juce::jmax (0.0f, sliderPos - x0), 3.0f);
         g.fillRect (sliderPos - 2.0f, cyf - 7.0f, 4.0f, 14.0f);
     }
+
+private:
+    pdui::Theme theme_ = pdui::Theme::fromId (pdtheme::ThemeId::Panel1985);
 };

@@ -106,6 +106,7 @@ void Voice::setParams (const SynthParams& params)
     unitA_.setPdCombine (params.oscACombine);
     unitA_.setEngineParam (params.oscAEngine);
     unitA_.setExcite (params.oscAExcite);
+    unitA_.setWavetable (params.wavetable);
     unitA_.setTuning (params.oscAOctave, params.oscASemi, params.oscAFine);
     unitA_.setEq     (params.oscAEqLow, params.oscAEqMid, params.oscAEqHigh);
 
@@ -115,6 +116,7 @@ void Voice::setParams (const SynthParams& params)
     unitB_.setPdCombine (params.oscBCombine);
     unitB_.setEngineParam (params.oscBEngine);
     unitB_.setExcite (params.oscBExcite);
+    unitB_.setWavetable (params.wavetable);
     unitB_.setTuning (params.oscBOctave, params.oscBSemi, params.oscBFine);
     unitB_.setEq     (params.oscBEqLow, params.oscBEqMid, params.oscBEqHigh);
 
@@ -217,10 +219,29 @@ void Voice::applyModulation() noexcept
     const double dcwEnvMod = params_.dcwEnvAmount * (dcwEnv_.level() - 0.5) * 2.0;
     const double pdMod = md (ModDest::PdAmount) + driftPdAmt + dcwEnvMod;
     const double pwMod = md (ModDest::PulseWidth) * 0.45;
+    // PdAmountB is an extra offset on slot B only, so the two oscillators can be
+    // swept apart; PdAmount keeps moving both together.
+    const double pdModB = pdMod + md (ModDest::PdAmountB);
     unitA_.setAmount     (std::clamp (params_.oscAAmount + pdMod, 0.0, 1.0));
-    unitB_.setAmount     (std::clamp (params_.oscBAmount + pdMod, 0.0, 1.0));
+    unitB_.setAmount     (std::clamp (params_.oscBAmount + pdModB, 0.0, 1.0));
     unitA_.setPulseWidth (std::clamp (params_.oscAPulseWidth + pwMod, 0.05, 0.95));
     unitB_.setPulseWidth (std::clamp (params_.oscBPulseWidth + pwMod, 0.05, 0.95));
+
+    // Per-engine "extra" knob (VOSIM pulses / Walsh fold / supersaw voices ...).
+    const double engMod = md (ModDest::EngineParam);
+    unitA_.setEngineParam (std::clamp (params_.oscAEngine + engMod, 0.0, 1.0));
+    unitB_.setEngineParam (std::clamp (params_.oscBEngine + engMod, 0.0, 1.0));
+
+    // Karplus-Strong string, when the pluck stage is engaged.
+    if (params_.pluckOn)
+    {
+        pluck_.setDecay (std::clamp (params_.pluckDecay + md (ModDest::PluckDecay), 0.0, 1.0));
+        pluck_.setDamping (std::clamp (params_.pluckDamp + md (ModDest::PluckDamp), 0.0, 1.0));
+    }
+
+    ringModMod_  = std::clamp (params_.ringModLevel + md (ModDest::RingModLevel), 0.0, 1.0);
+    crossModMod_ = std::clamp (params_.crossModAmount + md (ModDest::CrossModAmount), 0.0, 1.0);
+    fxSendMod_   = std::clamp (params_.fxSend + md (ModDest::FxSend), 0.0, 1.0);
 
     // Cutoff: timbre (MPE), matrix, key tracking and the filter envelope all
     // shift the cutoff in octaves. Key tracking follows the note relative to
@@ -237,12 +258,14 @@ void Voice::applyModulation() noexcept
     const double resMod   = md (ModDest::Resonance);
     const double morphMod = md (ModDest::Morph);
 
+    // `freq` is this voice's current pitch, so the PD resonator can sync its
+    // ring to the fundamental (CZ-style) instead of free-running.
     filterA_.configure (params_.cutoffHz * std::pow (2.0, octA),
                         std::clamp (params_.resonance + resMod, 0.0, 1.0),
-                        std::clamp (params_.filterMorph + morphMod, 0.0, 1.0));
+                        std::clamp (params_.filterMorph + morphMod, 0.0, 1.0), freq);
     filterB_.configure (params_.filter2Cutoff * std::pow (2.0, octB),
                         std::clamp (params_.filter2Res + resMod, 0.0, 1.0),
-                        std::clamp (params_.filter2Morph + morphMod, 0.0, 1.0));
+                        std::clamp (params_.filter2Morph + morphMod, 0.0, 1.0), freq);
 
     amp_.setDrive (params_.drive * std::pow (2.0, md (ModDest::Drive) * 2.0));
 
@@ -251,10 +274,35 @@ void Voice::applyModulation() noexcept
     // Velocity scaling of the amp level (0 sens = velocity ignored).
     velAmp_ = (1.0 - params_.ampVelSens) + params_.ampVelSens * velGain_;
 
-    // Mixer levels after matrix modulation.
-    oscALevelMod_  = std::clamp (params_.oscALevel + md (ModDest::OscALevel), 0.0, 1.0);
-    oscBLevelMod_  = std::clamp (params_.oscBLevel + md (ModDest::OscBLevel), 0.0, 1.0);
+    // Mixer levels after matrix modulation. The mute buttons fold in here, so
+    // everything downstream -- the mix, the ring product and the constant-power
+    // normalisation -- sees a muted oscillator as simply being at zero.
+    oscALevelMod_  = params_.oscAOn
+                   ? std::clamp (params_.oscALevel + md (ModDest::OscALevel), 0.0, 1.0) : 0.0;
+    oscBLevelMod_  = params_.oscBOn
+                   ? std::clamp (params_.oscBLevel + md (ModDest::OscBLevel), 0.0, 1.0) : 0.0;
     noiseLevelMod_ = std::clamp (params_.noiseLevel + md (ModDest::NoiseLevel), 0.0, 1.0);
+
+    // Ring mod is the product of the two oscillators, so it belongs to both of
+    // them: gate it by their mixer levels. Without this an oscillator turned
+    // fully down was still plainly audible through the ring path -- level 0 did
+    // not mean silent. Scaling (rather than switching at a threshold) keeps the
+    // ring fading out smoothly as a level is pulled down, and leaves patches
+    // with both oscillators up sounding exactly as before.
+    ringModMod_ *= oscALevelMod_ * oscBLevelMod_;
+
+    // Constant-power mixer: turning every source up used to stack their levels,
+    // so a patch could leave the mixer several times hotter than a single
+    // oscillator before the filter had even seen it. Normalising by the
+    // quadrature sum caps that, and leaves the common single-oscillator case
+    // (one source at full, the rest at zero) at exactly unity -- so those
+    // patches are unchanged.
+    const double sumSq = oscALevelMod_ * oscALevelMod_
+                       + oscBLevelMod_ * oscBLevelMod_
+                       + noiseLevelMod_ * noiseLevelMod_
+                       + ringModMod_ * ringModMod_;
+    const double lvl = std::sqrt (sumSq);
+    mixNorm_ = lvl > 1.0 ? 1.0 / lvl : 1.0;
 
     // LFO rates can be modulated (+/- 2 octaves); no change when unrouted.
     lfo_.setFrequency  (params_.lfoRate  * std::pow (2.0, md (ModDest::LfoRate)  * 2.0));
@@ -367,7 +415,7 @@ float Voice::renderOneSample() noexcept
 {
     // Osc A + Osc B with optional cross-modulation. Osc B runs when it is mixed,
     // ring-modulated, or cross-modulating (hard sync / phase mod).
-    const double ring  = params_.ringModLevel;
+    const double ring  = ringModMod_;
     const int    cross = params_.oscCrossMod;
     const bool   needB = (oscBLevelMod_ > 1.0e-5) || (ring > 1.0e-5) || (cross != 0);
 
@@ -375,7 +423,7 @@ float Voice::renderOneSample() noexcept
     if (cross == 2)          // Phase Mod: Osc B modulates Osc A's phase
     {
         sB = unitB_.processSample();
-        unitA_.setPhaseMod (sB * params_.crossModAmount * 0.5);
+        unitA_.setPhaseMod (sB * crossModMod_ * 0.5);
         sA = unitA_.processSample();
     }
     else if (cross == 1)     // Hard Sync: Osc A masters Osc B (reset on A's wrap)
@@ -405,6 +453,8 @@ float Voice::renderOneSample() noexcept
              * noiseLevelMod_;
     }
 
+    s *= mixNorm_;   // constant-power mixer (see applyModulation)
+
     // Karplus-Strong pluck: the osc mix becomes the string's exciter.
     if (params_.pluckOn)
         s = pluck_.processSample (static_cast<float> (s));
@@ -431,10 +481,17 @@ float Voice::renderOneSample() noexcept
     if (params_.driveOn && params_.drivePos == 0)
         s = amp_.processSample (static_cast<float> (s));
     const double e = env_.processSample();
-    return static_cast<float> (s * e * velAmp_ * pressure_ * ampMod_ * params_.gain);
+    return static_cast<float> (s * e * velAmp_ * pressure_ * ampMod_
+                               * unisonGain_ * params_.gain);
 }
 
 void Voice::renderBlock (float* left, float* right, int numSamples)
+{
+    renderBlock (left, right, nullptr, nullptr, numSamples);
+}
+
+void Voice::renderBlock (float* left, float* right,
+                         float* sendL, float* sendR, int numSamples)
 {
     advanceDrift (numSamples);
 
@@ -460,11 +517,23 @@ void Voice::renderBlock (float* left, float* right, int numSamples)
 
         applyModulation();
 
+        // The send bus is only written when a caller asks for one; with no
+        // send routing the processor uses the plain two-bus path and this
+        // branch (and its extra multiplies) never runs.
+        const bool wantSend = (sendL != nullptr && sendR != nullptr);
+
         for (int i = 0; i < chunk; ++i)
         {
             const float s = renderOneSample();
-            left[done + i]  += static_cast<float> (s * panL_);
-            right[done + i] += static_cast<float> (s * panR_);
+            const float sl = static_cast<float> (s * panL_);
+            const float sr = static_cast<float> (s * panR_);
+            left[done + i]  += sl;
+            right[done + i] += sr;
+            if (wantSend)
+            {
+                sendL[done + i] += static_cast<float> (sl * fxSendMod_);
+                sendR[done + i] += static_cast<float> (sr * fxSendMod_);
+            }
             // Envelopes advance per sample (cheap when sustaining, and their
             // shapes are short-lived); they are only read at the next chunk.
             env2_.processSample();

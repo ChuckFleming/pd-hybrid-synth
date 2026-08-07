@@ -195,6 +195,101 @@ void PresetManager::createFactoryPresetsIfNeeded()
     ensure ("Walsh/Fold Grit", { {"oscAType",8}, {"oscAAmount",0.5f}, {"oscAEngine",0.9f},
         {"drive",3.0f}, {"cutoff",7000}, {"sustain",0.7f} });
 
+    // --- Supersaw (detuned saw stack) ---
+    ensure ("Supersaw/Trance Lead", { {"oscAType",9}, {"oscAAmount",0.55f}, {"oscAPulseWidth",0.8f},
+        {"oscAEngine",1.0f}, {"cutoff",7000}, {"resonance",0.2f}, {"attack",0.01f},
+        {"decay",0.4f}, {"sustain",0.8f}, {"release",0.4f}, {"delayMix",0.25f} });
+    ensure ("Supersaw/Wide Pad", { {"oscAType",9}, {"oscAAmount",0.85f}, {"oscAPulseWidth",0.9f},
+        {"oscAEngine",1.0f}, {"cutoff",4500}, {"attack",0.6f}, {"decay",1.0f}, {"sustain",0.85f},
+        {"release",1.6f}, {"chorusOn",1}, {"reverbOn",1}, {"panSpread",0.5f} });
+    ensure ("Supersaw/Detune Bass", { {"oscAType",9}, {"oscAAmount",0.25f}, {"oscAPulseWidth",0.5f},
+        {"oscAEngine",0.33f}, {"oscAOctave",-1}, {"cutoff",1400}, {"filterEnvAmount",1.8f},
+        {"attack",0.002f}, {"decay",0.3f}, {"sustain",0.6f} });
+
+    // --- Harmonic (band-limited additive) ---
+    ensure ("Harmonic/Glass Keys", { {"oscAType",10}, {"oscAAmount",0.45f}, {"oscAPulseWidth",0.5f},
+        {"oscAEngine",0.25f}, {"cutoff",12000}, {"attack",0.002f}, {"decay",1.0f},
+        {"sustain",0.25f}, {"release",1.0f}, {"reverbOn",1} });
+    ensure ("Harmonic/Drawbar Organ", { {"oscAType",10}, {"oscAAmount",0.2f}, {"oscAPulseWidth",0.35f},
+        {"oscAEngine",0.55f}, {"cutoff",10000}, {"attack",0.005f}, {"decay",0.05f},
+        {"sustain",1.0f}, {"release",0.08f}, {"chorusOn",1} });
+    ensure ("Harmonic/Partial Sweep", { {"oscAType",10}, {"oscAAmount",0.15f}, {"oscAEngine",0.15f},
+        {"dcwEnvAmount",0.8f}, {"cutoff",12000}, {"attack",0.2f}, {"sustain",0.9f},
+        {"release",1.2f} });
+
+    // --- PAF (phase-aligned formant) ---
+    ensure ("PAF/Vowel Lead", { {"oscAType",11}, {"oscAAmount",0.35f}, {"oscAPulseWidth",0.25f},
+        {"oscAEngine",0.5f}, {"cutoff",9000}, {"sustain",0.85f}, {"glideMode",2},
+        {"glideTime",0.05f}, {"mod1Source",8}, {"mod1Dest",2}, {"mod1Depth",0.5f} });  // wheel -> formant
+    ensure ("PAF/Glass Whistle", { {"oscAType",11}, {"oscAAmount",0.75f}, {"oscAPulseWidth",0.1f},
+        {"cutoff",12000}, {"attack",0.05f}, {"decay",0.8f}, {"sustain",0.4f}, {"release",0.8f},
+        {"reverbOn",1} });
+    ensure ("PAF/Formant Sweep", { {"oscAType",11}, {"oscAAmount",0.2f}, {"oscAPulseWidth",0.3f},
+        {"dcwEnvAmount",0.7f}, {"cutoff",10000}, {"attack",0.2f}, {"sustain",0.9f},
+        {"release",1.0f} });
+
+    // --- Granular ---
+    ensure ("Granular/Cloud Pad", { {"oscAType",12}, {"oscAAmount",0.45f}, {"oscAPulseWidth",0.85f},
+        {"oscAEngine",0.8f}, {"cutoff",6000}, {"attack",0.8f}, {"decay",1.2f}, {"sustain",0.85f},
+        {"release",2.0f}, {"reverbOn",1}, {"panSpread",0.6f} });
+    ensure ("Granular/Particles", { {"oscAType",12}, {"oscAAmount",0.7f}, {"oscAPulseWidth",0.15f},
+        {"oscAEngine",0.3f}, {"cutoff",9000}, {"attack",0.002f}, {"decay",0.4f},
+        {"sustain",0.3f}, {"release",0.5f}, {"delayMix",0.3f} });
+    ensure ("Granular/Shimmer", { {"oscAType",12}, {"oscAAmount",0.25f}, {"oscAPulseWidth",0.6f},
+        {"oscAEngine",1.0f}, {"cutoff",11000}, {"attack",0.4f}, {"sustain",0.9f},
+        {"release",1.5f}, {"chorusOn",1}, {"reverbOn",1} });
+
+    // --- Wavetable ---
+    ensure ("Wavetable/Morph Pad", { {"oscAType",13}, {"oscAAmount",0.4f}, {"oscAPulseWidth",0.5f},
+        {"cutoff",7000}, {"attack",0.5f}, {"decay",1.0f}, {"sustain",0.85f}, {"release",1.4f},
+        {"mod1Source",2}, {"mod1Dest",2}, {"mod1Depth",0.4f}, {"lfoRate",0.25f} });  // LFO -> position
+    ensure ("Wavetable/WT Bass", { {"oscAType",13}, {"oscAAmount",0.8f}, {"oscAOctave",-1},
+        {"cutoff",1200}, {"filterEnvAmount",2.0f}, {"attack",0.002f}, {"decay",0.25f},
+        {"sustain",0.6f}, {"release",0.2f} });
+    ensure ("Wavetable/Formant Lead", { {"oscAType",13}, {"oscAAmount",0.6f}, {"oscAEngine",0.55f},
+        {"oscAPulseWidth",0.7f}, {"cutoff",9000}, {"sustain",0.85f}, {"glideMode",2},
+        {"glideTime",0.04f} });
+
+    // --- New filter engines ---
+    ensure ("Filter/Vocoder Bank", { {"oscAType",1}, {"filterType",7}, {"cutoff",1200},
+        {"resonance",0.8f}, {"filterMorph",0.5f}, {"sustain",0.9f}, {"attack",0.1f},
+        {"mod1Source",2}, {"mod1Dest",6}, {"mod1Depth",0.5f}, {"lfoRate",0.4f} });  // LFO -> tilt
+
+    // --- Chord mode ---
+    ensure ("Chord/Organ Comp", { {"chordOn",1}, {"chordSplit",60}, {"chordVoicing",0},
+        {"chordSpread",0.3f}, {"oscAType",0}, {"cutoff",6000}, {"attack",0.01f},
+        {"decay",0.3f}, {"sustain",0.85f}, {"release",0.3f}, {"bassOn",1},
+        {"bassLevel",0.7f}, {"chorusOn",1} });
+    ensure ("Chord/Arp Progression", { {"chordOn",1}, {"chordSplit",60}, {"chordVoicing",3},
+        {"chordSpread",0.6f}, {"arpOn",1}, {"arpRate",4}, {"arpTarget",0},
+        {"oscAType",9}, {"cutoff",7000}, {"sustain",0.8f}, {"release",0.4f},
+        {"delayMix",0.25f}, {"reverbOn",1} });
+
+    // --- Send / routing showcases ---
+    ensure ("Routing/Dry Lead Wet Pad", { {"oscAType",9}, {"oscAAmount",0.5f}, {"fxSend",0.25f},
+        {"cutoff",8000}, {"sustain",0.85f}, {"reverbOn",1}, {"reverbMix",0.6f},
+        {"delayMix",0.4f} });   // mostly dry voice, lush tail on the quarter that is sent
+    ensure ("Routing/Arp Bass Hold", { {"oscAType",1}, {"arpOn",1}, {"arpTarget",2}, {"arpRate",4},
+        {"bassOn",1}, {"bassLevel",0.9f}, {"cutoff",5000}, {"sustain",0.9f},
+        {"attack",0.3f}, {"release",1.0f} });   // poly holds the chord, bass arpeggiates
+
+    ensure ("Filter/Vowel Pad", { {"oscAType",1}, {"filterType",5}, {"cutoff",1000},
+        {"resonance",0.75f}, {"filterMorph",0.2f}, {"attack",0.4f}, {"decay",0.8f},
+        {"sustain",0.85f}, {"release",1.4f}, {"unisonVoices",2}, {"reverbOn",1} });
+    ensure ("Filter/Talking Lead", { {"oscAType",1}, {"filterType",5}, {"cutoff",1200},
+        {"resonance",0.9f}, {"filterMorph",0.5f}, {"glideMode",2}, {"glideTime",0.06f},
+        {"sustain",0.85f}, {"mod1Source",8}, {"mod1Dest",6}, {"mod1Depth",0.6f} });  // mod wheel -> morph
+    ensure ("Filter/Acid Bass", { {"oscAType",1}, {"filterType",6}, {"oscAOctave",-1},
+        {"cutoff",600}, {"resonance",0.8f}, {"filterEnvAmount",2.5f}, {"filterEnvD",0.25f},
+        {"attack",0.002f}, {"decay",0.2f}, {"sustain",0.5f}, {"release",0.15f},
+        {"glideMode",2}, {"glideTime",0.05f}, {"drive",2.5f} });
+    ensure ("Filter/CZ Resonance", { {"oscAType",1}, {"filterType",2}, {"cutoff",1600},
+        {"resonance",0.7f}, {"filterMorph",0.8f}, {"filterEnvAmount",1.5f},
+        {"attack",0.005f}, {"decay",0.5f}, {"sustain",0.6f}, {"release",0.4f} });
+    ensure ("Filter/Phaser Sweep", { {"oscAType",1}, {"filterType",4}, {"cutoff",800},
+        {"resonance",0.6f}, {"filterMorph",0.6f}, {"sustain",0.9f}, {"attack",0.1f},
+        {"mod1Source",2}, {"mod1Dest",4}, {"mod1Depth",0.5f}, {"lfoRate",0.3f} });  // LFO -> cutoff
+
     // --- Pluck (Karplus-Strong) ---
     ensure ("Pluck/PD Pluck", { {"oscAType",0}, {"pluckOn",1}, {"pluckDecay",0.85f}, {"pluckDamp",0.3f},
         {"cutoff",8000}, {"attack",0.002f}, {"decay",0.1f}, {"sustain",0.7f}, {"release",1.0f} });

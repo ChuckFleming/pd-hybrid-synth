@@ -1,46 +1,67 @@
 #include "PluginEditor.h"
 
 namespace {
-// Layout is on an 8-point grid so vertical/horizontal rhythm stays consistent.
-constexpr int kKnobW    = 64;
-constexpr int kKnobH    = 64;   // rotary + text box below
-constexpr int kLabelH   = 16;
-constexpr int kCellW    = 72;   // one knob cell (knob + gutter)
-constexpr int kCellH    = kLabelH + kKnobH;   // 80
-constexpr int kHeaderH  = 24;   // card title strip
-constexpr int kComboRowH = 24;
-constexpr int kCardPad  = 8;    // inner padding of a card
-constexpr int kGap      = 8;    // gap between cards
-constexpr int kMargin   = 16;   // panel outer margin
+// Layout metrics, sized so every page fits 1280 x 800 without scrolling -- the
+// editor used to open at 1348 x 1382, taller than a 1080p screen.
+//
+// kKnobH covers the rotary AND the value text box beneath it; kLabelH is the
+// caption on top. So one cell is 61 px tall, not 48. That distinction matters:
+// a row's height is set by the tallest *cell* in it, which means shrinking a
+// display next to a knob buys nothing until the knob shrinks too.
+constexpr int kKnobW    = 48;
+constexpr int kKnobH    = 48;   // rotary + text box below
+constexpr int kLabelH   = 13;
+constexpr int kCellW    = 58;   // one knob cell (knob + gutter)
+constexpr int kCellH    = kLabelH + kKnobH;   // 61
+constexpr int kHeaderH  = 19;   // card title strip
+constexpr int kComboRowH = 21;
+constexpr int kCardPad  = 6;    // inner padding of a card
+constexpr int kGap      = 6;    // gap between cards
+constexpr int kMargin   = 10;   // panel outer margin
 constexpr int kMatrixRowH = 26;
-constexpr int kTopBar   = 48;   // title bar above the tabs
-constexpr int kGridCols = 6;    // every tab page uses this fixed column count
-constexpr int kStripH    = 150;  // fixed performance strip between title bar and tabs
-constexpr int kFooterH   = 24;   // page indicator / route count / panic + rand
+constexpr int kTopBar   = 40;   // title bar above the tabs
+// Three columns, packed shortest-first rather than laid out in rows. A card
+// whose span reaches this count takes a full-width band of its own.
+constexpr int kGridCols = 3;
+constexpr int kStripH    = 110;  // fixed performance strip between title bar and tabs
+constexpr int kFooterH   = 20;   // page indicator / route count / panic + rand
 constexpr int kDeletePresetId = 9000;   // menu id, kept clear of the preset ids
-constexpr int kStripCurveH = 42; // amp-envelope curve, above its row of knobs
-constexpr int kStripCapH = 13;   // caption band along the strip's top edge
+constexpr int kStripCurveH = 34; // amp-envelope curve, above its row of knobs
+constexpr int kStripCapH = 11;   // caption band along the strip's top edge
 
-// Palette — "CZ Terminal": black with green phosphor, outlined boxes.
-const juce::Colour kBg       (0xff000000);
-const juce::Colour kCardBg   (0xff000000);
-const juce::Colour kCardEdge (0xff1c3a2b);   // dim green box outline
-const juce::Colour kHeaderBg (0xff000000);
-const juce::Colour kAccent   (0xff4be08a);   // phosphor green
-const juce::Colour kTitleCol (0xff4be08a);
-const juce::Colour kLabelCol (0xff37b06e);   // dim green control labels
-const juce::Colour kValueCol (0xff4be08a);   // bright green readouts
-const juce::Colour kModCol   (0xffe8a54b);   // amber: "modulation lands here"
+// Palette lookups read through the editor's LookAndFeel (pdui::ColourIds, see
+// Theme.h), so a theme change repaints into the new skin with no other code
+// involved. Call findColour(...) directly at each site — every site below is
+// inside a Component member function or a paint lambda that captures `this`.
 
-juce::Font monoFont (float height, bool bold = false)
-{
-    return juce::Font (juce::Font::getDefaultMonospacedFontName(), height,
-                       bold ? juce::Font::bold : juce::Font::plain);
-}
-
-const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh" };
+const juce::StringArray kOscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh", "Supersaw", "Harmonic", "PAF", "Granular", "Wavetable" };
 const juce::StringArray kPdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                         "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
+// Must match the "filterType" / "filter2Type" choice parameters exactly.
+const juce::StringArray kFilterTypeNames { "Ladder", "State Variable", "PD Resonator",
+                                           "Comb", "Allpass", "Formant", "Diode Ladder", "Band Split" };
+
+// Per-type role of the filter MORPH knob. Every engine reads it differently and
+// two ignore it entirely, so the editor relabels it and greys it out when dead.
+struct FilterKnobRoles
+{
+    juce::String morphLabel; bool morphActive;
+};
+FilterKnobRoles filterKnobRoles (int type)
+{
+    switch (static_cast<pdhybrid::FilterType> (type))
+    {
+        case pdhybrid::FilterType::StateVariable: return { "LP-BP-HP", true };
+        case pdhybrid::FilterType::PdResonator:   return { "PD Amt",   true };
+        case pdhybrid::FilterType::Comb:          return { "Damp",     true };
+        case pdhybrid::FilterType::Allpass:       return { "Stages",   true };
+        case pdhybrid::FilterType::Formant:       return { "Vowel",    true };
+        case pdhybrid::FilterType::BandSplit:     return { "Tilt",     true };
+        case pdhybrid::FilterType::DiodeLadder:   return { "Morph",    false };  // 24 dB LP only
+        case pdhybrid::FilterType::Ladder:
+        default:                                  return { "Morph",    false };  // 24 dB LP only
+    }
+}
 
 // Per-type role of the two shared timbre knobs (the "amount" and "pulse width"
 // knobs). Each engine reads them differently, and some ignore one or both, so
@@ -65,6 +86,11 @@ OscKnobRoles oscKnobRoles (int type)
         case pdhybrid::OscType::Scanned:         return { "Stiff",  true,  "Damp",  true,  "Morph",   true,  true  };  // + excite shape
         case pdhybrid::OscType::Vosim:           return { "Formant", true, "Decay", true,  "Pulses",  true,  false };  // engine = pulse count
         case pdhybrid::OscType::Walsh:           return { "Tilt",   true,  "Odd",   true,  "Fold",    true,  false };  // engine = wavefold
+        case pdhybrid::OscType::Supersaw:        return { "Detune", true,  "Mix",   true,  "Voices",  true,  false };  // engine = saw count
+        case pdhybrid::OscType::Harmonic:        return { "Partial", true, "Odd/Ev", true, "Width",   true,  false };  // engine = window width
+        case pdhybrid::OscType::Paf:             return { "Formant", true, "Band",  true,  "Shape",   true,  false };  // phase-aligned formant
+        case pdhybrid::OscType::Granular:        return { "Scatter", true, "Size",  true,  "Density", true,  false };  // grain cloud
+        case pdhybrid::OscType::Wavetable:       return { "Pos",    true,  "Warp",  true,  "Fmnt",    true,  false };  // engine = formant shift
         default:                                 return { "PD Amt", true,  "Width", true,  "Engine",  true,  false };
     }
 }
@@ -82,7 +108,9 @@ const juce::StringArray kDstNames { "None", "Pitch", "PD Amount", "Pulse Width",
                                     "Resonance", "Morph", "Drive", "Amplitude", "Pan",
                                     "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
                                     "LFO Rate", "LFO 2 Rate", "Noise Lvl",
-                                    "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ" };
+                                    "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ",
+                                    "Ring Mod", "Cross Mod", "Engine", "PD Amount B",
+                                    "Pluck Decay", "Pluck Damp", "Chorus Depth", "Reverb Mix", "FX Send" };
 }
 
 //==============================================================================
@@ -270,85 +298,81 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
         units.push_back (std::move (u));
     }
 
-    // Pack units into rows of the fixed grid.
-    std::vector<int> unitRow (units.size(), 0), unitCol (units.size(), 0);
+    // Column pack. The old grid laid units out in rows and padded every card in
+    // a row to the tallest card in it -- which is where the wasted space came
+    // from: a one-knob Mixer beside a Mono Bass with an envelope display was
+    // stretched to match it. Here each card keeps its own natural height and
+    // drops into whichever column is currently shortest, so a short card no
+    // longer inherits a tall neighbour's height.
+    //
+    // `colBottom[c]` is the next free y in column c.
+    std::vector<int> colBottom ((std::size_t) numCols, kMargin);
+
+    auto highestOf = [&] (int first, int sp)
     {
-        int col = 0, row = 0;
-        for (std::size_t u = 0; u < units.size(); ++u)
+        int y = colBottom[(std::size_t) first];
+        for (int c = first + 1; c < first + sp; ++c)
+            y = juce::jmax (y, colBottom[(std::size_t) c]);
+        return y;
+    };
+
+    // Places one unit's members top-to-bottom at their natural heights.
+    auto emit = [&] (const Unit& u, int cx, int cw, int top)
+    {
+        int yy = top;
+        for (int idx : u.members)
         {
-            if (col > 0 && col + units[u].span > numCols) { ++row; col = 0; }
-            unitRow[u] = row; unitCol[u] = col; col += units[u].span;
+            Section& s = sections[(std::size_t) idx];
+            const int rows = comboRowsFor (s, cw);
+            const int h    = sectionHeight (s, rows);
+            if (apply)
+                placeCard (s, { cx, yy, cw, h }, rows);
+            yy += h + kGap;
         }
-    }
-    const int numRows = units.empty() ? 0 : (unitRow.back() + 1);
+        return yy - kGap;   // bottom of the last member
+    };
 
-    // A row shares one combo-zone depth and one height, so card bottoms line up.
-    // Stacked units keep their own compact combo zones.
-    std::vector<int> rowComboRows (juce::jmax (1, numRows), 0), rowHeight (juce::jmax (1, numRows), 0);
-    for (std::size_t u = 0; u < units.size(); ++u)
-        if (units[u].members.size() == 1)
-            rowComboRows[unitRow[u]] = juce::jmax (rowComboRows[unitRow[u]],
-                comboRowsFor (sections[units[u].members[0]], cardW (units[u].span)));
-
-    for (std::size_t u = 0; u < units.size(); ++u)
+    for (const auto& u : units)
     {
-        const int cw = cardW (units[u].span);
-        int h = 0;
-        if (units[u].members.size() == 1)
-            h = sectionHeight (sections[units[u].members[0]], rowComboRows[unitRow[u]]);
-        else
-            for (int idx : units[u].members)   // stacked: heights add, plus gaps
-                h += sectionHeight (sections[(std::size_t) idx],
-                                    comboRowsFor (sections[(std::size_t) idx], cw)) + kGap;
-        rowHeight[unitRow[u]] = juce::jmax (rowHeight[unitRow[u]], h);
-    }
+        // A unit asking for the whole grid takes a band of its own across the
+        // full width. This is not a nicety: the CZ stage-envelope card carries
+        // sixteen numeric knobs in one row, which needs more width than any
+        // single column can offer, so it cannot be packed like the others.
+        const bool band = u.span >= numCols;
+        const int  sp   = band ? numCols : u.span;
 
-    std::vector<int> rowY (juce::jmax (1, numRows), kMargin);
-    { int yy = kMargin; for (int r = 0; r < numRows; ++r) { rowY[r] = yy; yy += rowHeight[r] + kGap; } }
-
-    if (apply)
-        for (std::size_t u = 0; u < units.size(); ++u)
+        int best = 0;
+        if (! band)
         {
-            const int r  = unitRow[u];
-            const int cx = kMargin + unitCol[u] * colPitch;
-            const int cw = cardW (units[u].span);
-
-            if (units[u].members.size() == 1)
+            // An explicit column wins; otherwise fill the shortest.
+            const int want = sections[(std::size_t) u.members.front()].column;
+            if (want >= 0 && want + sp <= numCols)
             {
-                placeCard (sections[units[u].members[0]], { cx, rowY[r], cw, rowHeight[r] },
-                           rowComboRows[r]);
+                best = want;
             }
             else
             {
-                // Share the row height between the stacked members in proportion
-                // to what each actually needs — an even split starves a tall card
-                // (a compressor with a meter and two knob rows) to pad a short one.
-                const int n = static_cast<int> (units[u].members.size());
-                std::vector<int> natural;
-                int total = 0;
-                for (int idx : units[u].members)
+                int bestY = highestOf (0, sp);
+                for (int c = 1; c + sp <= numCols; ++c)
                 {
-                    const Section& s = sections[(std::size_t) idx];
-                    const int h = sectionHeight (s, comboRowsFor (s, cw));
-                    natural.push_back (h);
-                    total += h;
-                }
-
-                const int avail = rowHeight[r] - (n - 1) * kGap;
-                int yy = rowY[r], used = 0;
-                for (int i = 0; i < n; ++i)
-                {
-                    Section& s = sections[(std::size_t) units[u].members[(std::size_t) i]];
-                    const int mh = (i == n - 1) ? (avail - used)
-                                                : (natural[(std::size_t) i] * avail / juce::jmax (1, total));
-                    placeCard (s, { cx, yy, cw, mh }, comboRowsFor (s, cw));
-                    yy += mh + kGap;
-                    used += mh;
+                    const int y = highestOf (c, sp);
+                    if (y < bestY) { bestY = y; best = c; }   // ties keep the left-most
                 }
             }
         }
 
-    int y = numRows > 0 ? (rowY[numRows - 1] + rowHeight[numRows - 1]) : kMargin;
+        const int top = highestOf (best, sp);
+        const int cx  = kMargin + best * colPitch;
+        const int cw  = cardW (sp);
+        const int bot = emit (u, cx, cw, top);
+
+        for (int c = best; c < best + sp; ++c)
+            colBottom[(std::size_t) c] = bot + kGap;
+    }
+
+    int y = kMargin;
+    for (int c = 0; c < numCols; ++c)
+        y = juce::jmax (y, colBottom[(std::size_t) c] - kGap);
 
     if (trailing != nullptr)
     {
@@ -373,20 +397,27 @@ void PDHybridEditor::SectionPanel::resized()
 
 void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
 {
-    auto drawFrame = [&g] (juce::Rectangle<int> b, const juce::String& title,
-                           juce::Colour titleColour = kTitleCol)
+    auto drawFrame = [this, &g] (juce::Rectangle<int> b, const juce::String& title,
+                                 juce::Colour titleColour)
     {
         // Black box with a thin green outline (square corners, terminal style).
-        g.setColour (kCardBg);
+        g.setColour (findColour (pdui::panelCard));
         g.fillRect (b);
-        g.setColour (kCardEdge);
+
+        // A one-pixel sheen along the top edge reads as a raised moulding. Skins
+        // that are not physical set highlight to transparent, so this is a no-op
+        // for them rather than needing a branch.
+        g.setColour (findColour (pdui::panelHighlight));
+        g.fillRect (b.getX() + 1, b.getY() + 1, b.getWidth() - 2, 1);
+
+        g.setColour (findColour (pdui::panelEdge));
         g.drawRect (b, 1);
 
         // Title label sits in a black notch breaking the top border.
-        g.setFont (monoFont (11.5f));
+        g.setFont (pdui::labelFont (*this, 11.5f));
         const int tw = g.getCurrentFont().getStringWidth (title) + 14;
         juce::Rectangle<int> tag (b.getX() + 12, b.getY() - 1, tw, kHeaderH - 6);
-        g.setColour (kCardBg);
+        g.setColour (findColour (pdui::panelCard));
         g.fillRect (tag);
         g.setColour (titleColour);
         g.drawText (title, tag.withTrimmedLeft (5), juce::Justification::centredLeft);
@@ -398,25 +429,25 @@ void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
 
         // Punch a black notch behind each header toggle so it reads as breaking
         // the frame, matching the title tag on the other end.
-        g.setColour (kCardBg);
+        g.setColour (findColour (pdui::panelCard));
         for (auto* t : s.toggles)
             g.fillRect (t->getBounds().expanded (3, 0));
     }
 
     if (trailing != nullptr)
-        drawFrame (trailing->getBounds(), trailingTitle);
+        drawFrame (trailing->getBounds(), trailingTitle, findColour (pdui::textInk));
 }
 
 //==============================================================================
 //  StageEnvelopePanel — the three CZ 8-stage envelopes as one draggable curve
 //==============================================================================
 namespace {
-constexpr int kEnvSelH   = 32;    // stage-selector row (button + destination caption)
-constexpr int kEnvGraphH = 118;   // curve area
+constexpr int kEnvSelH   = 26;    // stage-selector row (button + destination caption)
+constexpr int kEnvGraphH = 88;   // curve area
 // The 16 rate/level knobs use a compact cell: they are reference numbers under
 // the graph, not the primary way to edit the envelope.
-constexpr int kEnvKnobH  = 62;
-constexpr int kEnvSegW   = 104;   // one stage-selector segment
+constexpr int kEnvKnobH  = 50;
+constexpr int kEnvSegW   = 92;   // one stage-selector segment
 constexpr float kNodeR   = 4.5f;  // breakpoint handle radius
 }
 
@@ -425,9 +456,11 @@ PDHybridEditor::StageEnvelopePanel::~StageEnvelopePanel() { stopTimer(); }
 
 int PDHybridEditor::StageEnvelopePanel::preferredHeight() const
 {
-    // selector + graph + the AMT / SUS PT row, then the two collapsible rows of
-    // numeric knobs (R1..R8 then L1..L8).
-    return kEnvSelH + kEnvGraphH + kCardPad + kEnvKnobH + (expanded ? 2 * kEnvKnobH : 0);
+    // Selector + graph + the AMT / SUS PT row, then the collapsible numerics.
+    // As a full-width band all sixteen fit on one row, so this asks for one --
+    // see resized(), which falls back to two rows only if the card is narrowed.
+    return kEnvSelH + kEnvGraphH + kCardPad + kEnvKnobH
+         + (expanded ? numericRows * kEnvKnobH : 0);
 }
 
 juce::Rectangle<int> PDHybridEditor::StageEnvelopePanel::selectorArea() const
@@ -530,12 +563,20 @@ int PDHybridEditor::StageEnvelopePanel::hitNode (juce::Point<float> p) const
 void PDHybridEditor::StageEnvelopePanel::mouseMove (const juce::MouseEvent& e)
 {
     const int h = graphArea().contains (e.getPosition()) ? hitNode (e.position) : -1;
-    if (h != hoverNode) { hoverNode = h; repaint(); }
+    if (h != hoverNode)
+    {
+        hoverNode = h;
+        // Nothing else signalled that these nodes are grabbable.
+        setMouseCursor (h >= 0 ? juce::MouseCursor::DraggingHandCursor
+                               : juce::MouseCursor::NormalCursor);
+        repaint();
+    }
 }
 
 void PDHybridEditor::StageEnvelopePanel::mouseExit (const juce::MouseEvent&)
 {
     if (hoverNode != -1) { hoverNode = -1; repaint(); }
+    setMouseCursor (juce::MouseCursor::NormalCursor);
 }
 
 void PDHybridEditor::StageEnvelopePanel::mouseDown (const juce::MouseEvent& e)
@@ -649,15 +690,28 @@ void PDHybridEditor::StageEnvelopePanel::resized()
         knobs[(std::size_t) (16 + i)]->slider.setBounds (cell);
     }
 
-    // Then a clean row of eight rates and a clean row of eight levels.
-    const int cellW = r.getWidth() / 8;
-    for (int row = 0; row < 2; ++row)
+    // All sixteen rates and levels on one row when the card is wide enough to
+    // hold them, which it is as a full-width band -- 16 * kCellW is under any
+    // realistic content width. Falling back to two rows of eight keeps this
+    // correct if the card is ever narrowed.
+    const bool oneRow = r.getWidth() >= 16 * kCellW;
+    const int  perRow = oneRow ? 16 : 8;
+    const int  rows   = oneRow ? 1 : 2;
+    const int  cellW  = r.getWidth() / perRow;
+
+    if (rows != numericRows)
+    {
+        numericRows = rows;
+        if (onHeightChanged) onHeightChanged();
+    }
+
+    for (int row = 0; row < rows; ++row)
     {
         auto krow = r.removeFromTop (kEnvKnobH);
-        for (int c = 0; c < 8; ++c)
+        for (int c = 0; c < perRow; ++c)
         {
             auto cell = krow.removeFromLeft (cellW);
-            auto* k = knobs[(std::size_t) (row * 8 + c)];
+            auto* k = knobs[(std::size_t) (row * perRow + c)];
             k->label.setBounds  (cell.removeFromTop (kLabelH - 2));
             k->slider.setBounds (cell);
         }
@@ -676,7 +730,7 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
     // --- stage selector: one outlined strip, segment per envelope -----------
     {
         auto sel = selectorArea();
-        g.setColour (kCardEdge);
+        g.setColour (findColour (pdui::panelEdge));
         g.drawRect (sel, 1);
 
         for (int i = 0; i < static_cast<int> (banks.size()); ++i)
@@ -688,24 +742,24 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
                 g.setColour (banks[(std::size_t) i].colour.withAlpha (0.10f));
                 g.fillRect (seg.reduced (1));
             }
-            g.setColour (kCardEdge);
+            g.setColour (findColour (pdui::panelEdge));
             g.fillRect (seg.getRight(), seg.getY(), 1, seg.getHeight());
 
             auto inner = seg.reduced (8, 3);
-            g.setFont (monoFont (10.0f));
-            g.setColour (on ? banks[(std::size_t) i].colour : kLabelCol.withAlpha (0.65f));
+            g.setFont (pdui::labelFont (*this, 10.0f));
+            g.setColour (on ? banks[(std::size_t) i].colour : findColour (pdui::textDim).withAlpha (0.65f));
             g.drawText (banks[(std::size_t) i].name, inner.removeFromTop (13),
                         juce::Justification::centredLeft);
-            g.setFont (monoFont (8.0f));
-            g.setColour (on ? kLabelCol : kLabelCol.withAlpha (0.45f));
+            g.setFont (pdui::labelFont (*this, 8.0f));
+            g.setColour (on ? findColour (pdui::textDim) : findColour (pdui::textDim).withAlpha (0.45f));
             g.drawText (banks[(std::size_t) i].dest, inner, juce::Justification::topLeft);
         }
 
         // Trailing segment: what the graph is and how to drive it, including
         // the sustain stage the envelope is actually holding on.
         auto hint = selectorArea().withTrimmedLeft (static_cast<int> (banks.size()) * kEnvSegW + 10);
-        g.setFont (monoFont (8.5f));
-        g.setColour (kLabelCol.withAlpha (0.6f));
+        g.setFont (pdui::labelFont (*this, 8.5f));
+        g.setColour (findColour (pdui::textDim).withAlpha (0.6f));
         const juce::String dot (juce::CharPointer_UTF8 ("\xc2\xb7"));
         g.drawText ("8 STAGES  " + dot + "  SUSTAIN AT " + juce::String (susStage)
                         + "  " + dot + "  DRAG: UP/DOWN = LEVEL, LEFT/RIGHT = RATE",
@@ -715,29 +769,29 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
     // --- NUMERIC expander --------------------------------------------------
     {
         auto ex = expanderArea();
-        g.setColour (expanded ? juce::Colour (0xff123322) : kCardBg);
+        g.setColour (expanded ? findColour (pdui::tabOnBg) : findColour (pdui::panelCard));
         g.fillRect (ex);
-        g.setColour (expanded ? kAccent : kCardEdge);
+        g.setColour (expanded ? findColour (pdui::accentCol) : findColour (pdui::panelEdge));
         g.drawRect (ex, 1);
-        g.setFont (monoFont (8.5f));
-        g.setColour (kAccent);
+        g.setFont (pdui::labelFont (*this, 8.5f));
+        g.setColour (findColour (pdui::accentCol));
         g.drawText (juce::String (expanded ? juce::CharPointer_UTF8 ("\xe2\x96\xbe")
                                            : juce::CharPointer_UTF8 ("\xe2\x96\xb8")) + " NUMERIC",
                     ex, juce::Justification::centred);
 
-        g.setFont (monoFont (8.0f));
-        g.setColour (kLabelCol.withAlpha (0.5f));
+        g.setFont (pdui::labelFont (*this, 8.0f));
+        g.setColour (findColour (pdui::textDim).withAlpha (0.5f));
         g.drawText ("all 18 params still automatable",
                     ex.withX (ex.getRight() + 8).withWidth (260), juce::Justification::centredLeft);
     }
     const auto  area  = frame.toFloat().reduced (6.0f, 8.0f);
     const auto  col   = bank.colour;
 
-    g.setColour (kCardEdge);
+    g.setColour (findColour (pdui::panelEdge));
     g.drawRect (frame, 1);
 
     // Horizontal guides; bipolar banks also get a centre line at "no offset".
-    g.setColour (juce::Colour (0xff0e2116));
+    g.setColour (findColour (pdui::screenGrid));
     for (int i = 1; i < 4; ++i)
         g.fillRect (area.getX(), area.getY() + area.getHeight() * i / 4.0f, area.getWidth(), 1.0f);
     if (bank.bipolar)
@@ -770,7 +824,7 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
         g.setColour (col.withAlpha (0.55f));
         for (float y = frame.getY() + 2.0f; y < frame.getBottom() - 2.0f; y += 6.0f)
             g.fillRect (sx, y, 1.0f, 3.0f);
-        g.setFont (monoFont (9.0f));
+        g.setFont (pdui::labelFont (*this, 9.0f));
         g.drawText ("SUS", juce::Rectangle<float> (sx + 3.0f, (float) frame.getY() + 2.0f, 30.0f, 11.0f),
                     juce::Justification::centredLeft);
     }
@@ -780,7 +834,7 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
     {
         const auto np = nodePos (i);
         const bool lit = (i == dragNode || i == hoverNode);
-        g.setColour (kCardBg);
+        g.setColour (findColour (pdui::panelCard));
         g.fillRect (np.x - kNodeR, np.y - kNodeR, kNodeR * 2.0f, kNodeR * 2.0f);
         g.setColour (lit ? juce::Colours::white.interpolatedWith (col, 0.6f) : col);
         g.drawRect (juce::Rectangle<float> (np.x - kNodeR, np.y - kNodeR, kNodeR * 2.0f, kNodeR * 2.0f), 1.4f);
@@ -796,18 +850,18 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
             + "   L" + juce::String (hoverNode + 1) + " "
             + (lp != nullptr ? lp->getCurrentValueAsText() : juce::String());
 
-        g.setFont (monoFont (9.5f));
+        g.setFont (pdui::valueFont (*this, 9.5f));
         const int tw = g.getCurrentFont().getStringWidth (txt) + 12;
         auto box = juce::Rectangle<int> ((int) np.x + 8, (int) np.y - 9, tw, 17);
         if (box.getRight() > frame.getRight() - 2) box.setX ((int) np.x - 8 - tw);
-        g.setColour (kCardBg);   g.fillRect (box);
+        g.setColour (findColour (pdui::panelCard));   g.fillRect (box);
         g.setColour (col.withAlpha (0.7f)); g.drawRect (box, 1);
         g.setColour (col);       g.drawText (txt, box.reduced (6, 0), juce::Justification::centredLeft);
     }
 
     // Stage numbers along the bottom edge of the graph.
-    g.setFont (monoFont (8.5f));
-    g.setColour (kLabelCol.withAlpha (0.7f));
+    g.setFont (pdui::valueFont (*this, 8.5f));
+    g.setColour (findColour (pdui::textDim).withAlpha (0.7f));
     for (int i = 0; i < 8; ++i)
     {
         const float x0 = (i == 0 ? area.getX() : nodePos (i - 1).x);
@@ -852,9 +906,9 @@ PDHybridEditor::LabeledKnob& PDHybridEditor::addKnob (const juce::String& paramI
     knob->label.setText (text, juce::dontSendNotification);
     knob->label.setJustificationType (juce::Justification::centred);
     // Large knobs get the bright accent label so the promoted controls read first.
-    knob->label.setFont (monoFont (size == KnobSize::Large ? 11.0f : 10.5f));
+    knob->label.setFont (pdui::labelFont (*this, size == KnobSize::Large ? 11.0f : 10.5f));
     knob->label.setColour (juce::Label::textColourId,
-                           size == KnobSize::Large ? kAccent : kLabelCol);
+                           size == KnobSize::Large ? findColour (pdui::accentCol) : findColour (pdui::textDim));
 
     knob->paramId = paramId;
     knob->attachment = std::make_unique<SliderAttachment> (proc.apvts, paramId, knob->slider);
@@ -899,13 +953,15 @@ void PDHybridEditor::buildSections()
     oscACycle.attach (proc.apvts, "oscA");
     oscA.title  = "Osc A";
     oscA.cols   = 6;
-    oscA.span   = 3;
+    oscA.span   = 1;
+    oscA.column = 0;
     oscA.custom = &oscACycle;
-    oscA.customH = 56;
+    oscA.customH = 42;
     oscA.combos = { &addCombo ("oscAType", kOscTypeNames), &addCombo ("oscAWave", kPdWaveNames),
                     &addCombo ("oscAWave2", kPdWaveNames),
                     &addCombo ("oscAExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
-    oscA.toggles = { &addToggle ("oscACombine", "CMB") };
+    // ON is the mixer mute: it silences the oscillator without moving its Level.
+    oscA.toggles = { &addToggle ("oscAOn", "ON"), &addToggle ("oscACombine", "CMB") };
     // NOTE: updateOscControls() addresses knobs 0/1/2 as amount / width / engine.
     oscA.knobs  = { &addKnob ("oscAAmount", "PD Amt", 2, KnobSize::Large),
                     &addKnob ("oscAPulseWidth", "Width"),
@@ -918,13 +974,14 @@ void PDHybridEditor::buildSections()
     oscBCycle.attach (proc.apvts, "oscB");
     oscB.title  = "Osc B";
     oscB.cols   = 6;
-    oscB.span   = 3;
+    oscB.span   = 1;
+    oscB.column = 1;
     oscB.custom = &oscBCycle;
-    oscB.customH = 56;
+    oscB.customH = 42;
     oscB.combos = { &addCombo ("oscBType", kOscTypeNames), &addCombo ("oscBWave", kPdWaveNames),
                     &addCombo ("oscBWave2", kPdWaveNames),
                     &addCombo ("oscBExcite", { "Pluck", "Impulse", "Noise", "Triangle" }) };
-    oscB.toggles = { &addToggle ("oscBCombine", "CMB") };
+    oscB.toggles = { &addToggle ("oscBOn", "ON"), &addToggle ("oscBCombine", "CMB") };
     oscB.knobs  = { &addKnob ("oscBAmount", "PD Amt", 2, KnobSize::Large),
                     &addKnob ("oscBPulseWidth", "Width"),
                     &addKnob ("oscBEngine", "Engine"),
@@ -935,17 +992,56 @@ void PDHybridEditor::buildSections()
 
     mixer.title  = "Mixer";
     mixer.cols   = 4;
-    mixer.span   = 2;
+    mixer.span   = 1;
+    mixer.column = 0;
     mixer.combos = { &addCombo ("oscCrossMod", { "No Cross Mod", "Hard Sync", "Phase Mod" }) };
     mixer.knobs  = { &addKnob ("noiseLevel", "Noise"), &addKnob ("ringMod", "Ring"),
                      &addKnob ("noiseMod", "N.Mod"), &addKnob ("crossModAmount", "X-Amt") };
+    // The wavetable is shared by both oscillator slots, so it belongs with the
+    // mixer rather than inside either Osc card.
+    wavetableButton.onClick = [this] { chooseWavetable(); };
+    refreshWavetableButton();
+    mixer.toggles = { &wavetableButton };
+
+    // Chord mode. Wide card: the keyboard graphic is the documentation, so it
+    // needs the room to stay legible.
+    chordKeys.attach (proc.apvts,
+                      [this] { return proc.chordHeldRoot(); },
+                      [this] (int* out, int maxOut) { return proc.chordVoicedNotes (out, maxOut); });
+    chordSec.title   = "Chord";
+    chordSec.cols    = 3;
+    chordSec.span    = 1;
+    chordSec.column  = 2;
+    chordSec.custom  = &chordKeys;
+    chordSec.customH = 70;
+    chordSec.toggles = { &addToggle ("chordOn", "ON") };
+    // Must match the chordVoicing choice parameter exactly, in order.
+    chordSec.combos  = { &addCombo ("chordVoicing", { "Voice-Led", "Root Position",
+                                                      "Closed", "Drop-2", "Shell" }) };
+    chordSec.knobs   = { &addKnob ("chordSplit", "Split", 0),
+                         &addKnob ("chordSpread", "Spread"),
+                         &addKnob ("chordOctave", "Octave", 0) };
+
+    // Names whatever is sounding, chord mode or not: hold a triad by hand with
+    // chord mode off and it still reads it. Sits under Chord because that is
+    // where the space is and where you look while setting a split up, but it is
+    // fed from every note reaching the synth, not from ChordMode's output.
+    chordReadout.attach ([this] (int* out, int maxOut)
+                         { return proc.soundingNotes (out, maxOut); });
+    chordIdSec.title   = "Chord ID";
+    chordIdSec.cols    = 1;
+    chordIdSec.span    = 1;
+    chordIdSec.column  = 2;
+    chordIdSec.custom  = &chordReadout;
+    chordIdSec.customH = 64;
 
     bassCurve.attach (proc.apvts, "bassAttack", "bassDecay", "bassSustain", "bassRelease");
     bassSec.title   = "Mono Bass";
     bassSec.cols    = 5;
-    bassSec.span    = 4;
+    bassSec.span    = 1;
+    bassSec.column  = 2;
     bassSec.custom  = &bassCurve;
-    bassSec.customH = 46;
+    bassSec.customH = 42;
     bassSec.toggles = { &addToggle ("bassOn", "ON") };
     bassSec.combos  = { &addCombo ("bassWave", { "Saw", "Square", "Triangle", "Pulse" }),
                         &addCombo ("bassPriority", { "Last", "Top", "Bottom" }) };
@@ -957,13 +1053,19 @@ void PDHybridEditor::buildSections()
 
     unison.title = "Unison / Drift";
     unison.cols  = 4;
-    unison.span  = 2;
+    unison.span  = 1;
+    unison.column = 1;
     unison.knobs = { &addKnob ("unisonVoices", "Voices", 0), &addKnob ("unisonDetune", "Detune"),
-                     &addKnob ("unisonWidth", "Width"), &addKnob ("drift", "Drift") };
+                     &addKnob ("unisonWidth", "Width"), &addKnob ("unisonSpread", "Spread"),
+                     &addKnob ("drift", "Drift"), &addKnob ("fxSend", "FX Send") };
 
     glideSec.title  = "Glide";
     glideSec.cols   = 2;
     glideSec.span   = 1;
+    // Glide is the taller of the two; it goes in the column with the shorter
+    // Mixer so the two columns finish level. Unison / Drift is 160 px against
+    // Mixer.s 113, so the short card belongs beside Unison, not beside Mixer.
+    glideSec.column = 0;
     glideSec.combos = { &addCombo ("glideMode", { "Off", "Always", "Legato" }) };
     glideSec.knobs  = { &addKnob ("glideTime", "Time"), &addKnob ("glideCurve", "Curve") };
 
@@ -971,7 +1073,8 @@ void PDHybridEditor::buildSections()
     // Signal topology gets its own card instead of hiding in three unrelated ones.
     routingSec.title   = "Routing";
     routingSec.cols    = 1;
-    routingSec.span    = 3;
+    routingSec.span    = 1;
+    routingSec.column  = 2;
     routingSec.combos  = { &addCombo ("filterRouting", { "Single Filter", "Filters Series", "Filters Parallel" }),
                            &addCombo ("drivePos", { "Drive Post Filter", "Drive Pre Filter" }),
                            &addCombo ("fxRouting", { "Delay -> Reverb", "Reverb -> Delay", "Reverb, Dry Delay" }) };
@@ -979,11 +1082,12 @@ void PDHybridEditor::buildSections()
     // the whole point of collecting them here.
     routingDiagram.attach (proc.apvts);
     routingSec.custom  = &routingDiagram;
-    routingSec.customH = 78;
+    routingSec.customH = 62;
 
     pluckSec.title   = "Pluck";
     pluckSec.cols    = 4;
-    pluckSec.span    = 2;
+    pluckSec.span    = 1;
+    pluckSec.column  = 1;
     pluckSec.toggles = { &addToggle ("pluckOn", "ON") };
     pluckSec.knobs   = { &addKnob ("pluckDecay", "Decay"), &addKnob ("pluckDamp", "Damp"),
                          &addKnob ("pluckDispersion", "Disp"), &addKnob ("pluckBurst", "Burst", 1) };
@@ -991,9 +1095,10 @@ void PDHybridEditor::buildSections()
     driveCurve.attach (proc.apvts, "driveType", "drive", "bias");
     drive.title   = "Overdrive";
     drive.cols    = 3;
-    drive.span    = 3;
+    drive.span    = 1;
+    drive.column  = 2;
     drive.custom  = &driveCurve;
-    drive.customH = 68;
+    drive.customH = 52;
     drive.toggles = { &addToggle ("driveOn", "ON") };
     drive.combos  = { &addCombo ("driveType",
                        { "Soft", "Cubic", "Hard Clip", "Tube", "Diode", "Fuzz", "Rectify",
@@ -1009,14 +1114,15 @@ void PDHybridEditor::buildSections()
     filt1Curve.attach (proc.apvts, "filterEnvA", "filterEnvD", "filterEnvS", "filterEnvR");
     filter.title    = "Filter 1";
     filter.cols     = 5;
-    filter.span     = 3;
+    filter.span     = 1;
+    filter.column   = 0;
     filter.custom   = &filt1Resp;
-    filter.customH  = 68;
+    filter.customH  = 52;
     filter.custom2  = &filt1Curve;
-    filter.customH2 = 50;
+    filter.customH2 = 40;
     filter.knobSplit = 5;
-    filter.combos = { &addCombo ("filterType",
-                        { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }) };
+    filter.combos = { &addCombo ("filterType", kFilterTypeNames) };
+    filter.toggles = { &addToggle ("filtEnvSync", "SYNC") };
     filter.knobs  = { &addKnob ("cutoff", "Cutoff", 2, KnobSize::Large),
                       &addKnob ("resonance", "Reso", 2, KnobSize::Large),
                       &addKnob ("filterMorph", "Morph"), &addKnob ("keyTrack", "Key Trk"),
@@ -1030,14 +1136,15 @@ void PDHybridEditor::buildSections()
     filt2Curve.attach (proc.apvts, "filter2EnvA", "filter2EnvD", "filter2EnvS", "filter2EnvR");
     filter2.title    = "Filter 2";
     filter2.cols     = 5;
-    filter2.span     = 3;
+    filter2.span     = 1;
+    filter2.column   = 1;
     filter2.custom   = &filt2Resp;
-    filter2.customH  = 68;
+    filter2.customH  = 52;
     filter2.custom2  = &filt2Curve;
-    filter2.customH2 = 50;
+    filter2.customH2 = 40;
     filter2.knobSplit = 4;
-    filter2.combos = { &addCombo ("filter2Type",
-                        { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }) };
+    filter2.combos = { &addCombo ("filter2Type", kFilterTypeNames) };
+    filter2.toggles = { &addToggle ("filt2EnvSync", "SYNC") };
     filter2.knobs  = { &addKnob ("filter2Cutoff", "Cutoff", 2, KnobSize::Large),
                        &addKnob ("filter2Res", "Reso", 2, KnobSize::Large),
                        &addKnob ("filter2Morph", "Morph"), &addKnob ("filter2EnvAmount", "Env Amt"),
@@ -1055,9 +1162,11 @@ void PDHybridEditor::buildSections()
     modCurve.attach (proc.apvts, "modEnvA", "modEnvD", "modEnvS", "modEnvR");
     modEnv.title   = "Mod Env";
     modEnv.cols    = 4;
-    modEnv.span    = 2;
+    modEnv.span    = 1;
+    modEnv.column  = 2;
     modEnv.custom  = &modCurve;
-    modEnv.customH = 62;
+    modEnv.customH = 48;
+    modEnv.toggles = { &addToggle ("modEnvSync", "SYNC") };
     modEnv.knobs = { &addKnob ("modEnvA", "Atk"), &addKnob ("modEnvD", "Dec"),
                      &addKnob ("modEnvS", "Sus"), &addKnob ("modEnvR", "Rel") };
 
@@ -1065,8 +1174,10 @@ void PDHybridEditor::buildSections()
     // draggable curve; see buildStageEnvelopes(). Amber-titled because the card
     // *is* a modulation source, the same way modulated knobs are ringed amber.
     stageEnvSec.title     = "Multi-Stage Envelopes (CZ)";
-    stageEnvSec.titleCol  = kModCol;
-    stageEnvSec.span      = 4;   // LFO 1 / LFO 2 stack beside it in the other two
+    stageEnvSec.titleCol  = findColour (pdui::liveCol);
+    // Full-width band: the sixteen numeric knobs need more width than one
+    // column can give, so this card takes a row of its own.
+    stageEnvSec.span      = kGridCols;
     stageEnvSec.custom    = &stageEnv;
     stageEnvSec.customH   = stageEnv.preferredHeight();
 
@@ -1080,12 +1191,12 @@ void PDHybridEditor::buildSections()
     });
     lfo.title   = "LFO 1";
     lfo.cols    = 3;
-    lfo.span    = 2;
+    lfo.span    = 1;
+    lfo.column  = 0;
     lfo.toggles = { &addToggle ("lfoRetrig", "RETRIG") };
     lfo.combos  = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames) };
     lfo.custom  = &lfo1Head;
     lfo.customH = kCellH;
-    lfo.stackId = 1;   // LFO 1 above LFO 2, beside the envelope card
     lfo.cols    = 2;
     lfo.knobs   = { &addKnob ("lfoFade", "Fade"), &addKnob ("lfoPhase", "Phase") };
     {
@@ -1112,12 +1223,12 @@ void PDHybridEditor::buildSections()
     });
     lfo2.title   = "LFO 2";
     lfo2.cols    = 3;
-    lfo2.span    = 2;
+    lfo2.span    = 1;
+    lfo2.column  = 1;
     lfo2.toggles = { &addToggle ("lfo2Retrig", "RETRIG") };
     lfo2.combos  = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames) };
     lfo2.custom  = &lfo2Head;
     lfo2.customH = kCellH;
-    lfo2.stackId = 1;
     lfo2.cols    = 2;
     lfo2.knobs   = { &addKnob ("lfo2Fade", "Fade"), &addKnob ("lfo2Phase", "Phase") };
     {
@@ -1138,7 +1249,8 @@ void PDHybridEditor::buildSections()
     // --- Vibrato (Casio CZ-style) ---
     vibratoSec.title   = "Vibrato";
     vibratoSec.cols    = 3;
-    vibratoSec.span    = 2;
+    vibratoSec.span    = 1;
+    vibratoSec.column  = 0;
     vibratoSec.toggles = { &addToggle ("vibratoOn", "ON") };
     vibratoSec.combos  = { &addCombo ("vibratoWave", { "Triangle", "Square", "Ramp Up", "Ramp Down" }) };
     vibratoSec.knobs   = { &addKnob ("vibratoRate", "Rate"), &addKnob ("vibratoDepth", "Depth", 0),
@@ -1147,16 +1259,19 @@ void PDHybridEditor::buildSections()
     // --- Arpeggiator ---
     arpSec.title   = "Arpeggiator";
     arpSec.cols    = 2;
-    arpSec.span    = 2;
+    arpSec.span    = 1;
+    arpSec.column  = 1;
     arpSec.toggles = { &addToggle ("arpOn", "ON"), &addToggle ("arpLatch", "LATCH") };
     arpSec.combos  = { &addCombo ("arpMode", { "Up", "Down", "Up-Down", "Random", "As Played" }),
-                       &addCombo ("arpRate", { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8.", "1/4T", "1/8T" }) };
+                       &addCombo ("arpRate", { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8.", "1/4T", "1/8T" }),
+                       &addCombo ("arpTarget", { "Arp: Poly + Bass", "Arp: Poly Only", "Arp: Bass Only" }) };
     arpSec.knobs   = { &addKnob ("arpOctaves", "Oct", 0), &addKnob ("arpGate", "Gate") };
 
     // ------------------------------------------------------------------ OUT --
     chorusSec.title   = "Chorus";
     chorusSec.cols    = 3;
-    chorusSec.span    = 2;
+    chorusSec.span    = 1;
+    chorusSec.column  = 0;
     chorusSec.toggles = { &addToggle ("chorusOn", "ON") };
     chorusSec.combos  = { &addCombo ("chorusMode", { "Mode I", "Mode II", "Mode I+II" }) };
     chorusSec.knobs   = { &addKnob ("chorusRate", "Rate"), &addKnob ("chorusDepth", "Depth"),
@@ -1165,12 +1280,12 @@ void PDHybridEditor::buildSections()
     delayTaps.attach (proc.apvts);
     delaySec.title   = "Delay";
     delaySec.cols    = 3;
-    delaySec.span    = 2;
+    delaySec.span    = 1;
+    delaySec.column  = 1;
     delaySec.custom  = &delayTaps;
-    delaySec.customH = 56;
-    delaySec.toggles = { &addToggle ("delayOn", "ON") };
-    delaySec.combos  = { &addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" }),
-                         &addCombo ("delaySyncL", kSyncNames), &addCombo ("delaySyncR", kSyncNames) };
+    delaySec.customH = 44;
+    delaySec.toggles = { &addToggle ("delayOn", "ON"), &addToggle ("delaySync", "SYNC") };
+    delaySec.combos  = { &addCombo ("delayMode", { "Mono", "Stereo", "Ping-Pong" }) };
     delaySec.knobs   = { &addKnob ("delayTimeL", "Time L"), &addKnob ("delayTimeR", "Time R"),
                          &addKnob ("delayFeedback", "Fbk"), &addKnob ("delayMix", "Mix"),
                          &addKnob ("delayDuck", "Duck") };
@@ -1178,9 +1293,10 @@ void PDHybridEditor::buildSections()
     reverbDecay.attach (proc.apvts);
     reverbSec.title   = "Reverb";
     reverbSec.cols    = 4;
-    reverbSec.span    = 2;
+    reverbSec.span    = 1;
+    reverbSec.column  = 2;
     reverbSec.custom  = &reverbDecay;
-    reverbSec.customH = 46;
+    reverbSec.customH = 36;
     reverbSec.toggles = { &addToggle ("reverbOn", "ON") };
     reverbSec.knobs   = { &addKnob ("reverbSize", "Size"), &addKnob ("reverbDamp", "Damp"),
                           &addKnob ("reverbWidth", "Width"), &addKnob ("reverbMix", "Mix") };
@@ -1188,21 +1304,22 @@ void PDHybridEditor::buildSections()
     grMeter.setReader ([this] { return proc.gainReductionDb(); });
     comp.title   = "Compressor";
     comp.cols    = 3;
-    comp.span    = 2;
+    comp.span    = 1;
+    comp.column  = 1;
     comp.custom  = &grMeter;
-    comp.customH = 34;
+    comp.customH = 28;
     comp.toggles = { &addToggle ("compOn", "ON") };
     comp.knobs   = { &addKnob ("compThreshold", "Thr", 1, KnobSize::Large),
                      &addKnob ("compRatio", "Ratio"), &addKnob ("compMakeup", "Gain"),
                      &addKnob ("compAttack", "Atk"), &addKnob ("compRelease", "Rel") };
-    comp.stackId = 2;   // sits above Stereo in one grid column
 
     eqResp.attach (proc.apvts);
     globalEqSec.title   = "Global EQ";
     globalEqSec.cols    = 8;
-    globalEqSec.span    = 4;
+    globalEqSec.span    = 1;
+    globalEqSec.column  = 0;
     globalEqSec.custom  = &eqResp;
-    globalEqSec.customH = 72;
+    globalEqSec.customH = 56;
     globalEqSec.toggles = { &addToggle ("globalEqOn", "ON") };
     globalEqSec.knobs = { &addKnob ("geLowFreq", "Lo Hz", 0),  &addKnob ("geLowGain", "Lo dB", 1),
                           &addKnob ("geMid1Freq", "M1 Hz", 0), &addKnob ("geMid1Gain", "M1 dB", 1),
@@ -1211,8 +1328,8 @@ void PDHybridEditor::buildSections()
 
     stereo.title   = "Stereo";
     stereo.cols    = 2;
-    stereo.span    = 2;
-    stereo.stackId = 2;
+    stereo.span    = 1;
+    stereo.column  = 2;
     stereo.knobs   = { &addKnob ("pan", "Pan"), &addKnob ("panSpread", "Spread") };
 
     // --------------------------------------------------------------- GLOBAL --
@@ -1221,14 +1338,15 @@ void PDHybridEditor::buildSections()
     // "Voice" tab did. (voiceMode lives in the performance strip.)
     voiceSec.title = "Voice Allocation";
     voiceSec.cols  = 3;
-    voiceSec.span  = 3;
+    voiceSec.span  = 1;
+    voiceSec.column = 0;
     voiceSec.toggles = { &addToggle ("monoRetrigger", "RETRIG") };
     voiceSec.combos = { &addCombo ("notePriority", { "Priority: Last", "Priority: Top", "Priority: Bottom" }),
                         &addCombo ("stealPolicy", { "Steal Oldest", "Steal Quietest" }),
                         &addCombo ("velCurve", { "Vel Linear", "Vel Soft", "Vel Hard", "Vel Fixed" }) };
     velCurveDisp.attach (proc.apvts, "velCurve");
     voiceSec.custom  = &velCurveDisp;
-    voiceSec.customH = 72;
+    voiceSec.customH = 56;
     voiceSec.knobs = { &addKnob ("polyphony", "Poly", 0, KnobSize::Large),
                        &addKnob ("ampVelSens", "Vel Sens"),
                        &addKnob ("pitchBendRange", "Bend", 0) };
@@ -1236,9 +1354,10 @@ void PDHybridEditor::buildSections()
     scaleDisp.attach (proc.apvts, "tuningScale");
     tuningSec.title  = "Tuning";
     tuningSec.cols   = 3;
-    tuningSec.span   = 3;
+    tuningSec.span   = 1;
+    tuningSec.column  = 1;
     tuningSec.custom  = &scaleDisp;
-    tuningSec.customH = 72;
+    tuningSec.customH = 56;
     tuningSec.combos = { &addCombo ("tuningScale", { "Equal Temperament", "Just Intonation", "Pythagorean" }) };
     tuningSec.knobs  = { &addKnob ("masterTune", "Tune", 1), &addKnob ("transpose", "Transpose", 0) };
 
@@ -1253,7 +1372,8 @@ void PDHybridEditor::buildSections()
     });
     globalLfoSec.title  = "Global LFO";
     globalLfoSec.cols   = 1;
-    globalLfoSec.span   = 4;
+    globalLfoSec.span   = 1;
+    globalLfoSec.column  = 0;
     globalLfoSec.custom  = &globalLfoHead;
     globalLfoSec.customH = kCellH;
     globalLfoSec.combos = { &addCombo ("globalLfoWave", kLfoWaveNames) };
@@ -1274,9 +1394,29 @@ void PDHybridEditor::buildSections()
 
     qualitySec.title  = "Quality";
     qualitySec.cols   = 1;
-    qualitySec.span   = 2;
+    qualitySec.span   = 1;
+    qualitySec.column  = 2;
     qualitySec.combos = { &addCombo ("osQuality", { "Oversampling 1x", "Oversampling 2x",
                                                     "Oversampling 4x", "Oversampling 8x" }) };
+
+    // Tempo. Host mode still falls back to this BPM when no host transport is
+    // present, which is the standalone case.
+    tempoSec.title  = "Tempo";
+    tempoSec.cols   = 1;
+    tempoSec.span   = 1;
+    tempoSec.column  = 1;
+    tempoSec.combos = { &addCombo ("tempoMode", { "Tempo: Host", "Tempo: Local" }) };
+    tempoSec.knobs  = { &addKnob ("internalBpm", "BPM", 1, KnobSize::Large) };
+
+    // Card title colour: dim ink for ordinary cards. stageEnvSec is set to
+    // liveCol above instead -- that card *is* a modulation source, the same
+    // way modulated knobs are ringed in the live colour.
+    for (Section* s : { &oscA, &oscB, &mixer, &chordSec, &glideSec, &unison, &bassSec,
+                         &pluckSec, &drive, &routingSec, &filter, &filter2, &modEnv,
+                         &lfo, &lfo2, &vibratoSec, &arpSec, &chorusSec, &delaySec,
+                         &reverbSec, &comp, &globalEqSec, &stereo, &voiceSec, &tuningSec,
+                         &globalLfoSec, &qualitySec, &tempoSec })
+        s->titleCol = findColour (pdui::textInk);
 }
 
 //==============================================================================
@@ -1338,15 +1478,19 @@ const std::vector<MeterRow> kMeterRows {
 };
 
 // Card frame matching the page cards: black box, thin outline, title in a notch.
-void drawInspCard (juce::Graphics& g, juce::Rectangle<int> b,
-                   const juce::String& title, juce::Colour edge, juce::Colour titleCol)
+// A free function (no Component in scope), so the card background is passed
+// in rather than looked up here; every caller is a Component member that can
+// resolve it via findColour.
+void drawInspCard (juce::Graphics& g, const juce::Component& owner, juce::Rectangle<int> b,
+                   const juce::String& title, juce::Colour cardBg, juce::Colour edge,
+                   juce::Colour titleCol)
 {
-    g.setColour (kCardBg);  g.fillRect (b);
+    g.setColour (cardBg);   g.fillRect (b);
     g.setColour (edge);     g.drawRect (b, 1);
-    g.setFont (monoFont (8.5f));
+    g.setFont (pdui::labelFont (owner, 8.5f));
     const int tw = g.getCurrentFont().getStringWidth (title) + 12;
     juce::Rectangle<int> tag (b.getX() + 8, b.getY() - 1, tw, 12);
-    g.setColour (kCardBg);  g.fillRect (tag);
+    g.setColour (cardBg);   g.fillRect (tag);
     g.setColour (titleCol);
     g.drawText (title, tag.withTrimmedLeft (4), juce::Justification::centredLeft);
 }
@@ -1447,8 +1591,107 @@ void PDHybridEditor::refreshModRings()
     }
 }
 
+PDHybridEditor::LabeledKnob* PDHybridEditor::findKnob (const juce::String& paramId)
+{
+    for (auto& k : knobs)
+        if (k->paramId == paramId)
+            return k.get();
+    return nullptr;
+}
+
+void PDHybridEditor::setupEnvTimeReadouts()
+{
+    // Each group of time controls, paired with the switch that retimes them and
+    // (for the envelopes) the curve that draws them. The delay's two taps work
+    // the same way, so they share the machinery: `maxSeconds` keeps its snap
+    // inside the delay line's two-second reach.
+    struct EnvGroup
+    {
+        const char* sync; const char* a; const char* d; const char* r;
+        pdui::EnvelopeCurve* curve;
+        double maxSeconds;
+    };
+    const EnvGroup kGroups[] = {
+        { "ampEnvSync",   "attack",      "decay",       "release",     &ampCurve,   1.0e9 },
+        { "filtEnvSync",  "filterEnvA",  "filterEnvD",  "filterEnvR",  &filt1Curve, 1.0e9 },
+        { "filt2EnvSync", "filter2EnvA", "filter2EnvD", "filter2EnvR", &filt2Curve, 1.0e9 },
+        { "modEnvSync",   "modEnvA",     "modEnvD",     "modEnvR",     &modCurve,   1.0e9 },
+        { "delaySync",    "delayTimeL",  "delayTimeR",  nullptr,       nullptr,
+          pdhybrid::Delay::kMaxDelaySeconds },
+    };
+
+    for (const auto& g : kGroups)
+    {
+        const juce::String syncId (g.sync);
+        const double maxSeconds = g.maxSeconds;
+        auto synced = [this, syncId]
+        { return proc.apvts.getRawParameterValue (syncId)->load() > 0.5f; };
+
+        for (const char* id : { g.a, g.d, g.r })
+        {
+            if (id == nullptr)
+                continue;
+            auto* k = findKnob (id);
+            if (k == nullptr)
+                continue;
+
+            // Replaces the text the attachment installed from the parameter,
+            // which can only ever render seconds: it knows nothing about the
+            // sync switch or the tempo. Showing "237 ms" for a stage that is
+            // actually playing 250 ms would be a readout that lies.
+            k->slider.textFromValueFunction = [this, synced, maxSeconds] (double v)
+            {
+                if (synced())
+                    return juce::String (pdhybrid::envDivisionName (
+                        pdhybrid::nearestDivisionIndex (v, proc.currentBpm(), maxSeconds)));
+
+                return v < 1.0 ? juce::String (juce::roundToInt (v * 1000.0)) + " ms"
+                               : juce::String (v, 2) + " s";
+            };
+            k->slider.updateText();
+            envTimeKnobs.push_back (k);
+        }
+
+        // The curve draws the time that is actually played, so while SYNC is on
+        // it holds still until the division changes.
+        if (g.curve != nullptr)
+            g.curve->setTimeMapper ([this, synced, maxSeconds] (double seconds)
+            { return pdhybrid::syncedEnvTime (seconds, proc.currentBpm(), synced(), maxSeconds); });
+    }
+
+    // The delay's tap pattern is the same kind of display and needs the same
+    // treatment, or it animates through a division the way the curves did.
+    {
+        auto synced = [this] { return proc.apvts.getRawParameterValue ("delaySync")->load() > 0.5f; };
+        delayTaps.setTimeMapper ([this, synced] (double seconds)
+        {
+            return pdhybrid::syncedEnvTime (seconds, proc.currentBpm(), synced(),
+                                            pdhybrid::Delay::kMaxDelaySeconds);
+        });
+    }
+}
+
+void PDHybridEditor::refreshEnvTimeReadouts()
+{
+    // Cheap change detection: the readouts only need redrawing when a sync
+    // switch flips or the tempo moves, not on every timer tick.
+    juce::String state;
+    for (const char* id : { "ampEnvSync", "filtEnvSync", "filt2EnvSync", "modEnvSync",
+                            "delaySync" })
+        state << (proc.apvts.getRawParameterValue (id)->load() > 0.5f ? '1' : '0');
+    state << juce::String (juce::roundToInt (proc.currentBpm()));
+
+    if (state == lastEnvSyncState)
+        return;
+    lastEnvSyncState = state;
+
+    for (auto* k : envTimeKnobs)
+        k->slider.updateText();
+}
+
 void PDHybridEditor::timerCallback()
 {
+    refreshEnvTimeReadouts();
     refreshModRings();
     layoutInspector();   // the route list grows and shrinks, so re-place the buttons
     inspector.repaint();
@@ -1537,13 +1780,18 @@ void PDHybridEditor::inspectorClicked (const juce::MouseEvent&)
 void PDHybridEditor::paintInspector (juce::Graphics& g)
 {
     auto full = inspector.getLocalBounds();
-    g.setColour (kCardEdge);
+    // Opaque. As a reserved column this only needed an outline, because the page
+    // background sat behind it; as a drawer it floats over the cards, so without
+    // a fill they read straight through it.
+    g.setColour (findColour (pdui::panelCard));
+    g.fillRect (full);
+    g.setColour (findColour (pdui::panelEdge));
     g.drawRect (full, 1);
 
     auto r = full.reduced (8, 6);
 
-    g.setFont (monoFont (9.0f));
-    g.setColour (kLabelCol);
+    g.setFont (pdui::labelFont (*this, 9.0f));
+    g.setColour (findColour (pdui::textDim));
     g.drawText ("INSPECTOR", r.removeFromTop (16), juce::Justification::centredLeft);
     r.removeFromTop (18 + 4);                 // the direction toggle (buttons paint themselves)
 
@@ -1553,19 +1801,22 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
     // The selected card is amber-edged when it is showing a modulation object,
     // matching the amber rings on the panel.
     const bool amber = showDestinations || dest != 0;
-    drawInspCard (g, selCard_,
+    drawInspCard (g, *this, selCard_,
                   showDestinations ? kSrcNames[selectedSource].toUpperCase() + "  MODULATOR"
                                    : "SELECTED",
-                  amber ? kModCol.withAlpha (0.55f) : kCardEdge,
-                  amber ? kModCol : kTitleCol);
-    drawInspCard (g, srcCard_, "MODULATORS " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7"))
-                                 + " LIVE", kCardEdge, kTitleCol);
-    drawInspCard (g, matrixCard_, "MATRIX " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7"))
+                  findColour (pdui::panelCard),
+                  amber ? findColour (pdui::liveCol).withAlpha (0.55f) : findColour (pdui::panelEdge),
+                  amber ? findColour (pdui::liveCol) : findColour (pdui::textInk));
+    drawInspCard (g, *this, srcCard_, "MODULATORS " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7"))
+                                 + " LIVE", findColour (pdui::panelCard),
+                  findColour (pdui::panelEdge), findColour (pdui::textInk));
+    drawInspCard (g, *this, matrixCard_, "MATRIX " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7"))
                                     + " " + juce::String ((int) routes_.size())
-                                    + " / " + juce::String (kNumModRows), kCardEdge, kTitleCol);
+                                    + " / " + juce::String (kNumModRows), findColour (pdui::panelCard),
+                  findColour (pdui::panelEdge), findColour (pdui::textInk));
 
-    g.setFont (monoFont (8.0f));
-    g.setColour (kLabelCol.withAlpha (0.55f));
+    g.setFont (pdui::labelFont (*this, 8.0f));
+    g.setColour (findColour (pdui::textDim).withAlpha (0.55f));
     g.drawFittedText ("Amber rings on the panel mark every knob a route points at. "
                       "Click one to inspect its sources.",
                       matrixCard_.reduced (7, 0).withTrimmedTop (13).withTrimmedBottom (26),
@@ -1575,24 +1826,24 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
 
     // --- what is selected ------------------------------------------------
     auto nameRow = r.removeFromTop (kInspRowH);
-    g.setFont (monoFont (10.5f));
+    g.setFont (pdui::labelFont (*this, 10.5f));
     if (showDestinations)
     {
-        g.setColour (kModCol);
+        g.setColour (findColour (pdui::liveCol));
         g.drawText (kSrcNames[selectedSource], nameRow, juce::Justification::centredLeft);
-        g.setFont (monoFont (8.5f));
-        g.setColour (kLabelCol);
+        g.setFont (pdui::labelFont (*this, 8.5f));
+        g.setColour (findColour (pdui::textDim));
         g.drawText ("modulator", nameRow, juce::Justification::centredRight);
     }
     else
     {
-        g.setColour (dest != 0 ? kModCol : kAccent);
+        g.setColour (dest != 0 ? findColour (pdui::liveCol) : findColour (pdui::accentCol));
         g.drawText (selectedParam.isEmpty() ? "Click a knob" : selectedName,
                     nameRow, juce::Justification::centredLeft);
         if (auto* p = proc.apvts.getParameter (selectedParam))
         {
-            g.setFont (monoFont (9.0f));
-            g.setColour (kLabelCol);
+            g.setFont (pdui::valueFont (*this, 9.0f));
+            g.setColour (findColour (pdui::textDim));
             g.drawText (p->getCurrentValueAsText(), nameRow, juce::Justification::centredRight);
         }
     }
@@ -1602,27 +1853,28 @@ void PDHybridEditor::paintInspector (juce::Graphics& g)
     {
         const auto& rt = routes_[(std::size_t) row.routeIndex];
 
-        g.setFont (monoFont (9.0f));
-        g.setColour (kAccent);
+        g.setFont (pdui::labelFont (*this, 9.0f));
+        g.setColour (findColour (pdui::accentCol));
         g.drawText (showDestinations ? kDstNames[rt.dest] : kSrcNames[rt.source],
                     row.text, juce::Justification::centredLeft);
-        g.setColour (kLabelCol);
+        g.setFont (pdui::valueFont (*this, 9.0f));
+        g.setColour (findColour (pdui::textDim));
         g.drawText (juce::String (rt.depth, 2), row.text, juce::Justification::centredRight);
 
         // Bipolar bar: depth grows left or right of centre.
-        g.setColour (juce::Colour (0xff0e2116));
+        g.setColour (findColour (pdui::screenGrid));
         g.fillRect (row.bar);
         const float d = juce::jlimit (-1.0f, 1.0f, rt.depth);
         const int mid = row.bar.getCentreX();
         const int w   = juce::roundToInt (std::abs (d) * row.bar.getWidth() * 0.5f);
-        g.setColour (kModCol);
+        g.setColour (findColour (pdui::liveCol));
         g.fillRect (d >= 0.0f ? mid : mid - w, row.bar.getY(), juce::jmax (1, w), row.bar.getHeight());
     }
 
     if (routeRows_.empty())
     {
-        g.setFont (monoFont (9.0f));
-        g.setColour (kLabelCol.withAlpha (0.65f));
+        g.setFont (pdui::labelFont (*this, 9.0f));
+        g.setColour (findColour (pdui::textDim).withAlpha (0.65f));
         const juce::String msg = showDestinations
             ? "Goes nowhere yet."
             : (dest == 0 && selectedParam.isNotEmpty() ? "Not a modulation destination."
@@ -1673,11 +1925,11 @@ void PDHybridEditor::buildStageEnvelopes()
     // Parameter ids are "czRate1..8" / "czLevel1..8" for the filter envelope and
     // "<prefix>Rate/Level" for the other two.
     makeBank ("DCO",   "-> pitch",     "pitchEnv", "pitchEnvAmount", "pitchEnvSustain",
-              0, true,  juce::Colour (0xffe8a54b));
+              0, true,  findColour (pdui::liveCol));
     makeBank ("DCW",   "-> PD amount", "dcwEnv",   "dcwEnvAmount",   "dcwEnvSustain",
-              1, true,  juce::Colour (0xffe8a54b));
+              1, true,  findColour (pdui::liveCol));
     makeBank ("MULTI", "-> filter",    "cz",       "czAmount",       "czSustain",
-              2, false, juce::Colour (0xff4be08a));
+              2, false, findColour (pdui::accentCol));
 
     stageEnv.start();
     // Collapsing the numeric rows changes the card's height, so the page it
@@ -1714,7 +1966,7 @@ void PDHybridEditor::buildStrip()
         // rather than inheriting the look-and-feel's phosphor green.
         k->slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
         k->slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
-        k->slider.setColour (juce::Slider::textBoxTextColourId, kValueCol);
+        k->slider.setColour (juce::Slider::textBoxTextColourId, findColour (pdui::textInk));
         strip.addAndMakeVisible (k->slider);
         strip.addAndMakeVisible (k->label);
     }
@@ -1723,6 +1975,23 @@ void PDHybridEditor::buildStrip()
     // cards, so the strip is not just a row of numbers.
     ampCurve.attach (proc.apvts, "attack", "decay", "sustain", "release");
     strip.addAndMakeVisible (ampCurve);
+
+    // The amp envelope's sync switch sits with the amp envelope's own knobs,
+    // where the thing it changes actually is.
+    stripAmpSync = &addToggle ("ampEnvSync", "SYNC");
+    strip.addAndMakeVisible (*stripAmpSync);
+
+    // Tempo lives in the strip because everything synced reads from it -- the
+    // arp, both LFOs, the delay and now the envelopes. It was previously only
+    // on the Global page, where it was effectively invisible.
+    stripBpm = &addKnob ("internalBpm", "BPM", 1, KnobSize::Normal);
+    stripBpm->slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    stripBpm->slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+    stripBpm->slider.setColour (juce::Slider::textBoxTextColourId, findColour (pdui::textInk));
+    strip.addAndMakeVisible (stripBpm->slider);
+    strip.addAndMakeVisible (stripBpm->label);
+    stripTempoMode = &addCombo ("tempoMode", { "HOST", "LOCAL" });
+    strip.addAndMakeVisible (*stripTempoMode);
 
     stripPoly = &addCombo ("voiceMode", { "Poly", "Mono", "Legato", "Unison Legato" });
     strip.addAndMakeVisible (*stripPoly);
@@ -1736,22 +2005,22 @@ void PDHybridEditor::buildStrip()
     strip.onPaint   = [this] (juce::Graphics& g)
     {
         auto b = strip.getLocalBounds();
-        g.setColour (kCardEdge);
+        g.setColour (findColour (pdui::panelEdge));
         g.drawRect (b, 1);
 
         // One card title in a notch, exactly like a page card — no per-cluster
         // captions; the dividers already group the clusters.
-        g.setFont (monoFont (9.5f));
+        g.setFont (pdui::labelFont (*this, 9.5f));
         {
             const juce::String title = "PERFORMANCE - ALWAYS VISIBLE";
             const int tw = g.getCurrentFont().getStringWidth (title) + 14;
-            g.setColour (kCardBg);
+            g.setColour (findColour (pdui::panelCard));
             g.fillRect (b.getX() + 12, b.getY() - 1, tw, kStripCapH);
-            g.setColour (kTitleCol);
+            g.setColour (findColour (pdui::textInk));
             g.drawText (title, b.getX() + 17, b.getY() - 1, tw, kStripCapH,
                         juce::Justification::centredLeft);
         }
-        g.setColour (kCardEdge);
+        g.setColour (findColour (pdui::panelEdge));
         for (int x : stripDividers_)
             g.fillRect (x, b.getY() + kStripCapH, 1, b.getHeight() - kStripCapH - 8);
 
@@ -1760,8 +2029,8 @@ void PDHybridEditor::buildStrip()
         if (stripPoly != nullptr)
             if (auto* p = proc.apvts.getParameter ("polyphony"))
             {
-                g.setFont (monoFont (9.0f));
-                g.setColour (kLabelCol);
+                g.setFont (pdui::valueFont (*this, 9.0f));
+                g.setColour (findColour (pdui::textDim));
                 g.drawText (p->getCurrentValueAsText() + " VOICES",
                             stripPoly->getBounds().translated (0, -12).withHeight (11),
                             juce::Justification::centredLeft);
@@ -1811,13 +2080,27 @@ void PDHybridEditor::layoutStrip()
         placeKnob (stripKnobs[3], z.removeFromLeft (88));
     }
     divider();
-    {   // Curve across the top, its four knobs in a single row underneath.
+    {   // Curve across the top with the SYNC switch on its right, then the four
+        // knobs in a single row underneath. SYNC belongs here, next to the
+        // envelope it retimes, rather than on another page.
         auto z = group ("", 248, kStripCurveH + 4 + kCellH);
-        ampCurve.setBounds (z.removeFromTop (kStripCurveH));
+        auto curveRow = z.removeFromTop (kStripCurveH);
+        stripAmpSync->setBounds (curveRow.removeFromRight (40)
+                                     .withSizeKeepingCentre (38, 18));
+        curveRow.removeFromRight (4);
+        ampCurve.setBounds (curveRow);
         z.removeFromTop (4);
         const int cw = z.getWidth() / 4;
         for (int i = 0; i < 4; ++i)
             placeKnob (stripKnobs[4 + i], z.removeFromLeft (cw));
+    }
+    divider();
+
+    {   // Tempo: the mode above, the BPM knob below.
+        auto z = group ("", 74, kComboRowH + 4 + kCellH);
+        stripTempoMode->setBounds (z.removeFromTop (kComboRowH).reduced (2, 1));
+        z.removeFromTop (4);
+        placeKnob (stripBpm, z);
     }
     divider();
 
@@ -1886,18 +2169,93 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         abButton.setButtonText (abSlot_ == 0 ? "A/B: A" : "A/B: B");
     };
 
-    // CRT effect toggle (persisted as a non-automatable property on the state
-    // tree, so it survives reopening the editor without being a synth param).
-    addAndMakeVisible (crtButton);
-    crtButton.setClickingTogglesState (true);
-    const bool crtOn = (bool) proc.apvts.state.getProperty ("crtEnabled", true);
-    crtButton.setToggleState (crtOn, juce::dontSendNotification);
-    crtOverlay.setEffectEnabled (crtOn);
-    crtButton.onClick = [this]
+    // Theme is a display preference, not a patch setting: it is stored as a
+    // property on the state tree rather than as a parameter, so it is neither
+    // automatable nor swapped by A/B compare.
+    // Inspector drawer handle. Stored on the state tree beside the theme: a
+    // display preference, not a patch setting.
+    addAndMakeVisible (inspectorHandle);
+    inspectorOpen_ = (bool) proc.apvts.state.getProperty ("inspectorOpen", false);
+    inspectorHandle.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    inspectorHandle.onMouseDown = [this] (const juce::MouseEvent&)
     {
-        const bool on = crtButton.getToggleState();
-        crtOverlay.setEffectEnabled (on);
-        proc.apvts.state.setProperty ("crtEnabled", on, nullptr);
+        inspectorOpen_ = ! inspectorOpen_;
+        proc.apvts.state.setProperty ("inspectorOpen", inspectorOpen_, nullptr);
+        resized();
+    };
+    inspectorHandle.onPaint = [this] (juce::Graphics& g)
+    {
+        auto b = inspectorHandle.getLocalBounds();
+
+        // A raised tab, the same material as a card, so it reads as something
+        // to grab rather than a sliver of background.
+        g.setColour (findColour (pdui::panelCard));
+        g.fillRect (b);
+        g.setColour (findColour (pdui::panelEdge));
+        g.drawRect (b, 1);
+        g.setColour (findColour (pdui::panelHighlight));
+        g.fillRect (b.getX() + 1, b.getY() + 1, b.getWidth() - 2, 1);
+
+        // A solid arrowhead pointing the way the drawer will move. Filled, not a
+        // glyph: at this width a text chevron is a few grey pixels.
+        const float cx = (float) b.getCentreX();
+        const float cy = (float) b.getCentreY();
+        const float w  = 4.5f, h = 7.0f;
+        juce::Path arrow;
+        if (inspectorOpen_)   // points right: it will close
+        {
+            arrow.startNewSubPath (cx - w * 0.5f, cy - h);
+            arrow.lineTo (cx + w * 0.5f, cy);
+            arrow.lineTo (cx - w * 0.5f, cy + h);
+        }
+        else                  // points left: it will open
+        {
+            arrow.startNewSubPath (cx + w * 0.5f, cy - h);
+            arrow.lineTo (cx - w * 0.5f, cy);
+            arrow.lineTo (cx + w * 0.5f, cy + h);
+        }
+        arrow.closeSubPath();
+        g.setColour (findColour (pdui::accentCol));
+        g.fillPath (arrow);
+
+        // Grip dots above and below, the universal "drag or click me" texture.
+        g.setColour (findColour (pdui::textFaint));
+        for (int i = 0; i < 3; ++i)
+        {
+            const float dy = 22.0f + (float) i * 5.0f;
+            g.fillRect (cx - 1.0f, cy - dy, 2.0f, 2.0f);
+            g.fillRect (cx - 1.0f, cy + dy, 2.0f, 2.0f);
+        }
+
+        // The word itself, running down the tab, so nothing has to be guessed.
+        if (b.getHeight() > 150)
+        {
+            g.saveState();
+            g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi,
+                                                             cx, cy));
+            g.setFont (pdui::labelFont (*this, 8.5f));
+            g.setColour (findColour (pdui::textDim));
+            g.drawText ("INSPECTOR",
+                        juce::Rectangle<float> (cx - 90.0f, cy + 46.0f, 180.0f, 12.0f).toNearestInt(),
+                        juce::Justification::centred);
+            g.restoreState();
+        }
+    };
+
+    addAndMakeVisible (themeBox);
+    for (int i = 0; i < pdtheme::kNumThemes; ++i)
+        themeBox.addItem (pdtheme::themeName (static_cast<pdtheme::ThemeId> (i)), i + 1);
+
+    const int storedTheme = (int) proc.apvts.state.getProperty ("themeId", 0);
+    themeBox.setSelectedId (juce::jlimit (1, pdtheme::kNumThemes, storedTheme + 1),
+                            juce::dontSendNotification);
+    applyTheme (static_cast<pdtheme::ThemeId> (themeBox.getSelectedId() - 1));
+
+    themeBox.onChange = [this]
+    {
+        const auto id = static_cast<pdtheme::ThemeId> (themeBox.getSelectedId() - 1);
+        proc.apvts.state.setProperty ("themeId", (int) id, nullptr);
+        applyTheme (id);
     };
 
     refreshPresetList();
@@ -1912,7 +2270,16 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // steal the combo's onChange, which the ComboBoxAttachment owns.
     proc.apvts.addParameterListener ("oscAType", this);
     proc.apvts.addParameterListener ("oscBType", this);
+    // Combine gates the PD Wave 2 combo, so the greying has to follow it too.
+    proc.apvts.addParameterListener ("oscACombine", this);
+    proc.apvts.addParameterListener ("oscBCombine", this);
+    proc.apvts.addParameterListener ("filterType", this);
+    proc.apvts.addParameterListener ("filter2Type", this);
     updateOscControls();
+
+    // After every knob and its attachment exist: the attachment installs the
+    // parameter's own text function, so this has to override it afterwards.
+    setupEnvTimeReadouts();
 
     // --- Modulation matrix widgets (hosted on the Modulation tab) ---
     for (int i = 0; i < kNumModRows; ++i)
@@ -1932,9 +2299,9 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         modDepthSlider[i].setNumDecimalPlacesToDisplay (2);
         // Set explicitly rather than relying on inheritance: these live on an
         // overlay rather than inside a page, and rendered with default colours.
-        modDepthSlider[i].setColour (juce::Slider::textBoxTextColourId, kValueCol);
-        modDepthSlider[i].setColour (juce::Slider::textBoxBackgroundColourId, kCardBg);
-        modDepthSlider[i].setColour (juce::Slider::textBoxOutlineColourId, kCardEdge);
+        modDepthSlider[i].setColour (juce::Slider::textBoxTextColourId, findColour (pdui::textInk));
+        modDepthSlider[i].setColour (juce::Slider::textBoxBackgroundColourId, findColour (pdui::panelCard));
+        modDepthSlider[i].setColour (juce::Slider::textBoxOutlineColourId, findColour (pdui::panelEdge));
         matrixHolder.addAndMakeVisible (modDepthSlider[i]);
         modDepthAtt[i] = std::make_unique<SliderAttachment> (proc.apvts, "mod" + s + "Depth", modDepthSlider[i]);
 
@@ -1962,10 +2329,10 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
     // --- Assemble tabs ---
     tabs.setTabBarDepth (30);
-    tabs.setColour (juce::TabbedComponent::backgroundColourId, kBg);
-    tabs.setColour (juce::TabbedComponent::outlineColourId, kCardEdge);
-    tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::tabTextColourId, kLabelCol);
-    tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::frontTextColourId, kAccent);
+    tabs.setColour (juce::TabbedComponent::backgroundColourId, findColour (pdui::panelBg));
+    tabs.setColour (juce::TabbedComponent::outlineColourId, findColour (pdui::panelEdge));
+    tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::tabTextColourId, findColour (pdui::textDim));
+    tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::frontTextColourId, findColour (pdui::accentCol));
     addAndMakeVisible (tabs);
 
     struct Page { juce::String name; std::vector<Section*> secs; juce::Component* trailing; juce::String trailingTitle; int trailingH; };
@@ -1974,19 +2341,20 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // where a control sits now tells you when it happens. Global settings sit
     // off the path entirely.
     std::vector<Page> layout {
-        { "1 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " VOICE",
-                        { &oscA, &oscB, &mixer, &bassSec, &pluckSec, &unison, &glideSec },
+        { "VOICE",
+                        { &oscA, &oscB, &mixer, &bassSec, &pluckSec, &unison, &glideSec, &chordSec,
+                          &chordIdSec },
                                                                                 nullptr, {}, 0 },
-        { "2 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " SHAPE",
+        { "SHAPE",
                         { &filter, &filter2, &routingSec, &drive },              nullptr, {}, 0 },
-        { "3 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " MOD",
+        { "MOD",
                         { &stageEnvSec, &lfo, &lfo2,
                           &modEnv, &vibratoSec, &arpSec },                      nullptr, {}, 0 },
-        { "4 " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " OUT",
-                        { &chorusSec, &delaySec, &reverbSec,
-                          &globalEqSec, &comp, &stereo },                        nullptr, {}, 0 },
-        { juce::String (juce::CharPointer_UTF8 ("\xe2\x9a\x99")) + " GLOBAL",
-                        { &voiceSec, &tuningSec, &globalLfoSec, &qualitySec },  nullptr, {}, 0 },
+        { "OUT",
+                        { &globalEqSec, &delaySec, &reverbSec,
+                          &chorusSec, &comp, &stereo },                        nullptr, {}, 0 },
+        { "GLOBAL",
+                        { &voiceSec, &tuningSec, &globalLfoSec, &tempoSec, &qualitySec },  nullptr, {}, 0 },
     };
 
     for (auto& pg : layout)
@@ -2002,7 +2370,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         scroller->setViewedComponent (panel.get(), false);
         scroller->setScrollBarsShown (true, false);
 
-        tabs.addTab (pg.name, kBg, scroller.get(), false);
+        tabs.addTab (pg.name, findColour (pdui::panelBg), scroller.get(), false);
 
         pages.push_back (std::move (panel));
         scrollers.push_back (std::move (scroller));
@@ -2043,24 +2411,68 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     refreshModRings();
     startTimerHz (12);   // live meters + ring/route refresh
 
-    // Added last so it sits on top of the tabs; it never intercepts the mouse.
-    addAndMakeVisible (crtOverlay);
-
     setResizable (true, true);
-    setResizeLimits (1040, 620, 2600, 1900);
-    // Open at whatever size the *tallest* page actually needs, so nothing has to
-    // be scrolled to be reached. Asking the pages rather than hard-coding a
-    // number means this stays right when cards are added or resized later.
-    {
-        const int w        = 1340;
-        const int contentW = w - kInspW - 12;
-        int tallest = 0;
-        for (auto& page : pages)
-            tallest = juce::jmax (tallest, page->preferredHeight (contentW));
+    setResizeLimits (1100, 700, 2600, 1600);
 
-        const int h = kTopBar + kStripH + tabs.getTabBarDepth() + tallest + kFooterH + 6;
-        setSize (w, juce::jlimit (700, 1900, h));
+    // A fixed opening size, not one derived from the content. The editor used to
+    // grow to fit its tallest page so that nothing ever had to be scrolled --
+    // which produced a 1382 px window, taller than a 1080p screen, and so the
+    // whole editor could not be seen at once. The pages are now packed to fit
+    // this size instead; the Viewport underneath stays as a safety net for
+    // someone who drags the window smaller than the minimum content.
+    setSize (1280, 800);
+}
+
+void PDHybridEditor::applyTheme (pdtheme::ThemeId id)
+{
+    const auto theme = pdui::Theme::fromId (id);
+    lnf.setTheme (theme);
+
+    // Everything below re-applies a colour or font that was resolved once at
+    // construction time (via findColour()/labelFont()) and stashed on a child
+    // component rather than looked up live in that child's own paint(). Those
+    // sites never see setTheme() at all, so without this they would keep
+    // showing the previous skin after a live switch.
+    for (auto& k : knobs)
+        k->label.setFont (pdui::labelFont (*this, k->size == KnobSize::Large ? 11.0f : 10.5f));
+
+    for (auto* k : stripKnobs)
+    {
+        k->slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        k->slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+        k->slider.setColour (juce::Slider::textBoxTextColourId, findColour (pdui::textInk));
     }
+    if (stripBpm != nullptr)
+    {
+        stripBpm->slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        stripBpm->slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+        stripBpm->slider.setColour (juce::Slider::textBoxTextColourId, findColour (pdui::textInk));
+    }
+
+    for (auto& s : modDepthSlider)
+    {
+        s.setColour (juce::Slider::textBoxTextColourId, findColour (pdui::textInk));
+        s.setColour (juce::Slider::textBoxBackgroundColourId, findColour (pdui::panelCard));
+        s.setColour (juce::Slider::textBoxOutlineColourId, findColour (pdui::panelEdge));
+    }
+
+    tabs.setColour (juce::TabbedComponent::backgroundColourId, findColour (pdui::panelBg));
+    tabs.setColour (juce::TabbedComponent::outlineColourId, findColour (pdui::panelEdge));
+    tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::tabTextColourId, findColour (pdui::textDim));
+    tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::frontTextColourId, findColour (pdui::accentCol));
+
+    // addTab() copies a background colour into each tab, so those copies are
+    // stuck on whichever skin was live when the tabs were built -- which left
+    // the whole page area showing the other theme's panel colour after a
+    // switch. Re-stamp every tab, not just the TabbedComponent's own id.
+    for (int i = 0; i < tabs.getNumTabs(); ++i)
+        tabs.setTabBackgroundColour (i, findColour (pdui::panelBg));
+
+    // Pushes a lookAndFeelChanged() through the whole tree, so every child
+    // re-reads its colours. Without this the change only lands on repaint of
+    // whatever happens to be dirty.
+    sendLookAndFeelChange();
+    repaint();
 }
 
 PDHybridEditor::~PDHybridEditor()
@@ -2070,7 +2482,11 @@ PDHybridEditor::~PDHybridEditor()
     for (auto& k : knobs)
         k->slider.removeMouseListener (this);
     proc.apvts.removeParameterListener ("oscAType", this);
+    proc.apvts.removeParameterListener ("oscACombine", this);
+    proc.apvts.removeParameterListener ("oscBCombine", this);
     proc.apvts.removeParameterListener ("oscBType", this);
+    proc.apvts.removeParameterListener ("filterType", this);
+    proc.apvts.removeParameterListener ("filter2Type", this);
     tabs.clearTabs();     // release content components before members are destroyed
     setLookAndFeel (nullptr);
 }
@@ -2101,19 +2517,28 @@ void PDHybridEditor::updateOscControls()
         k->slider.setAlpha (on ? 1.0f : 0.4f);
         k->label.setAlpha  (on ? 1.0f : 0.4f);
     };
-    auto apply = [&] (Section& sec, const char* typeParam)
+    auto apply = [&] (Section& sec, const juce::String& id)
     {
-        const int type = juce::roundToInt (proc.apvts.getRawParameterValue (typeParam)->load());
+        const int type = juce::roundToInt (proc.apvts.getRawParameterValue (id + "Type")->load());
+        const bool combine = proc.apvts.getRawParameterValue (id + "Combine")->load() > 0.5f;
         const auto roles = oscKnobRoles (type);
         // Combos are Type / PD Wave / PD Wave 2 / Excite. The two wave choices and
         // the Combine toggle feed only the PD engine; Excite only the Scanned one.
         comboActive (sec.combos[1], type == 0);
-        comboActive (sec.combos[2], type == 0);
+        // PD Wave 2 is the alternate cycle of the wave-combine mode, so it is
+        // read only while Combine is on -- see PhaseDistortionOscillator, which
+        // picks waveB_ only when (combine_ && useB_). Left always-on it looked
+        // like a duplicate of the first wave selector that did nothing.
+        comboActive (sec.combos[2], type == 0 && combine);
         comboActive (sec.combos[3], roles.exciteActive);
-        for (auto* t : sec.toggles)
+        // Toggles are ON / Combine. Only Combine is PD-only; ON is the mixer
+        // mute and has to stay live for every engine -- greying it out would
+        // leave a non-PD oscillator with no way to silence it.
+        if (sec.toggles.size() > 1)
         {
-            t->setEnabled (type == 0);
-            t->setAlpha (type == 0 ? 1.0f : 0.4f);
+            auto* combine = sec.toggles[1];
+            combine->setEnabled (type == 0);
+            combine->setAlpha (type == 0 ? 1.0f : 0.4f);
         }
         // The three shared timbre knobs relabel to the active engine's role and
         // grey out when it doesn't use them.
@@ -2121,8 +2546,19 @@ void PDHybridEditor::updateOscControls()
         knobRole (sec.knobs[1], roles.pwLabel,     roles.pwActive);
         knobRole (sec.knobs[2], roles.engineLabel, roles.engineActive);
     };
-    apply (oscA, "oscAType");
-    apply (oscB, "oscBType");
+    apply (oscA, "oscA");
+    apply (oscB, "oscB");
+
+    // The filter MORPH knob is the same shared control: it means a different
+    // thing per engine, and the two plain lowpasses don't use it at all.
+    auto applyFilter = [&] (Section& sec, const char* typeParam)
+    {
+        const int type = juce::roundToInt (proc.apvts.getRawParameterValue (typeParam)->load());
+        const auto roles = filterKnobRoles (type);
+        knobRole (sec.knobs[2], roles.morphLabel, roles.morphActive);
+    };
+    applyFilter (filter,  "filterType");
+    applyFilter (filter2, "filter2Type");
 }
 
 void PDHybridEditor::showMatrix (bool shouldShow)
@@ -2171,24 +2607,24 @@ void PDHybridEditor::paintMatrix (juce::Graphics& g)
     // Dim everything behind, then the card itself.
     g.fillAll (juce::Colour (0xcc000000));
 
-    g.setColour (kCardBg);
+    g.setColour (findColour (pdui::panelCard));
     g.fillRect (matrixPanel_);
-    g.setColour (kAccent);
+    g.setColour (findColour (pdui::accentCol));
     g.drawRect (matrixPanel_, 1);
 
     auto head = matrixPanel_.reduced (kCardPad + 4, kCardPad).removeFromTop (kHeaderH);
-    g.setFont (monoFont (11.0f));
-    g.setColour (kTitleCol);
+    g.setFont (pdui::labelFont (*this, 11.0f));
+    g.setColour (findColour (pdui::textInk));
     g.drawText ("MODULATION MATRIX", head, juce::Justification::centredLeft);
-    g.setFont (monoFont (9.0f));
-    g.setColour (kLabelCol);
+    g.setFont (pdui::labelFont (*this, 9.0f));
+    g.setColour (findColour (pdui::textDim));
     g.drawText (juce::String ((int) routes_.size()) + " / " + juce::String (kNumModRows)
                     + " SLOTS IN USE",
                 head, juce::Justification::centredRight);
 
     // Column headings, aligned to the widgets beneath them.
-    g.setFont (monoFont (8.0f));
-    g.setColour (kLabelCol.withAlpha (0.7f));
+    g.setFont (pdui::labelFont (*this, 8.0f));
+    g.setColour (findColour (pdui::textDim).withAlpha (0.7f));
     if (kNumModRows > 0)
     {
         const int y = modSrcBox[0].getY() - 15;
@@ -2206,8 +2642,8 @@ void PDHybridEditor::paintMatrix (juce::Graphics& g)
         for (const auto& rt : routes_)
             if (rt.slot == i + 1) { used = true; break; }
 
-        g.setFont (monoFont (9.0f));
-        g.setColour (used ? kModCol : kLabelCol.withAlpha (0.45f));
+        g.setFont (pdui::valueFont (*this, 9.0f));
+        g.setColour (used ? findColour (pdui::liveCol) : findColour (pdui::textDim).withAlpha (0.45f));
         g.drawText (juce::String (i + 1),
                     modSrcBox[i].getX() - 22, modSrcBox[i].getY(), 18, modSrcBox[i].getHeight(),
                     juce::Justification::centredRight);
@@ -2225,20 +2661,34 @@ void PDHybridEditor::layoutFooter()
 void PDHybridEditor::paintFooter (juce::Graphics& g)
 {
     auto r = footer.getLocalBounds();
-    g.setColour (kCardEdge);
+    g.setColour (findColour (pdui::panelEdge));
     g.fillRect (0, 0, r.getWidth(), 1);
 
-    static const char* names[] = { "VOICE 1/4", "SHAPE 2/4", "MOD 3/4", "OUT 4/4", "GLOBAL" };
+    static const char* names[] = { "VOICE", "SHAPE", "MOD", "OUT", "GLOBAL" };
     const int page = juce::jlimit (0, 4, tabs.getCurrentTabIndex());
 
-    g.setFont (monoFont (9.0f));
-    g.setColour (kLabelCol);
+    g.setFont (pdui::labelFont (*this, 9.0f));
+    g.setColour (findColour (pdui::textDim));
     g.drawText (names[page], r.withTrimmedLeft (6), juce::Justification::centredLeft);
 
     const int active = static_cast<int> (routes_.size());
-    g.setColour (active > 0 ? kModCol : kLabelCol.withAlpha (0.6f));
+    g.setColour (active > 0 ? findColour (pdui::liveCol) : findColour (pdui::textDim).withAlpha (0.6f));
     g.drawText (juce::String (active) + " MOD ROUTE" + (active == 1 ? "" : "S") + " ACTIVE",
                 r.withTrimmedRight (140), juce::Justification::centredRight);
+
+    // Reverse lookup of whatever is sounding, centred. Amber because it is live
+    // state rather than a setting -- the same language the mod meters use.
+    int notes[32];
+    const int n = proc.soundingNotes (notes, 32);
+    if (n > 0)
+    {
+        char nameBuf[pdhybrid::ChordNamer::kMaxName] = { 0 };
+        pdhybrid::ChordNamer::name (notes, n, nameBuf, pdhybrid::ChordNamer::kMaxName);
+
+        g.setFont (pdui::valueFont (*this, 12.0f));
+        g.setColour (findColour (pdui::liveCol));
+        g.drawText (nameBuf, r, juce::Justification::centred);
+    }
 }
 
 void PDHybridEditor::refreshPresetList()
@@ -2300,6 +2750,43 @@ void PDHybridEditor::showPresetMenu()
                                 refreshPresetList();
                             }
                         });
+}
+
+void PDHybridEditor::refreshWavetableButton()
+{
+    const auto name = proc.wavetableName();
+    wavetableButton.setButtonText ("WT: " + (name.isEmpty() ? juce::String ("default") : name));
+}
+
+void PDHybridEditor::chooseWavetable()
+{
+    wavetableChooser = std::make_unique<juce::FileChooser> (
+        "Load a wavetable (single-cycle frames, 2048 samples each)",
+        juce::File::getSpecialLocation (juce::File::userMusicDirectory),
+        "*.wav;*.aif;*.aiff");
+
+    wavetableChooser->launchAsync (juce::FileBrowserComponent::openMode
+                                   | juce::FileBrowserComponent::canSelectFiles,
+        [this] (const juce::FileChooser& fc)
+        {
+            const auto file = fc.getResult();
+            if (file == juce::File{})
+                return;   // cancelled
+
+            if (proc.loadWavetable (file))
+            {
+                refreshWavetableButton();
+                oscACycle.setWavetable (proc.wavetableSet());
+                oscBCycle.setWavetable (proc.wavetableSet());
+            }
+            else
+            {
+                juce::NativeMessageBox::showMessageBoxAsync (
+                    juce::MessageBoxIconType::WarningIcon, "Wavetable",
+                    "Could not read " + file.getFileName()
+                        + ".\nThe previous table is still loaded.");
+            }
+        });
 }
 
 void PDHybridEditor::randomizePatch()
@@ -2364,7 +2851,7 @@ void PDHybridEditor::resized()
     // is an item inside the preset menu, where the preset it deletes is named.
     int x = top.getRight() - 76;
     initButton.setBounds (x, y, 64, 26);
-    x -= 52;  crtButton.setBounds  (x, y, 46, 26);
+    x -= 126; themeBox.setBounds   (x, y, 120, 26);
     x -= 70;  saveButton.setBounds (x, y, 64, 26);
     x -= 58;  abButton.setBounds   (x, y, 52, 26);
     x -= 32;  nextButton.setBounds (x, y, 28, 26);
@@ -2373,27 +2860,67 @@ void PDHybridEditor::resized()
 
     strip.setBounds (r.removeFromTop (kStripH).reduced (kMargin, 4));
     footer.setBounds (r.removeFromBottom (kFooterH).reduced (kMargin, 0));
-    // The Inspector is a column, not a page: it spans the tab area's full height
-    // so nothing in it competes with the strip for the same row.
-    inspector.setBounds (r.removeFromRight (kInspW).reduced (6, 6));
+    // The Inspector is a drawer, not a reserved column. It used to hold 236 px
+    // on every page whether or not anything was selected; the pages need that
+    // width far more than a panel that is empty most of the time. Open, it
+    // overlays the right-hand side rather than squeezing the cards, so the
+    // layout underneath never reflows when it is toggled.
     tabs.setBounds (r);
+
+    // The drawer and its handle. The handle rides the drawer's outer edge, so it
+    // is always the thing you reach for on that side whether the drawer is open
+    // or shut, and the chevron points the way it will move.
+    constexpr int kHandleW = 20;
+    auto drawer = r.withTrimmedTop (tabs.getTabBarDepth());
+
+    inspector.setVisible (inspectorOpen_);
+    if (inspectorOpen_)
+    {
+        auto panel = drawer.removeFromRight (kInspW);
+        inspector.setBounds (panel.reduced (4, 4));
+        inspector.toFront (false);
+    }
+
+    inspectorHandle.setBounds (drawer.getRight() - kHandleW,
+                               drawer.getY() + 4, kHandleW, drawer.getHeight() - 8);
+    inspectorHandle.toFront (false);
+    inspectorHandle.repaint();
     // The overlay covers everything below the title bar, so the dimmed backdrop
     // reads as "the rest of the editor is inactive".
     matrixHolder.setBounds (getLocalBounds().withTrimmedTop (kTopBar));
-    crtOverlay.setBounds (getLocalBounds());
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (kBg);
+    g.fillAll (findColour (pdui::panelBg));
+
+    // Fine vertical grain in the moulding. Transparent on skins that do not
+    // want it, and cheap enough to draw every frame.
+    const auto grain = findColour (pdui::panelGrain);
+    if (! grain.isTransparent())
+    {
+        g.setColour (grain);
+        for (int gx = 0; gx < getWidth(); gx += 3)
+            g.fillRect (gx, 0, 1, getHeight());
+    }
 
     auto top = getLocalBounds().removeFromTop (kTopBar);
-    g.setColour (kTitleCol);
-    g.setFont (monoFont (18.0f));
+    g.setColour (findColour (pdui::textInk));
+    g.setFont (pdui::labelFont (*this, 18.0f));
     g.drawText ("  PD_HYBRID", top, juce::Justification::centredLeft);
-    g.setColour (kLabelCol);
-    g.setFont (monoFont (11.0f));
+    g.setColour (findColour (pdui::textDim));
+    g.setFont (pdui::labelFont (*this, 11.0f));
     g.drawText ("v7", top.withTrimmedLeft (150), juce::Justification::centredLeft);
-    g.setColour (kCardEdge);
+
+    // The coloured legend stripe that ran under the badge on every panel of the
+    // period. It is the theme's accent doing its one clearly-signposted job.
+    if (pdui::themeOf (*this).traits.legendStripe)
+    {
+        auto stripe = top.removeFromBottom (3);
+        g.setColour (findColour (pdui::accentCol));
+        g.fillRect (stripe);
+    }
+
+    g.setColour (findColour (pdui::panelEdge));
     g.fillRect (0, kTopBar - 1, getWidth(), 1);
 }

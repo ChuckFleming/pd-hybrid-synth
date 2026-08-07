@@ -825,8 +825,12 @@ TEST_CASE ("Unison stacks detuned voices and widens the field", "[synth][unison]
     auto s = renderStereo (e2, 16384);
     REQUIRE_FALSE (hasBadValues (s.left));
 
-    // Stacking several voices adds level over the single voice...
-    REQUIRE (rms (s.left) > singleRms * 1.5);
+    // ...at roughly the level of the same note played solo. This assertion used
+    // to read `rms > singleRms * 1.5` -- unison stacked level as well as width,
+    // so a wide patch arrived at the master stage several times over the ceiling
+    // and distorted. Sub-voices are now compensated by 1/sqrt(n), so unison is a
+    // width control, not a loudness control.
+    REQUIRE (rms (s.left) == Approx (singleRms).epsilon (0.45));
 
     // ...and full width pushes the outer voices to opposite sides.
     double diff = 0.0, ref = 0.0;

@@ -39,6 +39,10 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
                    [] (const juce::String& t) { return t.getFloatValue(); });
     auto rate = sv ([] (float x) { return juce::String (x, 2) + " Hz"; },
                     [] (const juce::String& t) { return t.getFloatValue(); });
+    // Integer, no unit: the knob is already labelled BPM and the value box is
+    // only wide enough for a few characters.
+    auto bpmAttr = sv ([] (float x) { return juce::String (juce::roundToInt (x)); },
+                       [] (const juce::String& t) { return t.getFloatValue(); });
     auto ms  = sv ([] (float x) { return juce::String (x, 1) + " ms"; },
                    [] (const juce::String& t) { return t.getFloatValue(); });
     auto ratio = sv ([] (float x) { return juce::String (x, 1) + ":1"; },
@@ -65,7 +69,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::ParameterID { id, 1 }, name, range, def, attr));
     };
 
-    const juce::StringArray oscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh" };
+    const juce::StringArray oscTypeNames { "Phase Distortion", "Saw", "Square", "Triangle", "Pulse", "Vector PS", "Scanned", "VOSIM", "Walsh", "Supersaw", "Harmonic", "PAF", "Granular", "Wavetable" };
     const juce::StringArray pdWaveNames  { "Sawtooth", "Square", "Pulse", "Double Sine",
                                            "Saw-Pulse", "Resonant I", "Resonant II", "Resonant III" };
 
@@ -99,6 +103,10 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
             juce::NormalisableRange<float> (-100.0f, 100.0f), 0.0f, cnt);
         pf (id + "Level", label + " Level",
             juce::NormalisableRange<float> (0.0f, 1.0f), defLevel, pct);
+        // Mixer mute. Defaults to on, so presets saved before it existed load
+        // with the oscillator audible and sound exactly as they did.
+        params.push_back (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { id + "On", 1 }, label + " On", true));
         const juce::NormalisableRange<float> eqRange (-18.0f, 18.0f);
         pf (id + "EqLow",  label + " EQ Low",  eqRange, 0.0f, db);
         pf (id + "EqMid",  label + " EQ Mid",  eqRange, 0.0f, db);
@@ -139,7 +147,8 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "filterType", 1 }, "Filter Type",
-        juce::StringArray { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass" }, 0));
+        juce::StringArray { "Ladder", "State Variable", "PD Resonator", "Comb", "Allpass",
+                            "Formant", "Diode Ladder", "Band Split" }, 0));
 
     pf ("filterMorph", "Filter Morph", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
 
@@ -159,7 +168,7 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
 
     // --- Filter B + routing ---
     const juce::StringArray filterTypeNames { "Ladder", "State Variable", "PD Resonator",
-                                              "Comb", "Allpass" };
+                                              "Comb", "Allpass", "Formant", "Diode Ladder", "Band Split" };
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "filterRouting", 1 }, "Filter Routing",
         juce::StringArray { "Single", "Series", "Parallel" }, 0));
@@ -213,6 +222,12 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     // --- Unison ---
     params.push_back (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { "unisonVoices", 1 }, "Unison Voices", 1, 6, 1));
+    // 0.5 = even spacing (the historical distribution); below bunches toward
+    // the centre pitch, above pushes the stack to the edges of the detune range.
+    pf ("unisonSpread", "Unison Spread", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
+    // Per-voice send into the chorus/delay/reverb group. 1 = the whole voice
+    // goes through them, which is what the chain did before it became a send.
+    pf ("fxSend", "FX Send", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f, pct);
     pf ("unisonDetune", "Unison Detune", juce::NormalisableRange<float> (0.0f, 50.0f), 15.0f, cnt);
     pf ("unisonWidth", "Unison Width", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f, pct);
 
@@ -226,6 +241,49 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("compMakeup", "Comp Makeup", juce::NormalisableRange<float> (0.0f, 24.0f), 0.0f, db);
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "compOn", 1 }, "Compressor On", true));
+
+    // --- Tempo ---
+    // "Local" overrides the host outright; "Host" follows the host but still
+    // falls back to this knob when the host reports no tempo, which is what
+    // makes the standalone build (and any host without a transport) usable.
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "tempoMode", 1 }, "Tempo Source",
+        juce::StringArray { "Tempo: Host", "Tempo: Local" }, 0));
+    pf ("internalBpm", "Local BPM",
+        juce::NormalisableRange<float> (20.0f, 300.0f), 120.0f, bpmAttr);
+
+    // Envelope tempo sync: one switch per envelope, not per stage. Turning it on
+    // snaps that envelope's attack, decay and release to whichever note division
+    // each is nearest at the current tempo, so the knobs keep working exactly as
+    // they did and the whole envelope moves with the tempo together.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "ampEnvSync", 1 }, "Amp Env Sync", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "filtEnvSync", 1 }, "Filter Env Sync", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "filt2EnvSync", 1 }, "Filter 2 Env Sync", false));
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "modEnvSync", 1 }, "Mod Env Sync", false));
+
+    // --- Chord mode ---
+    // A one-octave quality zone latches a chord type; the root zone above it
+    // sets the root. chordQuality is a real parameter rather than hidden state,
+    // so the latched chord saves with the preset and a host can automate it.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "chordOn", 1 }, "Chord Mode", false));
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "chordSplit", 1 }, "Chord Split", 36, 84, 60));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "chordQuality", 1 }, "Chord Quality",
+        juce::StringArray { "maj", "min", "7", "m7", "maj7", "6",
+                            "m7b5", "dim7", "aug", "sus2", "sus4", "m6" }, 0));
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "chordVoicing", 1 }, "Chord Voicing",
+        juce::StringArray { "Voice-Led", "Root Position", "Closed",
+                            "Drop-2", "Shell" }, 0));
+    pf ("chordSpread", "Chord Spread", juce::NormalisableRange<float> (0.0f, 1.0f), 0.4f, pct);
+    params.push_back (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "chordOctave", 1 }, "Chord Octave", -2, 2, 0));
 
     // --- Arpeggiator ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (
@@ -241,6 +299,13 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("arpGate", "Arp Gate", juce::NormalisableRange<float> (0.05f, 1.0f), 0.5f, pct);
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "arpLatch", 1 }, "Arp Latch", false));
+    // Which layer the arp drives. "Both" is index 0 so existing patches keep
+    // their behaviour. A layer the arp does not target still receives the held
+    // notes directly, so e.g. Bass Only arpeggiates the sub while the poly
+    // voices hold the chord.
+    params.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "arpTarget", 1 }, "Arp Target",
+        juce::StringArray { "Arp: Poly + Bass", "Arp: Poly Only", "Arp: Bass Only" }, 0));
 
     // --- Chorus / ensemble ---
     params.push_back (std::make_unique<juce::AudioParameterBool> (
@@ -267,12 +332,12 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     params.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "delayMode", 1 }, "Delay Mode",
         juce::StringArray { "Mono", "Stereo", "Ping-Pong" }, 1));
-    const juce::StringArray delaySyncNames { "Free", "1/1", "1/2", "1/4", "1/8", "1/16",
-                                             "1/4.", "1/8.", "1/4T", "1/8T" };
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { "delaySyncL", 1 }, "Delay Sync L", delaySyncNames, 0));
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { "delaySyncR", 1 }, "Delay Sync R", delaySyncNames, 0));
+    // One switch for both taps, matching the envelopes: on, each time knob
+    // snaps to the note division it is nearest. This replaces a pair of
+    // per-tap "Free / 1-1 / 1-2 ..." dropdowns, which took up most of the card
+    // and made the time knobs beside them look inert.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "delaySync", 1 }, "Delay Sync", false));
     pf ("delayTimeL", "Delay Time L",
         juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.3f), 0.30f, sec);
     pf ("delayTimeR", "Delay Time R",
@@ -476,7 +541,9 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
                                        "Resonance", "Morph", "Drive", "Amplitude", "Pan",
                                        "Osc A Lvl", "Osc B Lvl", "Detune", "Filter 2 Cutoff",
                                        "LFO Rate", "LFO 2 Rate", "Noise Lvl",
-                                       "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ" };
+                                       "Delay Mix", "Delay Fbk", "Master Pan", "Global EQ",
+                                       "Ring Mod", "Cross Mod", "Engine", "PD Amount B",
+                                       "Pluck Decay", "Pluck Damp", "Chorus Depth", "Reverb Mix", "FX Send" };
     for (int i = 1; i <= pdhybrid::ModMatrix::kNumSlots; ++i)
     {
         const auto s = juce::String (i);
@@ -543,6 +610,27 @@ void PDHybridAudioProcessor::pushParams()
 {
     pdhybrid::SynthParams p;
 
+    // Tempo is resolved first: the envelopes, LFOs, delay and arp all need it.
+    // "Host" mode still falls back to the internal BPM when the host reports
+    // none, so the standalone build follows the knob rather than a fixed 120.
+    const double internalBpm = apvts.getRawParameterValue ("internalBpm")->load();
+    const int tempoMode = static_cast<int> (apvts.getRawParameterValue ("tempoMode")->load());
+    double bpm = internalBpm;
+    if (tempoMode == 0)
+        if (auto* ph = getPlayHead())
+            if (auto pos = ph->getPosition())
+                if (auto b = pos->getBpm())
+                    if (*b > 1.0)
+                        bpm = *b;
+    currentBpm_.store (bpm, std::memory_order_relaxed);
+
+    // One sync switch per envelope: off leaves the knob in seconds, on snaps
+    // each stage to the note division it is nearest at the current tempo.
+    auto envSynced = [&] (const char* syncId)
+    { return apvts.getRawParameterValue (syncId)->load() > 0.5f; };
+    auto envTime = [&] (bool sync, double seconds)
+    { return pdhybrid::syncedEnvTime (seconds, bpm, sync); };
+
     auto readOscGroup = [&] (const juce::String& id,
                              pdhybrid::OscType& type, int& wave, double& amount,
                              double& pw, int& octave, int& semi, double& fine, double& level,
@@ -575,6 +663,8 @@ void PDHybridAudioProcessor::pushParams()
     p.oscBEngine  = apvts.getRawParameterValue ("oscBEngine")->load();
     p.oscAExcite  = static_cast<int> (apvts.getRawParameterValue ("oscAExcite")->load());
     p.oscBExcite  = static_cast<int> (apvts.getRawParameterValue ("oscBExcite")->load());
+    p.oscAOn      = apvts.getRawParameterValue ("oscAOn")->load() > 0.5f;
+    p.oscBOn      = apvts.getRawParameterValue ("oscBOn")->load() > 0.5f;
     p.noiseLevel  = apvts.getRawParameterValue ("noiseLevel")->load();
     p.ringModLevel = apvts.getRawParameterValue ("ringMod")->load();
     p.oscCrossMod    = static_cast<int> (apvts.getRawParameterValue ("oscCrossMod")->load());
@@ -599,10 +689,11 @@ void PDHybridAudioProcessor::pushParams()
     p.filterMorph = apvts.getRawParameterValue ("filterMorph")->load();
     p.keyTrack        = apvts.getRawParameterValue ("keyTrack")->load();
     p.filterEnvAmount = apvts.getRawParameterValue ("filterEnvAmount")->load();
-    p.filterEnvA  = apvts.getRawParameterValue ("filterEnvA")->load();
-    p.filterEnvD  = apvts.getRawParameterValue ("filterEnvD")->load();
+    const bool filtEnvSync = envSynced ("filtEnvSync");
+    p.filterEnvA  = envTime (filtEnvSync, apvts.getRawParameterValue ("filterEnvA")->load());
+    p.filterEnvD  = envTime (filtEnvSync, apvts.getRawParameterValue ("filterEnvD")->load());
     p.filterEnvS  = apvts.getRawParameterValue ("filterEnvS")->load();
-    p.filterEnvR  = apvts.getRawParameterValue ("filterEnvR")->load();
+    p.filterEnvR  = envTime (filtEnvSync, apvts.getRawParameterValue ("filterEnvR")->load());
     p.filterRouting = static_cast<pdhybrid::FilterRouting> (
         static_cast<int> (apvts.getRawParameterValue ("filterRouting")->load()));
     p.filter2Type   = static_cast<pdhybrid::FilterType> (
@@ -611,10 +702,11 @@ void PDHybridAudioProcessor::pushParams()
     p.filter2Res    = apvts.getRawParameterValue ("filter2Res")->load();
     p.filter2Morph  = apvts.getRawParameterValue ("filter2Morph")->load();
     p.filter2EnvAmount = apvts.getRawParameterValue ("filter2EnvAmount")->load();
-    p.filter2EnvA = apvts.getRawParameterValue ("filter2EnvA")->load();
-    p.filter2EnvD = apvts.getRawParameterValue ("filter2EnvD")->load();
+    const bool filt2EnvSync = envSynced ("filt2EnvSync");
+    p.filter2EnvA = envTime (filt2EnvSync, apvts.getRawParameterValue ("filter2EnvA")->load());
+    p.filter2EnvD = envTime (filt2EnvSync, apvts.getRawParameterValue ("filter2EnvD")->load());
     p.filter2EnvS = apvts.getRawParameterValue ("filter2EnvS")->load();
-    p.filter2EnvR = apvts.getRawParameterValue ("filter2EnvR")->load();
+    p.filter2EnvR = envTime (filt2EnvSync, apvts.getRawParameterValue ("filter2EnvR")->load());
     p.driveOn     = apvts.getRawParameterValue ("driveOn")->load() > 0.5f;
     p.drive       = apvts.getRawParameterValue ("drive")->load();
     p.driveType   = static_cast<int> (apvts.getRawParameterValue ("driveType")->load());
@@ -625,10 +717,11 @@ void PDHybridAudioProcessor::pushParams()
     p.filterVelSens = apvts.getRawParameterValue ("filterVelSens")->load();
     p.noiseModDepth = apvts.getRawParameterValue ("noiseMod")->load();
     p.bias      = apvts.getRawParameterValue ("bias")->load();
-    p.attack    = apvts.getRawParameterValue ("attack")->load();
-    p.decay     = apvts.getRawParameterValue ("decay")->load();
+    const bool ampEnvSyncOn = envSynced ("ampEnvSync");
+    p.attack    = envTime (ampEnvSyncOn, apvts.getRawParameterValue ("attack")->load());
+    p.decay     = envTime (ampEnvSyncOn, apvts.getRawParameterValue ("decay")->load());
     p.sustain   = apvts.getRawParameterValue ("sustain")->load();
-    p.release   = apvts.getRawParameterValue ("release")->load();
+    p.release   = envTime (ampEnvSyncOn, apvts.getRawParameterValue ("release")->load());
     p.gain      = apvts.getRawParameterValue ("gain")->load();
     const int osIdx = static_cast<int> (apvts.getRawParameterValue ("osQuality")->load());
     const int osFactor[] = { 1, 2, 4, 8 };
@@ -639,6 +732,9 @@ void PDHybridAudioProcessor::pushParams()
     p.unisonVoices = static_cast<int> (apvts.getRawParameterValue ("unisonVoices")->load());
     p.unisonDetune = apvts.getRawParameterValue ("unisonDetune")->load();
     p.unisonWidth  = apvts.getRawParameterValue ("unisonWidth")->load();
+    p.wavetable    = wavetable_;   // shared; null keeps the built-in default set
+    p.unisonSpread = apvts.getRawParameterValue ("unisonSpread")->load();
+    p.fxSend       = apvts.getRawParameterValue ("fxSend")->load();
     p.glideMode = static_cast<pdhybrid::GlideMode> (
         static_cast<int> (apvts.getRawParameterValue ("glideMode")->load()));
     p.glideTime  = apvts.getRawParameterValue ("glideTime")->load();
@@ -650,15 +746,28 @@ void PDHybridAudioProcessor::pushParams()
     compressor.setRelease   (apvts.getRawParameterValue ("compRelease")->load());
     compressor.setMakeup    (apvts.getRawParameterValue ("compMakeup")->load());
 
-    // Host tempo for LFO + delay sync (falls back to 120 BPM when the host has none).
-    double bpm = 120.0;
-    if (auto* ph = getPlayHead())
-        if (auto pos = ph->getPosition())
-            if (auto b = pos->getBpm())
-                bpm = *b;
-
     // Arpeggiator (step length from tempo; note events generated in processBlock).
+    chordOn_ = apvts.getRawParameterValue ("chordOn")->load() > 0.5f;
+    chordSplitCached_ = static_cast<int> (apvts.getRawParameterValue ("chordSplit")->load());
+    chord_.setEnabled   (chordOn_);
+    chord_.setSplitNote (chordSplitCached_);
+    // Push the quality only when the *parameter* moved. Pushing every block
+    // would overwrite a latch just set by a quality key, undoing the key press
+    // before it was ever audible.
+    {
+        const int q = static_cast<int> (apvts.getRawParameterValue ("chordQuality")->load());
+        if (q != chordQualitySeen_)
+        {
+            chord_.setQuality (q);
+            chordQualitySeen_ = q;
+        }
+    }
+    chord_.setVoicing   (static_cast<int> (apvts.getRawParameterValue ("chordVoicing")->load()));
+    chord_.setSpread    (apvts.getRawParameterValue ("chordSpread")->load());
+    chord_.setOctave    (static_cast<int> (apvts.getRawParameterValue ("chordOctave")->load()));
+
     arpOn_ = apvts.getRawParameterValue ("arpOn")->load() > 0.5f;
+    arpTarget_ = static_cast<int> (apvts.getRawParameterValue ("arpTarget")->load());
     {
         const int arpRate = static_cast<int> (apvts.getRawParameterValue ("arpRate")->load());
         arp_.setStepSamples (pdhybrid::syncedDelaySeconds (bpm, arpRate) * getSampleRate());
@@ -670,12 +779,15 @@ void PDHybridAudioProcessor::pushParams()
 
     delay.setMode (static_cast<pdhybrid::DelayMode> (
         static_cast<int> (apvts.getRawParameterValue ("delayMode")->load())));
-    const int dSyncL = static_cast<int> (apvts.getRawParameterValue ("delaySyncL")->load());
-    const int dSyncR = static_cast<int> (apvts.getRawParameterValue ("delaySyncR")->load());
-    const double delayL = dSyncL == 0 ? apvts.getRawParameterValue ("delayTimeL")->load()
-                                      : pdhybrid::syncedDelaySeconds (bpm, dSyncL - 1);
-    const double delayR = dSyncR == 0 ? apvts.getRawParameterValue ("delayTimeR")->load()
-                                      : pdhybrid::syncedDelaySeconds (bpm, dSyncR - 1);
+    // Both taps snap independently to whichever division each is nearest, so
+    // the classic offset pair (say 1/8 against 1/8.) still works from one switch.
+    const bool delaySyncOn = apvts.getRawParameterValue ("delaySync")->load() > 0.5f;
+    const double delayL = pdhybrid::syncedEnvTime (
+        apvts.getRawParameterValue ("delayTimeL")->load(), bpm, delaySyncOn,
+        pdhybrid::Delay::kMaxDelaySeconds);
+    const double delayR = pdhybrid::syncedEnvTime (
+        apvts.getRawParameterValue ("delayTimeR")->load(), bpm, delaySyncOn,
+        pdhybrid::Delay::kMaxDelaySeconds);
     delay.setTimes    (delayL, delayR);
     delay.setFeedback (apvts.getRawParameterValue ("delayFeedback")->load());
     delay.setMix      (apvts.getRawParameterValue ("delayMix")->load());
@@ -761,10 +873,11 @@ void PDHybridAudioProcessor::pushParams()
     p.lfo2Fade   = apvts.getRawParameterValue ("lfo2Fade")->load();
     p.lfo2Phase  = apvts.getRawParameterValue ("lfo2Phase")->load();
     p.lfo2Retrig = apvts.getRawParameterValue ("lfo2Retrig")->load() > 0.5f;
-    p.modEnvA = apvts.getRawParameterValue ("modEnvA")->load();
-    p.modEnvD = apvts.getRawParameterValue ("modEnvD")->load();
+    const bool modEnvSyncOn = envSynced ("modEnvSync");
+    p.modEnvA = envTime (modEnvSyncOn, apvts.getRawParameterValue ("modEnvA")->load());
+    p.modEnvD = envTime (modEnvSyncOn, apvts.getRawParameterValue ("modEnvD")->load());
     p.modEnvS = apvts.getRawParameterValue ("modEnvS")->load();
-    p.modEnvR = apvts.getRawParameterValue ("modEnvR")->load();
+    p.modEnvR = envTime (modEnvSyncOn, apvts.getRawParameterValue ("modEnvR")->load());
 
     p.czAmount  = apvts.getRawParameterValue ("czAmount")->load();
     p.czSustain = static_cast<int> (apvts.getRawParameterValue ("czSustain")->load());
@@ -818,9 +931,62 @@ void PDHybridAudioProcessor::pushParams()
     macro2_       = p.macro2;
     delayMixBase_ = apvts.getRawParameterValue ("delayMix")->load();
     delayFbBase_  = apvts.getRawParameterValue ("delayFeedback")->load();
+    chorusDepthBase_ = apvts.getRawParameterValue ("chorusDepth")->load();
+    reverbMixBase_   = apvts.getRawParameterValue ("reverbMix")->load();
     globalLfo.setFrequency (apvts.getRawParameterValue ("globalLfoRate")->load());
     globalLfo.setWaveform (static_cast<pdhybrid::LfoWave> (
         static_cast<int> (apvts.getRawParameterValue ("globalLfoWave")->load())));
+}
+
+bool PDHybridAudioProcessor::loadWavetable (const juce::File& file)
+{
+    if (! file.existsAsFile())
+        return false;
+
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (file));
+    if (reader == nullptr || reader->lengthInSamples < 2)
+        return false;
+
+    const int total = static_cast<int> (juce::jmin (reader->lengthInSamples,
+                                                    (juce::int64) (2048 * 256)));
+    juce::AudioBuffer<float> buf (static_cast<int> (reader->numChannels), total);
+    reader->read (&buf, 0, total, 0, true, reader->numChannels > 1);
+
+    // Mono sum: a wavetable is a waveform, not a stereo image.
+    std::vector<float> mono (static_cast<std::size_t> (total), 0.0f);
+    for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+    {
+        const float* src = buf.getReadPointer (ch);
+        for (int i = 0; i < total; ++i)
+            mono[static_cast<std::size_t> (i)] += src[i];
+    }
+    if (buf.getNumChannels() > 1)
+        for (auto& s : mono)
+            s /= static_cast<float> (buf.getNumChannels());
+
+    // The near-universal convention is 2048-sample single-cycle frames; a file
+    // that is not a whole number of those is treated as one cycle and resampled.
+    constexpr int kFrame = pdhybrid::WavetableOscillator::kFrameLen;
+    int frameLen  = kFrame;
+    int numFrames = total / kFrame;
+    if (numFrames < 1 || (total % kFrame) != 0)
+    {
+        frameLen  = total;
+        numFrames = 1;
+    }
+
+    auto set = pdhybrid::WavetableOscillator::makeWavetableSet (mono.data(), numFrames, frameLen);
+    if (set == nullptr || set->numFrames <= 0)
+        return false;
+
+    if (wavetable_ != nullptr)
+        retiredWavetables_.push_back (wavetable_);   // never freed on the audio thread
+    wavetable_     = std::move (set);
+    wavetableName_ = file.getFileNameWithoutExtension();
+    wavetablePath_ = file.getFullPathName();
+    return true;
 }
 
 void PDHybridAudioProcessor::applyGlobalModulation (juce::AudioBuffer<float>& buffer, int numSamples)
@@ -839,6 +1005,9 @@ void PDHybridAudioProcessor::applyGlobalModulation (juce::AudioBuffer<float>& bu
     delay.setMix      (juce::jlimit (0.0, 1.0,  delayMixBase_ + md (pdhybrid::ModDest::DelayMix)));
     delay.setFeedback (juce::jlimit (0.0, 0.95, delayFbBase_  + md (pdhybrid::ModDest::DelayFeedback)));
 
+    chorus.setDepth (juce::jlimit (0.0, 1.0, chorusDepthBase_ + md (pdhybrid::ModDest::ChorusDepth)));
+    reverb.setMix   (juce::jlimit (0.0, 1.0, reverbMixBase_   + md (pdhybrid::ModDest::ReverbMix)));
+
     // Modulate the master EQ high-shelf gain (matrix output scaled to dB).
     const double eqGain = juce::jlimit (-24.0, 24.0,
         eqHighGainBase_ + 12.0 * md (pdhybrid::ModDest::GlobalEqGain));
@@ -854,7 +1023,118 @@ void PDHybridAudioProcessor::applyGlobalModulation (juce::AudioBuffer<float>& bu
     }
 }
 
-void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
+void PDHybridAudioProcessor::dispatchChordEvents (const pdhybrid::ChordMode::Event* ev,
+                                                  int n, int channel,
+                                                  bool toPoly, bool toBass)
+{
+    // isRoot events are the bass layer's; the rest are chord notes for the poly
+    // voices. With chord mode off, ChordMode passes the played note through as a
+    // single isRoot event, so the `! chordOn_` terms route it to both.
+    for (int i = 0; i < n; ++i)
+    {
+        const auto& e = ev[i];
+        const bool wantPoly = toPoly && (! e.isRoot || ! chordOn_);
+        const bool wantBass = toBass && (e.isRoot   || ! chordOn_);
+
+        if (e.noteOn)
+        {
+            if (wantPoly) engine.noteOn (e.note, e.velocity, channel);
+            if (wantBass) monoBass.noteOn (e.note, e.velocity);
+        }
+        else
+        {
+            if (wantPoly) engine.noteOff (e.note, channel);
+            if (wantBass) monoBass.noteOff (e.note);
+        }
+
+        // Track what is sounding for the chord readout. This is the one place
+        // every note reaches a synth layer, whatever produced it -- played
+        // directly, built by chord mode or stepped out by the arpeggiator -- so
+        // the readout names what you actually hear.
+        if (wantPoly || wantBass)
+            trackSoundingNote (e.note, e.noteOn);
+    }
+
+    publishSoundingNotes();
+}
+
+void PDHybridAudioProcessor::trackSoundingNote (int note, bool on) noexcept
+{
+    if (note < 0 || note > 127)
+        return;
+
+    // Reference-counted: the same note can be held on two MIDI channels (and is,
+    // under MPE), and the first note-off must not blank a note still sounding.
+    if (on)
+    {
+        if (noteRefs_[note] < 255) ++noteRefs_[note];
+    }
+    else if (noteRefs_[note] > 0)
+        --noteRefs_[note];
+}
+
+void PDHybridAudioProcessor::publishSoundingNotes() noexcept
+{
+    std::uint32_t m[4] = { 0, 0, 0, 0 };
+    for (int n = 0; n < 128; ++n)
+        if (noteRefs_[n] > 0)
+            m[n >> 5] |= 1u << (n & 31);
+
+    for (int i = 0; i < 4; ++i)
+        soundingMask_[i].store (m[i], std::memory_order_relaxed);
+}
+
+int PDHybridAudioProcessor::soundingNotes (int* out, int maxOut) const noexcept
+{
+    int n = 0;
+    for (int w = 0; w < 4 && n < maxOut; ++w)
+    {
+        const std::uint32_t m = soundingMask_[w].load (std::memory_order_relaxed);
+        for (int b = 0; b < 32 && n < maxOut; ++b)
+            if (m & (1u << b))
+                out[n++] = w * 32 + b;
+    }
+    return n;
+}
+
+void PDHybridAudioProcessor::syncChordQualityParam()
+{
+    // A quality key moved the latch. Write it back so the parameter -- which is
+    // what gets pushed in every block, saved with the preset and shown in the
+    // editor -- agrees with what is actually latched.
+    if (! chord_.consumeQualityChanged())
+        return;
+
+    const int q = chord_.latchedQuality();
+    chordQualitySeen_ = q;
+
+    if (auto* p = apvts.getParameter ("chordQuality"))
+    {
+        const float norm = p->convertTo0to1 (static_cast<float> (q));
+        p->setValueNotifyingHost (norm);
+    }
+}
+
+void PDHybridAudioProcessor::publishChordState() noexcept
+{
+    int notes[pdhybrid::ChordMode::kMaxChordNotes];
+    const int n = chord_.voicedNotes (notes, pdhybrid::ChordMode::kMaxChordNotes);
+    for (int i = 0; i < n; ++i)
+        chordNotes_[i].store (notes[i], std::memory_order_relaxed);
+    chordNoteCount_.store (n, std::memory_order_relaxed);
+    chordRoot_.store (chord_.heldRoot(), std::memory_order_relaxed);
+}
+
+int PDHybridAudioProcessor::chordVoicedNotes (int* out, int maxOut) const noexcept
+{
+    const int n = juce::jmin (maxOut, chordNoteCount_.load (std::memory_order_relaxed));
+    for (int i = 0; i < n; ++i)
+        out[i] = chordNotes_[i].load (std::memory_order_relaxed);
+    return n;
+}
+
+void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg,
+                                                bool toPoly, bool toBass)
 {
     const int channel = msg.getChannel();   // used as the per-note expression id
 
@@ -868,13 +1148,21 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
             case 3: vel = 1.0f;                  break;   // Fixed
             default:                             break;   // Linear
         }
-        engine.noteOn (msg.getNoteNumber(), vel, channel);
-        monoBass.noteOn (msg.getNoteNumber(), vel);
+        pdhybrid::ChordMode::Event ev[pdhybrid::ChordMode::kMaxEvents];
+        const int n = chord_.handleNoteOn (msg.getNoteNumber(), vel,
+                                           ev, pdhybrid::ChordMode::kMaxEvents);
+        dispatchChordEvents (ev, n, channel, toPoly, toBass);
+        syncChordQualityParam();
+        publishChordState();
     }
     else if (msg.isNoteOff())
     {
-        engine.noteOff (msg.getNoteNumber(), channel);
-        monoBass.noteOff (msg.getNoteNumber());
+        pdhybrid::ChordMode::Event ev[pdhybrid::ChordMode::kMaxEvents];
+        const int n = chord_.handleNoteOff (msg.getNoteNumber(),
+                                            ev, pdhybrid::ChordMode::kMaxEvents);
+        dispatchChordEvents (ev, n, channel, toPoly, toBass);
+        syncChordQualityParam();
+        publishChordState();
     }
     else if (msg.isPitchWheel())
         engine.setNotePitchBend (channel,
@@ -897,6 +1185,7 @@ void PDHybridAudioProcessor::handleMidiMessage (const juce::MidiMessage& msg)
     {
         engine.allNotesOff();
         monoBass.allNotesOff();
+        clearSoundingNotes();
     }
 }
 
@@ -913,7 +1202,13 @@ void PDHybridAudioProcessor::renderSegment (juce::AudioBuffer<float>& buffer,
         scratchBass.resize (static_cast<std::size_t> (numSamples));
     }
 
-    engine.renderBlock (scratchL.data(), scratchR.data(), numSamples);
+    // Segments cover disjoint ranges of the block, so the engine can fill this
+    // segment's slice of the block-wide send bus directly (it zero-fills what
+    // it is given). No scratch, no copy.
+    float* segSendL = fxSendActive_ ? sendL_.data() + startSample : nullptr;
+    float* segSendR = fxSendActive_ ? sendR_.data() + startSample : nullptr;
+
+    engine.renderBlock (scratchL.data(), scratchR.data(), segSendL, segSendR, numSamples);
 
     // Mono sub-bass, summed at centre into both oscillator channels (pre-FX).
     // Skipped entirely when the layer is off (its default) to avoid the scratch
@@ -928,6 +1223,14 @@ void PDHybridAudioProcessor::renderSegment (juce::AudioBuffer<float>& buffer,
             scratchL[i] += scratchBass[i];
             scratchR[i] += scratchBass[i];
         }
+        // The bass layer has no send control of its own, so it goes through the
+        // FX group in full -- exactly as it did when the chain was an insert.
+        if (fxSendActive_)
+            for (int i = 0; i < numSamples; ++i)
+            {
+                segSendL[i] += scratchBass[i];
+                segSendR[i] += scratchBass[i];
+            }
     }
 
     const int numCh = buffer.getNumChannels();
@@ -946,34 +1249,132 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     pushParams();
 
+    // Only pay for the send bus when something actually sends less than fully:
+    // an unmodulated send of 1 is the historical insert chain, and the plain
+    // two-bus render path stays byte-identical.
+    {
+        const double sendParam = apvts.getRawParameterValue ("fxSend")->load();
+        bool sendRouted = false;
+        for (int i = 0; i < pdhybrid::ModMatrix::kNumSlots && ! sendRouted; ++i)
+        {
+            const auto r = globalMatrix.route (i);
+            sendRouted = (r.dest == pdhybrid::ModDest::FxSend
+                          && r.source != pdhybrid::ModSource::None
+                          && std::abs (r.depth) > 1.0e-6);
+        }
+
+        fxSendActive_ = (sendParam < 0.999) || sendRouted;
+        if (fxSendActive_)
+        {
+            const auto n = static_cast<std::size_t> (buffer.getNumSamples());
+            if (sendL_.size() < n)
+            {
+                sendL_.resize (n);
+                sendR_.resize (n);
+                compGain_.resize (n);
+            }
+        }
+    }
+
     if (panic_.exchange (false))   // editor "Panic": kill all sounding notes
     {
         engine.allNotesOff();
         monoBass.allNotesOff();
+        clearSoundingNotes();
         arp_.reset();
     }
 
     const int numSamples = buffer.getNumSamples();
     int cursor = 0;
 
-    // Flush hanging notes when the arpeggiator is switched on or off.
-    if (arpOn_ != arpWasOn_)
+    // Flush hanging notes when the arpeggiator is switched on or off, or when
+    // it is re-pointed at a different layer (the layer it just stopped driving
+    // would otherwise be left holding a note nothing will release).
+    if (arpOn_ != arpWasOn_ || arpTarget_ != arpWasTarget_)
     {
         engine.allNotesOff();
         monoBass.allNotesOff();
+        clearSoundingNotes();
         arp_.reset();
     }
-    arpWasOn_ = arpOn_;
+    arpWasOn_     = arpOn_;
+    arpWasTarget_ = arpTarget_;
+
+    // Same for chord mode: switching it, or moving the split under held notes,
+    // would otherwise strand a note on the wrong side of the boundary.
+    if (chordOn_ != chordWasOn_ || chordSplitCached_ != chordLastSplit_)
+    {
+        pdhybrid::ChordMode::Event ev[pdhybrid::ChordMode::kMaxEvents];
+        chord_.flush (ev, pdhybrid::ChordMode::kMaxEvents);
+        engine.allNotesOff();
+        monoBass.allNotesOff();
+        clearSoundingNotes();
+        arp_.reset();
+        publishChordState();
+    }
+    chordWasOn_     = chordOn_;
+    chordLastSplit_ = chordSplitCached_;
+
+    // Drain any re-voice owed to a parameter change (quality moved under host
+    // automation, say) -- a quality *key* re-voices inside handleNoteOn instead.
+    {
+        pdhybrid::ChordMode::Event ev[pdhybrid::ChordMode::kMaxEvents];
+        const int n = chord_.refresh (ev, pdhybrid::ChordMode::kMaxEvents);
+        if (n > 0)
+        {
+            dispatchChordEvents (ev, n, 1, true, true);
+            publishChordState();
+        }
+    }
 
     if (arpOn_)
     {
+        const bool arpDrivesPoly = (arpTarget_ == 0 || arpTarget_ == 1);
+        const bool arpDrivesBass = (arpTarget_ == 0 || arpTarget_ == 2);
+
         // Held notes feed the arp pool; other messages pass through (block-rate).
+        // A layer the arp is not driving gets the held notes as played, so the
+        // poly voices can sustain a chord under an arpeggiated bass (or vice
+        // versa). Those pass-throughs share the arp path's block-rate timing.
         for (const auto meta : midi)
         {
             const auto msg = meta.getMessage();
-            if (msg.isNoteOn())        arp_.noteOn (msg.getNoteNumber(), msg.getFloatVelocity());
-            else if (msg.isNoteOff())  arp_.noteOff (msg.getNoteNumber());
-            else                       handleMidiMessage (msg);
+            if (msg.isNoteOn() || msg.isNoteOff())
+            {
+                // Chord mode runs first, so the arp pool receives the chord's
+                // notes rather than the single key that produced them -- hold a
+                // chord, get a running arpeggio of it. The root-flagged event is
+                // the bass layer's and has no business in the arp.
+                pdhybrid::ChordMode::Event ev[pdhybrid::ChordMode::kMaxEvents];
+                const int n = msg.isNoteOn()
+                    ? chord_.handleNoteOn (msg.getNoteNumber(), msg.getFloatVelocity(),
+                                           ev, pdhybrid::ChordMode::kMaxEvents)
+                    : chord_.handleNoteOff (msg.getNoteNumber(),
+                                            ev, pdhybrid::ChordMode::kMaxEvents);
+                syncChordQualityParam();
+                publishChordState();
+
+                for (int i = 0; i < n; ++i)
+                {
+                    if (chordOn_ && ev[i].isRoot) continue;
+                    if (ev[i].noteOn) arp_.noteOn  (ev[i].note, ev[i].velocity);
+                    else              arp_.noteOff (ev[i].note);
+
+                    // The chord readout follows the arp's pool, not its steps.
+                    // The steps are one note at a time, which would just make
+                    // the readout flicker; the pool is the chord being held,
+                    // which is what the player is actually playing.
+                    trackSoundingNote (ev[i].note, ev[i].noteOn);
+                }
+                publishSoundingNotes();
+
+                if (! arpDrivesPoly || ! arpDrivesBass)
+                    handleMidiMessage (msg, ! arpDrivesPoly, ! arpDrivesBass);
+            }
+            else
+            {
+                handleMidiMessage (msg);
+            }
         }
 
         pdhybrid::Arpeggiator::Event ev[128];
@@ -985,13 +1386,13 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             cursor = pos;
             if (ev[e].noteOn)
             {
-                engine.noteOn (ev[e].note, ev[e].velocity, 1);
-                monoBass.noteOn (ev[e].note, ev[e].velocity);
+                if (arpDrivesPoly) engine.noteOn (ev[e].note, ev[e].velocity, 1);
+                if (arpDrivesBass) monoBass.noteOn (ev[e].note, ev[e].velocity);
             }
             else
             {
-                engine.noteOff (ev[e].note, 1);
-                monoBass.noteOff (ev[e].note);
+                if (arpDrivesPoly) engine.noteOff (ev[e].note, 1);
+                if (arpDrivesBass) monoBass.noteOff (ev[e].note);
             }
         }
     }
@@ -1016,13 +1417,37 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     if (buffer.getNumChannels() >= 2)
     {
         if (compOn_)
+        {
+            // The send bus has to receive the identical gain curve, or the two
+            // buses stop summing back to the original signal.
             compressor.processStereo (buffer.getWritePointer (0),
-                                      buffer.getWritePointer (1), numSamples);
-        if (chorusOn_)
-            chorus.processStereo (buffer.getWritePointer (0),
-                                  buffer.getWritePointer (1), numSamples);
+                                      buffer.getWritePointer (1), numSamples,
+                                      fxSendActive_ ? compGain_.data() : nullptr);
+            if (fxSendActive_)
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    sendL_[static_cast<std::size_t> (i)] *= compGain_[static_cast<std::size_t> (i)];
+                    sendR_[static_cast<std::size_t> (i)] *= compGain_[static_cast<std::size_t> (i)];
+                }
+        }
+
+        // Send routing: hold back the un-sent residue, run the modulation FX on
+        // the send bus alone, then sum. At send 1 the residue is zero and this
+        // is bit-for-bit the old insert chain.
         float* L = buffer.getWritePointer (0);
         float* R = buffer.getWritePointer (1);
+        if (fxSendActive_)
+            for (int i = 0; i < numSamples; ++i)
+            {
+                L[i] -= sendL_[static_cast<std::size_t> (i)];
+                R[i] -= sendR_[static_cast<std::size_t> (i)];
+            }
+
+        float* fxL = fxSendActive_ ? sendL_.data() : L;
+        float* fxR = fxSendActive_ ? sendR_.data() : R;
+
+        if (chorusOn_)
+            chorus.processStereo (fxL, fxR, numSamples);
         if (fxRouting_ == 2 && delayOn_ && reverbOn_)
         {
             // Parallel: reverb the main path; delay is fed the pre-reverb signal
@@ -1032,21 +1457,30 @@ void PDHybridAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 fxScratchL_.resize (static_cast<std::size_t> (numSamples));
                 fxScratchR_.resize (static_cast<std::size_t> (numSamples));
             }
-            for (int i = 0; i < numSamples; ++i) { fxScratchL_[i] = L[i]; fxScratchR_[i] = R[i]; }
-            reverb.processStereo (L, R, numSamples);
+            for (int i = 0; i < numSamples; ++i) { fxScratchL_[i] = fxL[i]; fxScratchR_[i] = fxR[i]; }
+            reverb.processStereo (fxL, fxR, numSamples);
             delay.processWet (fxScratchL_.data(), fxScratchR_.data(), numSamples);
-            for (int i = 0; i < numSamples; ++i) { L[i] += fxScratchL_[i]; R[i] += fxScratchR_[i]; }
+            for (int i = 0; i < numSamples; ++i) { fxL[i] += fxScratchL_[i]; fxR[i] += fxScratchR_[i]; }
         }
         else if (fxRouting_ == 1)
         {
-            if (reverbOn_) reverb.processStereo (L, R, numSamples);
-            if (delayOn_)  delay.processStereo (L, R, numSamples);
+            if (reverbOn_) reverb.processStereo (fxL, fxR, numSamples);
+            if (delayOn_)  delay.processStereo (fxL, fxR, numSamples);
         }
         else   // 0 = Delay -> Reverb (default), and the fallbacks for mode 2
         {
-            if (delayOn_)  delay.processStereo (L, R, numSamples);
-            if (reverbOn_) reverb.processStereo (L, R, numSamples);
+            if (delayOn_)  delay.processStereo (fxL, fxR, numSamples);
+            if (reverbOn_) reverb.processStereo (fxL, fxR, numSamples);
         }
+
+        // Sum the processed send back onto the un-sent residue.
+        if (fxSendActive_)
+            for (int i = 0; i < numSamples; ++i)
+            {
+                L[i] += sendL_[static_cast<std::size_t> (i)];
+                R[i] += sendR_[static_cast<std::size_t> (i)];
+            }
+
         if (globalEqOn_)
             globalEq.processStereo (buffer.getWritePointer (0),
                                     buffer.getWritePointer (1), numSamples);
@@ -1122,6 +1556,9 @@ void PDHybridAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     if (auto state = apvts.copyState(); state.isValid())
     {
+        // The wavetable is a file reference, not a parameter, so it rides
+        // alongside the parameter tree rather than in it.
+        state.setProperty ("wavetablePath", wavetablePath_, nullptr);
         std::unique_ptr<juce::XmlElement> xml (state.createXml());
         copyXmlToBinary (*xml, destData);
     }
@@ -1131,7 +1568,17 @@ void PDHybridAudioProcessor::setStateInformation (const void* data, int sizeInBy
 {
     std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, sizeInBytes));
     if (xml != nullptr && xml->hasTagName (apvts.state.getType()))
-        apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    {
+        auto tree = juce::ValueTree::fromXml (*xml);
+        apvts.replaceState (tree);
+
+        // Re-load the referenced table if it is still where it was. A missing
+        // file is not an error: the engine falls back to its built-in set and
+        // the patch still plays.
+        const auto path = tree.getProperty ("wavetablePath").toString();
+        if (path.isNotEmpty())
+            loadWavetable (juce::File (path));
+    }
 }
 
 // JUCE plugin entry point.

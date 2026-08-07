@@ -47,7 +47,21 @@ public:
     void setModWheel      (double modWheel01) noexcept { modWheel_ = modWheel01; }
 
     // Renders `numSamples` of summed stereo output (overwrites `left`/`right`).
+    // Detune/pan offset (-1..1) for sub-voice k of an n-voice unison stack,
+    // shaped by params_.unisonSpread. Public because it is a pure function of
+    // the parameters and the only honest way to test the spread shape: read
+    // back off a rendered spectrum, near-coincident detuned voices interfere
+    // and the measurement says more about beat phase than about distribution.
+    double unisonSpreadAt (int k, int n) const noexcept;
+
+    /** Level compensation applied to each sub-voice of an n-voice stack. */
+    static double unisonGainFor (int n) noexcept;
+
     void renderBlock (float* left, float* right, int numSamples);
+    // Also fills a send bus with each voice scaled by its FX send level, for
+    // the processor's send-style FX routing.
+    void renderBlock (float* left, float* right,
+                      float* sendL, float* sendR, int numSamples);
 
     int activeVoiceCount() const noexcept;
 
@@ -92,6 +106,7 @@ private:
     std::uint64_t ageCounter_ = 0;
     double        sampleRate_ = 44100.0;
     double        modWheel_   = 0.0;
+    int           unisonSize_ = 1;     // sub-voices in the stack being started
     double        lastNoteHz_ = 0.0;   // previous note's pitch, for glide
 };
 

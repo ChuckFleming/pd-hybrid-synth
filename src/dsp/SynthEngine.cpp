@@ -63,6 +63,34 @@ int SynthEngine::allocateVoice (int limit) noexcept
     return best;
 }
 
+double SynthEngine::unisonGainFor (int n) noexcept
+{
+    // 1/sqrt(n): the sub-voices are detuned against each other, so they sum
+    // incoherently and their power adds rather than their amplitude. This keeps
+    // a unison note at roughly the level of the same note played solo, instead
+    // of up to n times louder.
+    return n <= 1 ? 1.0 : 1.0 / std::sqrt (static_cast<double> (n));
+}
+
+double SynthEngine::unisonSpreadAt (int k, int n) const noexcept
+{
+    if (n <= 1)
+        return 0.0;
+
+    const double t = 2.0 * k / (n - 1) - 1.0;   // even placement, -1..1
+
+    // Spread shape: 0.5 is the even distribution (gamma 1). Below that the
+    // stack bunches toward the centre pitch (tight chorus, one clear pitch);
+    // above it the outer voices are pushed to the edges of the detune range,
+    // which is the wide, hollow supersaw character.
+    const double shape = params_.unisonSpread;
+    if (std::abs (shape - 0.5) < 1.0e-6)
+        return t;
+
+    const double gamma = std::pow (2.0, 1.0 - 2.0 * shape);   // 2 .. 0.5
+    return (t < 0.0 ? -1.0 : 1.0) * std::pow (std::abs (t), gamma);
+}
+
 void SynthEngine::startVoice (int v, int note, float velocity, int noteId,
                               double spread, double fromHz, double glideSamples) noexcept
 {
@@ -76,7 +104,8 @@ void SynthEngine::startVoice (int v, int note, float velocity, int noteId,
     voiceTimbre_[v]    = 0.0;
 
     voices_[v].setParams (params_);
-    voices_[v].setUnison (params_.unisonDetune * spread, params_.unisonWidth * spread);
+    voices_[v].setUnison (params_.unisonDetune * spread, params_.unisonWidth * spread,
+                          unisonGainFor (unisonSize_));
     voices_[v].start (note, velocity, fromHz, glideSamples);
 }
 
@@ -115,11 +144,12 @@ void SynthEngine::polyNoteOn (int note, float velocity, int noteId)
     // stack fits inside the active polyphony).
     int n = params_.unisonVoices < 1 ? 1 : (params_.unisonVoices > 6 ? 6 : params_.unisonVoices);
     if (n > lim) n = lim;
+    unisonSize_ = n;
 
     for (int k = 0; k < n; ++k)
     {
         const int    v      = allocateVoice (lim);
-        const double spread = (n == 1) ? 0.0 : (2.0 * k / (n - 1) - 1.0);   // -1..1
+        const double spread = unisonSpreadAt (k, n);
         startVoice (v, note, velocity, noteId, spread, fromHz, glideSamples);
     }
 
@@ -237,11 +267,12 @@ void SynthEngine::updateMono()
         }
 
         monoVoiceN_ = n;
+        unisonSize_ = n;
         for (int k = 0; k < n; ++k)
         {
             const int    v      = allocateVoice (lim);
             monoVoices_[k]      = v;
-            const double spread = (n == 1) ? 0.0 : (2.0 * k / (n - 1) - 1.0);
+            const double spread = unisonSpreadAt (k, n);
             startVoice (v, sel->note, sel->velocity, sel->noteId, spread, fromHz, glideSamples);
         }
         monoNote_   = sel->note;
@@ -333,11 +364,25 @@ void SynthEngine::setNoteTimbre (int noteId, double timbre01) noexcept
 
 void SynthEngine::renderBlock (float* left, float* right, int numSamples)
 {
+    renderBlock (left, right, nullptr, nullptr, numSamples);
+}
+
+void SynthEngine::renderBlock (float* left, float* right,
+                               float* sendL, float* sendR, int numSamples)
+{
+    const bool wantSend = (sendL != nullptr && sendR != nullptr);
+
     for (int j = 0; j < numSamples; ++j)
     {
         left[j]  = 0.0f;
         right[j] = 0.0f;
     }
+    if (wantSend)
+        for (int j = 0; j < numSamples; ++j)
+        {
+            sendL[j] = 0.0f;
+            sendR[j] = 0.0f;
+        }
 
     for (int i = 0; i < kMaxVoices; ++i)
     {
@@ -349,7 +394,7 @@ void SynthEngine::renderBlock (float* left, float* right, int numSamples)
         voices_[i].setPressure (voicePressure_[i]);
         voices_[i].setTimbre (voiceTimbre_[i]);
         voices_[i].setModWheel (modWheel_);
-        voices_[i].renderBlock (left, right, numSamples);
+        voices_[i].renderBlock (left, right, sendL, sendR, numSamples);
     }
 }
 

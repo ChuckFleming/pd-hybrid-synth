@@ -1,0 +1,440 @@
+<title>VOICE page — 1280 × 800</title>
+
+<style>
+:root{
+  --page-bg:#0d0e11; --page-panel:#15171c; --page-ink:#e8eaee;
+  --page-dim:#8b919d; --page-faint:#5b616d; --page-accent:#c08a4a; --page-rule:#1e2229;
+  --ui: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+@media (prefers-color-scheme: light){
+  :root{ --page-bg:#f7f6f4; --page-panel:#fff; --page-ink:#1a1c20;
+         --page-dim:#5f646d; --page-faint:#8b909a; --page-accent:#8a5a1c; --page-rule:#e8e5e0; }
+}
+:root[data-theme="dark"]{ --page-bg:#0d0e11; --page-panel:#15171c; --page-ink:#e8eaee;
+  --page-dim:#8b919d; --page-faint:#5b616d; --page-accent:#c08a4a; --page-rule:#1e2229; }
+:root[data-theme="light"]{ --page-bg:#f7f6f4; --page-panel:#fff; --page-ink:#1a1c20;
+  --page-dim:#5f646d; --page-faint:#8b909a; --page-accent:#8a5a1c; --page-rule:#e8e5e0; }
+
+*{box-sizing:border-box}
+body{margin:0; background:var(--page-bg); color:var(--page-ink);
+  font-family:var(--ui); line-height:1.5; -webkit-font-smoothing:antialiased}
+.wrap{max-width:1400px; margin:0 auto; padding:44px 20px 80px}
+
+h1{font-family:var(--serif); font-weight:600; font-size:clamp(26px,4vw,40px);
+  margin:0 0 14px; letter-spacing:-.01em}
+.eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.18em;
+  text-transform:uppercase; color:var(--page-accent); margin:0 0 14px}
+.lede{max-width:70ch; color:var(--page-dim); font-size:16px; margin:0 0 10px}
+.lede strong{color:var(--page-ink); font-weight:600}
+
+.budget{margin:24px 0 8px; border:1px solid var(--page-rule); border-radius:3px;
+  display:flex; flex-wrap:wrap; overflow:hidden}
+.budget div{flex:1 1 150px; padding:10px 14px; border-right:1px solid var(--page-rule);
+  font-family:var(--mono); font-size:12px; color:var(--page-dim)}
+.budget div:last-child{border-right:0}
+.budget b{display:block; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--page-faint); margin-bottom:4px; font-weight:500}
+.budget s{color:var(--page-faint)}
+
+.rulerwrap{margin:30px 0 0; overflow-x:auto; padding-bottom:8px}
+.ruler{position:relative; width:1280px; margin:0 0 6px;
+  font-family:var(--mono); font-size:10px; color:var(--page-faint);
+  border-top:1px solid var(--page-accent); padding-top:3px}
+.ruler::before,.ruler::after{content:""; position:absolute; top:-4px; width:1px;
+  height:8px; background:var(--page-accent)}
+.ruler::before{left:0} .ruler::after{right:0}
+
+/* =============================================== THE PLUGIN WINDOW, 1280x800 */
+.win{
+  width:1280px; height:800px; flex:none;
+  --edge:#a09a8c; --bg:#c9c4b8; --card:#d5d1c6; --ink:#26251f; --dim:#5a564c;
+  --faint:#6e6a5f; --accent:#b4472e; --screen:#2c2c2a; --trace:#ed8058;
+  --screendim:#b0aca2; --sel:#e0dbcd; --track:#a8a294; --hi:rgba(255,255,255,.5);
+  background:var(--bg); border:1px solid var(--edge); color:var(--ink);
+  display:flex; flex-direction:column; overflow:hidden; position:relative;
+  background-image:repeating-linear-gradient(90deg, rgba(255,255,255,.14) 0 1px, transparent 1px 3px);
+  box-shadow:inset 0 1px 0 var(--hi), inset 0 -2px 4px rgba(0,0,0,.18);
+  font-size:11px;
+}
+
+/* --- top bar: 40px --- */
+.topbar{height:40px; flex:none; display:flex; align-items:center; gap:8px;
+  padding:0 10px; border-bottom:3px solid var(--accent)}
+.logo{font-weight:700; font-size:12px; letter-spacing:.16em}
+.ver{font-family:var(--mono); font-size:9px; color:var(--faint)}
+.tb-right{margin-left:auto; display:flex; gap:5px; align-items:center}
+.chip{font-size:10px; letter-spacing:.05em; padding:3px 9px; border:1px solid var(--edge);
+  background:var(--sel); color:var(--dim); white-space:nowrap}
+.chip.wide{min-width:120px; text-align:center; color:var(--ink)}
+.chip.on{background:var(--accent); color:#f5efe2; border-color:#8a3221}
+
+/* --- performance strip: 110px --- */
+.strip{height:110px; flex:none; margin:5px 10px 0; padding:6px 8px;
+  background:var(--card); border:1px solid var(--edge);
+  box-shadow:inset 0 1px 0 var(--hi); display:flex; gap:7px; align-items:center;
+  position:relative}
+.strip .cap{position:absolute; top:2px; left:8px; font-size:7.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--faint)}
+.kc{display:flex; flex-direction:column; align-items:center; gap:2px; flex:none; padding-top:8px}
+.kc .lab{font-size:8px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); white-space:nowrap}
+.kc .val{font-family:var(--mono); font-size:9.5px; font-variant-numeric:tabular-nums}
+.knob{width:48px; height:48px; border-radius:50%; position:relative; flex:none;
+  background:conic-gradient(from 215deg, var(--accent) 0 var(--kd),
+    var(--track) var(--kd) 290deg, transparent 290deg 360deg)}
+.knob::before{content:""; position:absolute; inset:4px; border-radius:50%;
+  background:radial-gradient(circle at 38% 28%, #56544c, #2b2a25 62%, #191815 100%);
+  box-shadow:0 2px 3px rgba(0,0,0,.34)}
+.knob::after{content:""; position:absolute; left:50%; top:7px; width:2px; height:36%;
+  margin-left:-1px; background:#e8e3d6; border-radius:1px;
+  transform-origin:50% 100%; transform:rotate(var(--kr))}
+.knob.sm{width:40px; height:40px}
+.knob.sm::before{inset:3px}
+
+.env{width:190px; height:88px; flex:none; background:var(--screen);
+  border:1px solid var(--edge); position:relative; overflow:hidden}
+.env svg{display:block; width:100%; height:100%}
+.spec{flex:1; min-width:0; height:88px; background:var(--screen);
+  border:1px solid var(--edge); position:relative; overflow:hidden}
+.spec svg{display:block; width:100%; height:100%}
+.spec .cap,.env .cap{position:absolute; top:2px; left:5px; font-size:7px;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--screendim)}
+
+/* --- tab bar: 26px --- */
+.tabs{height:26px; flex:none; display:flex; gap:3px; align-items:flex-end;
+  padding:0 10px; margin-top:5px}
+.tab{font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; padding:4px 12px;
+  color:var(--dim); border:1px solid var(--edge); background:#bdb8aa}
+.tab.on{background:var(--ink); color:#e8e3d6; border-color:var(--ink)}
+.tab.insp{margin-left:auto; background:var(--sel)}
+
+/* --- page: the 592px content area, three packed columns --- */
+.page{flex:1; min-height:0; display:flex; gap:6px; padding:6px 10px; align-items:flex-start}
+.col{flex:1; min-width:0; display:flex; flex-direction:column; gap:6px}
+
+.card{background:var(--card); border:1px solid var(--edge);
+  box-shadow:inset 0 1px 0 var(--hi); padding:5px 6px 6px; position:relative}
+.card h4{margin:0 0 4px; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+  font-weight:600; display:flex; align-items:center; gap:6px; height:19px; line-height:19px}
+.leds{margin-left:auto; display:flex; gap:4px}
+.led{font-size:8px; letter-spacing:.07em; padding:2px 6px; border:1px solid var(--edge);
+  color:var(--faint); background:#c2bdb0}
+.led.on{background:var(--accent); color:#f5efe2; border-color:#8a3221}
+.selrow{display:flex; gap:4px; margin-bottom:5px}
+.sel{flex:1; min-width:0; font-size:10px; padding:3px 7px; border:1px solid var(--edge);
+  background:var(--sel); color:var(--ink); display:flex; align-items:center;
+  overflow:hidden; white-space:nowrap; height:21px}
+.sel::after{content:"▾"; margin-left:auto; opacity:.5; font-size:8px}
+.sel.off{opacity:.4}
+.wave{height:42px; border:1px solid var(--edge); background:var(--screen);
+  margin-bottom:5px; overflow:hidden; position:relative}
+.wave svg{display:block; width:100%; height:100%}
+.wave .cap{position:absolute; top:2px; left:4px; font-size:7px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--screendim)}
+.krow{display:flex; gap:3px; flex-wrap:wrap}
+.krow .kc{padding-top:0; flex:1 1 54px}
+
+.keys{height:70px; border:1px solid var(--edge); background:var(--screen);
+  margin-bottom:5px; position:relative; overflow:hidden; display:flex}
+.wk{flex:1; border-right:1px solid #4a4a47; position:relative; background:#3a3a38}
+.wk.zone{background:#4a4642}
+.wk.split{box-shadow:inset 2px 0 0 var(--trace)}
+.wk span{position:absolute; bottom:2px; left:0; right:0; text-align:center;
+  font-size:6.5px; color:var(--screendim)}
+.bk{position:absolute; top:0; width:9px; height:62%; background:#1c1c1a; z-index:2}
+.keys .rd{position:absolute; bottom:0; left:0; right:0; height:11px; background:#26251f;
+  color:var(--screendim); font-size:7px; letter-spacing:.1em; padding-left:4px;
+  text-transform:uppercase; z-index:3}
+
+/* --- footer: 20px --- */
+/* chord readout: marquee name + sounding notes + lit-key strip */
+.mk{display:flex; height:22px; position:relative; margin-top:4px}
+.mk .w{flex:1; border-right:1px solid #4a4a47; background:#3a3a38}
+.mk .w.lit{background:var(--trace)}
+.mk .b{position:absolute; top:0; width:8px; height:60%; background:#1c1c1a; z-index:2}
+.mk .b.lit{background:var(--trace)}
+.big{font-family:var(--mono); color:var(--trace); line-height:1}
+.nl{font-family:var(--mono); font-size:11px; color:var(--screendim); letter-spacing:.06em}
+
+.foot{height:20px; flex:none; display:flex; align-items:center; gap:8px; padding:0 10px;
+  border-top:1px solid var(--edge); font-size:8.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--faint)}
+.foot .chord{margin:0 auto; font-family:var(--mono); font-size:12px; color:var(--accent);
+  text-transform:none; letter-spacing:.03em}
+
+.notes{margin-top:44px; padding-top:24px; border-top:1px solid var(--page-rule)}
+.notes h2{font-family:var(--serif); font-size:23px; margin:0 0 12px; font-weight:600}
+.notes ul{color:var(--page-dim); max-width:70ch; font-size:14.5px; padding-left:19px; margin:0}
+.notes li{margin-bottom:9px}
+.notes b{color:var(--page-ink)}
+.notes code{font-family:var(--mono); font-size:.9em; color:var(--page-ink)}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">PD Hybrid · layout study · VOICE</p>
+  <h1>The VOICE page at 1280 × 800</h1>
+  <p class="lede">
+    All eight cards, every real control, packed into <strong>three columns by shortest-column
+    fill</strong> instead of the current fixed six-column row grid. The frame below is exactly
+    1280 × 800 — <strong>nothing is cropped and nothing scrolls</strong>.
+  </p>
+
+  <div class="budget">
+    <div><b>Height budget</b>40 top · 110 strip · 26 tabs · <s>592 page</s> · 20 foot = 800</div>
+    <div><b>Knob cell</b>48 + 13 label = 61 <s>(was 64 + 16 = 80)</s></div>
+    <div><b>Columns</b>3 <s>(was 6)</s>, packed not rowed</div>
+    <div><b>Inspector</b>drawer, 0 px reserved <s>(was 236)</s></div>
+  </div>
+
+  <div class="rulerwrap">
+    <div class="ruler">1280 px</div>
+
+    <div class="win">
+
+      <div class="topbar">
+        <span class="logo">PD_HYBRID</span><span class="ver">v7</span>
+        <span class="tb-right">
+          <span class="chip wide">Glass Bell</span>
+          <span class="chip">&lt;</span><span class="chip">&gt;</span>
+          <span class="chip">A/B</span><span class="chip">SAVE</span>
+          <span class="chip">Panel 1985 ▾</span><span class="chip">INIT</span>
+        </span>
+      </div>
+
+      <div class="strip">
+        <span class="cap">Performance — always visible</span>
+        <div class="kc"><div class="knob" style="--kd:168deg;--kr:23deg"></div><div class="lab">Cutoff</div><div class="val">439 Hz</div></div>
+        <div class="kc"><div class="knob" style="--kd:82deg;--kr:-63deg"></div><div class="lab">Reso</div><div class="val">28 %</div></div>
+        <div class="kc"><div class="knob" style="--kd:4deg;--kr:-141deg"></div><div class="lab">Macro 1</div><div class="val">0 %</div></div>
+        <div class="kc"><div class="knob" style="--kd:4deg;--kr:-141deg"></div><div class="lab">Macro 2</div><div class="val">0 %</div></div>
+        <div class="env"><span class="cap">Amp Env</span>
+          <svg viewBox="0 0 190 88" preserveAspectRatio="none"><path d="M2 84 L28 8 L64 30 L132 34 L188 84" fill="none" stroke="var(--trace)" stroke-width="1.6"/></svg>
+        </div>
+        <div class="kc"><div class="knob sm" style="--kd:40deg;--kr:-105deg"></div><div class="lab">A</div><div class="val">10 ms</div></div>
+        <div class="kc"><div class="knob sm" style="--kd:96deg;--kr:-49deg"></div><div class="lab">D</div><div class="val">100 ms</div></div>
+        <div class="kc"><div class="knob sm" style="--kd:203deg;--kr:58deg"></div><div class="lab">S</div><div class="val">70 %</div></div>
+        <div class="kc"><div class="knob sm" style="--kd:120deg;--kr:-25deg"></div><div class="lab">R</div><div class="val">200 ms</div></div>
+        <div class="kc" style="padding-top:0"><span class="chip" style="margin-bottom:3px">SYNC</span><span class="chip">HOST ▾</span></div>
+        <div class="kc"><div class="knob sm" style="--kd:145deg;--kr:0deg"></div><div class="lab">BPM</div><div class="val">120</div></div>
+        <div class="spec"><span class="cap">Out · Spectrum</span>
+          <svg viewBox="0 0 300 88" preserveAspectRatio="none">
+            <g fill="var(--trace)">
+              <rect x="2" y="52" width="7" height="36" opacity=".64"/><rect x="12" y="36" width="7" height="52" opacity=".82"/>
+              <rect x="22" y="46" width="7" height="42" opacity=".71"/><rect x="32" y="22" width="7" height="66" opacity=".98"/>
+              <rect x="42" y="32" width="7" height="56" opacity=".87"/><rect x="52" y="48" width="7" height="40" opacity=".74"/>
+              <rect x="62" y="18" width="7" height="70" opacity="1"/><rect x="72" y="30" width="7" height="58" opacity=".9"/>
+              <rect x="82" y="54" width="7" height="34" opacity=".68"/><rect x="92" y="42" width="7" height="46" opacity=".79"/>
+              <rect x="102" y="28" width="7" height="60" opacity=".93"/><rect x="112" y="46" width="7" height="42" opacity=".71"/>
+              <rect x="122" y="60" width="7" height="28" opacity=".59"/><rect x="132" y="44" width="7" height="44" opacity=".76"/>
+              <rect x="142" y="56" width="7" height="32" opacity=".65"/><rect x="152" y="66" width="7" height="22" opacity=".54"/>
+              <rect x="162" y="60" width="7" height="28" opacity=".61"/><rect x="172" y="70" width="7" height="18" opacity=".52"/>
+              <rect x="182" y="64" width="7" height="24" opacity=".57"/><rect x="192" y="74" width="7" height="14" opacity=".48"/>
+              <rect x="202" y="68" width="7" height="20" opacity=".53"/><rect x="212" y="78" width="7" height="10" opacity=".45"/>
+              <rect x="222" y="72" width="7" height="16" opacity=".49"/><rect x="232" y="80" width="7" height="8" opacity=".42"/>
+              <rect x="242" y="75" width="7" height="13" opacity=".46"/><rect x="252" y="82" width="7" height="6" opacity=".4"/>
+              <rect x="262" y="78" width="7" height="10" opacity=".43"/><rect x="272" y="84" width="7" height="4" opacity=".38"/>
+              <rect x="282" y="80" width="7" height="8" opacity=".41"/><rect x="292" y="85" width="6" height="3" opacity=".36"/>
+            </g>
+          </svg>
+        </div>
+        <div class="kc" style="padding-top:0">
+          <span class="lab" style="margin-bottom:3px">16 Voices</span>
+          <span class="chip" style="margin-bottom:3px">Poly ▾</span>
+          <span style="display:flex;gap:3px"><span class="chip on">LIM</span><span class="chip">ARP</span></span>
+        </div>
+        <div class="kc"><div class="knob" style="--kd:214deg;--kr:69deg"></div><div class="lab">Master</div><div class="val">0 dB</div></div>
+      </div>
+
+      <div class="tabs">
+        <span class="tab on">Voice</span><span class="tab">Shape</span><span class="tab">Mod</span>
+        <span class="tab">Out</span><span class="tab">Global</span>
+        <span class="tab insp">Inspector ▸</span>
+      </div>
+
+      <div class="page">
+
+        <!-- column 1 -->
+        <div class="col">
+          <div class="card">
+            <h4>Osc A <span class="leds"><span class="led on">ON</span><span class="led">CMB</span></span></h4>
+            <div class="selrow"><span class="sel">Phase Distortion</span><span class="sel">Sawtooth</span></div>
+            <div class="selrow"><span class="sel off">Sawtooth</span><span class="sel off">Pluck</span></div>
+            <div class="wave"><span class="cap">Cycle</span>
+              <svg viewBox="0 0 240 42" preserveAspectRatio="none"><path d="M0 36 C 24 36, 30 6, 54 6 S 84 36, 108 36 S 138 6, 162 6 S 192 36, 216 36 L 240 36" fill="none" stroke="var(--trace)" stroke-width="1.4"/></svg>
+            </div>
+            <div class="krow">
+              <div class="kc"><div class="knob" style="--kd:87deg;--kr:-58deg"></div><div class="lab">PD Amt</div><div class="val">30 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Width</div><div class="val">50 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:116deg;--kr:-29deg"></div><div class="lab">Engine</div><div class="val">40 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:290deg;--kr:145deg"></div><div class="lab">Level</div><div class="val">100 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Oct</div><div class="val">0</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Semi</div><div class="val">0</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Fine</div><div class="val">0 ct</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">EQ Lo</div><div class="val">0 dB</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">EQ Mid</div><div class="val">0 dB</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">EQ Hi</div><div class="val">0 dB</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h4>Mixer <span class="leds"><span class="led">WT: default</span></span></h4>
+            <div class="selrow"><span class="sel">No Cross Mod</span></div>
+            <div class="krow">
+              <div class="kc"><div class="knob" style="--kd:4deg;--kr:-141deg"></div><div class="lab">Noise</div><div class="val">0 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:4deg;--kr:-141deg"></div><div class="lab">Ring</div><div class="val">0 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:4deg;--kr:-141deg"></div><div class="lab">N.Mod</div><div class="val">0 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:4deg;--kr:-141deg"></div><div class="lab">X-Amt</div><div class="val">0 %</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h4>Pluck <span class="leds"><span class="led on">ON</span></span></h4>
+            <div class="krow">
+              <div class="kc"><div class="knob" style="--kd:203deg;--kr:58deg"></div><div class="lab">Decay</div><div class="val">70 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:87deg;--kr:-58deg"></div><div class="lab">Damp</div><div class="val">30 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:4deg;--kr:-141deg"></div><div class="lab">Disp</div><div class="val">0 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:58deg;--kr:-87deg"></div><div class="lab">Burst</div><div class="val">20.0 ms</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- column 2 -->
+        <div class="col">
+          <div class="card">
+            <h4>Osc B <span class="leds"><span class="led on">ON</span><span class="led">CMB</span></span></h4>
+            <div class="selrow"><span class="sel">Saw</span><span class="sel off">Sawtooth</span></div>
+            <div class="selrow"><span class="sel off">Sawtooth</span><span class="sel off">Pluck</span></div>
+            <div class="wave"><span class="cap">Cycle</span>
+              <svg viewBox="0 0 240 42" preserveAspectRatio="none"><path d="M0 36 L236 6 L236 36" fill="none" stroke="var(--trace)" stroke-width="1.4"/></svg>
+            </div>
+            <div class="krow">
+              <div class="kc"><div class="knob" style="--kd:87deg;--kr:-58deg"></div><div class="lab">PD Amt</div><div class="val">30 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Width</div><div class="val">50 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:116deg;--kr:-29deg"></div><div class="lab">Engine</div><div class="val">40 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:4deg;--kr:-141deg"></div><div class="lab">Level</div><div class="val">0 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Oct</div><div class="val">0</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Semi</div><div class="val">0</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Fine</div><div class="val">0 ct</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">EQ Lo</div><div class="val">0 dB</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">EQ Mid</div><div class="val">0 dB</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">EQ Hi</div><div class="val">0 dB</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h4>Unison / Drift</h4>
+            <div class="krow">
+              <div class="kc"><div class="knob" style="--kd:4deg;--kr:-141deg"></div><div class="lab">Voices</div><div class="val">1</div></div>
+              <div class="kc"><div class="knob" style="--kd:66deg;--kr:-79deg"></div><div class="lab">Detune</div><div class="val">+15 ct</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Width</div><div class="val">50 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Spread</div><div class="val">50 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:4deg;--kr:-141deg"></div><div class="lab">Drift</div><div class="val">0 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:290deg;--kr:145deg"></div><div class="lab">FX Send</div><div class="val">100 %</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h4>Glide</h4>
+            <div class="selrow"><span class="sel">Off</span></div>
+            <div class="krow">
+              <div class="kc"><div class="knob" style="--kd:96deg;--kr:-49deg"></div><div class="lab">Time</div><div class="val">100 ms</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Curve</div><div class="val">1.00</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- column 3 -->
+        <div class="col">
+          <div class="card">
+            <h4>Mono Bass <span class="leds"><span class="led on">ON</span></span></h4>
+            <div class="selrow"><span class="sel">Saw</span><span class="sel">Last</span></div>
+            <div class="wave"><span class="cap">Bass Env</span>
+              <svg viewBox="0 0 240 42" preserveAspectRatio="none"><path d="M2 40 L8 4 L70 12 L170 20 L238 34" fill="none" stroke="var(--trace)" stroke-width="1.4"/></svg>
+            </div>
+            <div class="krow">
+              <div class="kc"><div class="knob" style="--kd:96deg;--kr:-49deg"></div><div class="lab">Oct</div><div class="val">-1</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Tune</div><div class="val">0 ct</div></div>
+              <div class="kc"><div class="knob" style="--kd:4deg;--kr:-141deg"></div><div class="lab">Harm</div><div class="val">0 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:232deg;--kr:87deg"></div><div class="lab">Level</div><div class="val">80 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:72deg;--kr:-73deg"></div><div class="lab">Glide</div><div class="val">50 ms</div></div>
+              <div class="kc"><div class="knob" style="--kd:24deg;--kr:-121deg"></div><div class="lab">Atk</div><div class="val">5 ms</div></div>
+              <div class="kc"><div class="knob" style="--kd:120deg;--kr:-25deg"></div><div class="lab">Dec</div><div class="val">200 ms</div></div>
+              <div class="kc"><div class="knob" style="--kd:232deg;--kr:87deg"></div><div class="lab">Sus</div><div class="val">80 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:120deg;--kr:-25deg"></div><div class="lab">Rel</div><div class="val">200 ms</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h4>Chord <span class="leds"><span class="led on">ON</span></span></h4>
+            <div class="selrow"><span class="sel">Voice-Led</span></div>
+            <div class="keys">
+              <div class="wk zone"><span>maj</span></div><div class="wk zone"><span>7</span></div>
+              <div class="wk zone"><span>maj7</span></div><div class="wk zone"><span>6</span></div>
+              <div class="wk zone"><span>dim7</span></div><div class="wk zone"><span>sus2</span></div>
+              <div class="wk zone"><span>m6</span></div>
+              <div class="wk split"></div><div class="wk"></div><div class="wk"></div><div class="wk"></div>
+              <div class="wk"></div><div class="wk"></div><div class="wk"></div><div class="wk"></div>
+              <div class="wk"></div><div class="wk"></div><div class="wk"></div><div class="wk"></div>
+              <div class="wk"></div><div class="wk"></div>
+              <div class="bk" style="left:5%"></div><div class="bk" style="left:10%"></div>
+              <div class="bk" style="left:19%"></div><div class="bk" style="left:24%"></div><div class="bk" style="left:29%"></div>
+              <div class="bk" style="left:38%"></div><div class="bk" style="left:43%"></div>
+              <div class="bk" style="left:52%"></div><div class="bk" style="left:57%"></div><div class="bk" style="left:62%"></div>
+              <div class="bk" style="left:71%"></div><div class="bk" style="left:76%"></div>
+              <div class="bk" style="left:85%"></div><div class="bk" style="left:90%"></div>
+              <div class="rd">Latched maj · play a key above the split</div>
+            </div>
+            <div class="krow">
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Split</div><div class="val">60</div></div>
+              <div class="kc"><div class="knob" style="--kd:116deg;--kr:-29deg"></div><div class="lab">Spread</div><div class="val">40 %</div></div>
+              <div class="kc"><div class="knob" style="--kd:145deg;--kr:0deg"></div><div class="lab">Octave</div><div class="val">0</div></div>
+            </div>
+          </div>
+
+          <!-- Chord readout: the marquee name, the sounding notes, and a strip
+               lighting the pitch classes. Fed by ChordNamer, which already
+               produces every string here. -->
+          <div class="wave" style="height:76px; margin:0; padding:4px 8px 6px">
+            <span class="cap">Sounding</span>
+            <div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:8px">
+              <span class="big" style="font-size:29px">Cmaj7</span>
+              <span class="nl">C4 · E4 · G4 · B4</span>
+            </div>
+            <div class="mk">
+              <div class="w lit"></div><div class="w"></div><div class="w"></div><div class="w lit"></div>
+              <div class="w"></div><div class="w"></div><div class="w lit"></div><div class="w"></div>
+              <div class="w"></div><div class="w"></div><div class="w"></div><div class="w lit"></div>
+              <div class="b" style="left:6.2%"></div><div class="b" style="left:14.5%"></div>
+              <div class="b" style="left:31%"></div><div class="b" style="left:39.3%"></div>
+              <div class="b" style="left:47.6%"></div><div class="b" style="left:64%"></div>
+              <div class="b" style="left:72.4%"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="foot">
+        <span>Voice</span>
+        <span class="chord">Cmaj7</span>
+        <span>0 mod routes active · Panic · Rand</span>
+      </div>
+
+    </div>
+  </div>
+
+  <section class="notes">
+    <h2>What changed, and why it fits</h2>
+    <ul>
+      <li><b>Column packing is what buys the fit.</b> The old grid padded every card in a row to the tallest card in it — Mixer was half empty because Mono Bass sat beside it. Here each card is only as tall as its own contents, and cards fall into whichever column is shortest. That alone recovers roughly 300 px.</li>
+      <li><b>The knobs only had to come down from 64 px to 48 px.</b> Tightening alone would have needed ~36 px knobs and still not fit. Because the reflow does the structural work, the controls stay comfortably clickable.</li>
+      <li><b>Osc A and Osc B keep all ten knobs</b> — at three columns each card is ~415 px wide, which takes seven cells per row, so they wrap to two rows rather than needing a third column.</li>
+      <li><b>The Inspector is a drawer</b> (the <code>Inspector ▸</code> tab at the right of the tab bar). Reclaiming its permanent 236 px is what lets three columns be wide enough to be useful.</li>
+      <li><b>The chord readout fills the space under Chord</b> — 76 px of the 96 px that column had free, leaving 14 px of clearance. The marquee name at 29 px, the sounding notes, and a strip lighting the pitch classes. It is fed by <code>ChordNamer</code>, which already returns every string shown, so this is display work only.</li>
+      <li><b>It names whatever is sounding, not only chord-mode output</b> — play a triad by hand with chord mode off and it still reads <code>Dm7</code>. Sitting under Chord implies otherwise; if that reads wrong it should become its own card captioned SOUNDING.</li>
+      <li><b>Nothing was removed.</b> Every control from the current VOICE page is present — this is the same page, packed.</li>
+      <li>The performance strip drops 150 → 110 px by shrinking the envelope display and using the smaller knob size for the ADSR row; the spectrum stretches to fill whatever width is left.</li>
+    </ul>
+  </section>
+</div>

@@ -7,6 +7,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Catch2)
 
+# Offline CPU benchmark (not part of ctest): used to chase glitching.
+add_executable(pdhybrid_bench bench/bench_main.cpp)
+target_include_directories(pdhybrid_bench PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(pdhybrid_bench PRIVATE pdhybrid_dsp)
+target_compile_features(pdhybrid_bench PRIVATE cxx_std_17)
+
 add_executable(pdhybrid_tests
     dsp/oscillator_tests.cpp
     dsp/analog_oscillator_tests.cpp
@@ -14,6 +20,10 @@ add_executable(pdhybrid_tests
     dsp/scanned_oscillator_tests.cpp
     dsp/vosim_oscillator_tests.cpp
     dsp/walsh_oscillator_tests.cpp
+    dsp/new_oscillator_tests.cpp
+    dsp/new_filter_tests.cpp
+    dsp/batch3_tests.cpp
+    dsp/gain_structure_tests.cpp
     dsp/pluck_resonator_tests.cpp
     dsp/filter_tests.cpp
     dsp/svf_tests.cpp
@@ -32,6 +42,9 @@ add_executable(pdhybrid_tests
     dsp/chorus_tests.cpp
     dsp/reverb_tests.cpp
     dsp/arpeggiator_tests.cpp
+    dsp/chord_mode_tests.cpp
+    dsp/chord_namer_tests.cpp
+    theme/theme_palette_tests.cpp
     harness/Fft.cpp
     harness/Spectrum.cpp
 )
@@ -43,6 +56,7 @@ target_include_directories(pdhybrid_tests PRIVATE
 
 target_link_libraries(pdhybrid_tests PRIVATE
     pdhybrid_dsp
+    pdhybrid_theme
     Catch2::Catch2WithMain
 )
 

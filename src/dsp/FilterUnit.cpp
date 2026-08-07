@@ -8,7 +8,10 @@ void FilterUnit::setSampleRate (double sampleRateHz) noexcept
     svf_.setSampleRate (sampleRateHz);
     pdReso_.setSampleRate (sampleRateHz);
     comb_.setSampleRate (sampleRateHz);
-    // AllpassDispersion is sample-rate independent (pure phase network).
+    allpass_.setSampleRate (sampleRateHz);
+    formant_.setSampleRate (sampleRateHz);
+    diode_.setSampleRate (sampleRateHz);
+    bandSplit_.setSampleRate (sampleRateHz);
 }
 
 void FilterUnit::reset() noexcept
@@ -18,9 +21,13 @@ void FilterUnit::reset() noexcept
     pdReso_.reset();
     comb_.reset();
     allpass_.reset();
+    formant_.reset();
+    diode_.reset();
+    bandSplit_.reset();
 }
 
-void FilterUnit::configure (double cutoffHz, double resonance, double morph) noexcept
+void FilterUnit::configure (double cutoffHz, double resonance, double morph,
+                            double noteHz) noexcept
 {
     switch (type_)
     {
@@ -30,18 +37,40 @@ void FilterUnit::configure (double cutoffHz, double resonance, double morph) noe
             svf_.setMorph (morph);
             break;
         case FilterType::PdResonator:
+            pdReso_.setNoteFrequency (noteHz);
             pdReso_.setFrequency (cutoffHz);
             pdReso_.setResonance (resonance);
             pdReso_.setAmount (morph);
             break;
         case FilterType::Comb:
             comb_.setFrequency (cutoffHz);
-            comb_.setFeedback (0.5 + 0.49 * resonance);
+            // Full knob travel: the old 0.5 + 0.49*res floor meant the comb
+            // always rang and only half the resonance range did anything.
+            comb_.setFeedback (0.995 * resonance);
             comb_.setDamping (morph);
             break;
         case FilterType::Allpass:
-            allpass_.setCoefficient (-0.95 + 1.9 * resonance);
+            // Cutoff sweeps the phase break point (it used to be ignored
+            // entirely, leaving the knob dead), resonance feeds the cascade
+            // back on itself and morph sets the number of stages -- i.e. how
+            // many notches the dry mix in processSample carves out.
+            allpass_.setFrequency (cutoffHz);
+            allpass_.setFeedback (0.9 * resonance);
             allpass_.setStages (2 + static_cast<int> (morph * 10.0));
+            break;
+        case FilterType::Formant:
+            formant_.setFrequency (cutoffHz);
+            formant_.setResonance (resonance);
+            formant_.setVowel (morph);
+            break;
+        case FilterType::DiodeLadder:
+            diode_.setCutoff (cutoffHz);
+            diode_.setResonance (resonance);
+            break;
+        case FilterType::BandSplit:
+            bandSplit_.setFrequency (cutoffHz);
+            bandSplit_.setResonance (resonance);
+            bandSplit_.setTilt (morph);
             break;
         case FilterType::Ladder:
         default:
@@ -58,7 +87,14 @@ float FilterUnit::processSample (float x) noexcept
         case FilterType::StateVariable: return svf_.processSample (x);
         case FilterType::PdResonator:   return pdReso_.processSample (x);
         case FilterType::Comb:          return comb_.processSample (x);
-        case FilterType::Allpass:       return allpass_.processSample (x);
+        case FilterType::Allpass:
+            // The cascade alone is flat by definition, so on its own it was
+            // inaudible as a filter. Summing it with the dry signal turns the
+            // phase shift into real notches -- a phaser.
+            return 0.5f * (x + allpass_.processSample (x));
+        case FilterType::Formant:       return formant_.processSample (x);
+        case FilterType::DiodeLadder:   return diode_.processSample (x);
+        case FilterType::BandSplit:     return bandSplit_.processSample (x);
         case FilterType::Ladder:
         default:                        return ladder_.processSample (x);
     }

@@ -4,9 +4,9 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
 #include "SynthLookAndFeel.h"
-#include "CrtOverlay.h"
 #include "ScopeDisplay.h"
 #include "Displays.h"
+#include "dsp/ChordNamer.h"
 #include <functional>
 #include <memory>
 #include <utility>
@@ -65,9 +65,16 @@ private:
         std::vector<juce::Button*> toggles;
         int cols = 4;
         int span = 2;             // grid columns (the page grid is kGridCols wide)
-        // Consecutive sections sharing a non-zero stackId occupy one block of
-        // `span` columns and split its height between them, so a short card can
-        // sit above another instead of claiming a whole row.
+        // Which column this card belongs in, or -1 to let the packer choose the
+        // shortest. Which cards sit next to each other is a design decision, not
+        // something to leave to a fill heuristic -- greedy packing is well
+        // balanced but scatters related cards, so every page states its own
+        // arrangement and the automatic path is the fallback.
+        int column = -1;
+        // Stacking is obsolete under column packing: the packer already keeps
+        // columns level, and forcing two cards into one unit defeats it -- LFO 1
+        // and LFO 2 shared an id and so both landed in the same column, leaving
+        // it 220 px longer than its neighbour. Kept at 0 for every section.
         int stackId = 0;
         juce::Component* custom = nullptr;
         int customH = 0;          // height reserved for `custom`, 0 = none
@@ -77,7 +84,7 @@ private:
         juce::Component* custom2 = nullptr;
         int customH2 = 0;
         int knobSplit = -1;       // knobs before this index go above custom2
-        juce::Colour titleCol { 0xff4be08a };   // amber marks a modulation source
+        juce::Colour titleCol {};   // set from the theme when the section is built
         juce::Rectangle<int> bounds;
     };
 
@@ -177,6 +184,11 @@ private:
 
         std::vector<Bank> banks;
         bool expanded = true;    // NUMERIC row of R/L knobs showing
+        // How many rows the sixteen numeric knobs actually took last layout.
+        // preferredHeight has to agree with resized(), and resized() only knows
+        // once it has a width -- so it records the answer here and fires
+        // onHeightChanged when it changes.
+        int  numericRows = 1;
         int  active = 0;
         int  dragNode = -1;      // node being dragged, -1 = none
         int  hoverNode = -1;
@@ -227,14 +239,32 @@ private:
     juce::TextButton prevButton { "<" };
     juce::TextButton nextButton { ">" };
     juce::TextButton abButton { "A/B: A" };
-    juce::TextButton crtButton { "CRT" };
+    juce::ComboBox   themeBox;
+    // The Inspector is a drawer now, not a reserved column; this is its latch.
+    // The drawer's grab handle, on the edge it opens from. Custom-painted: a
+    // TextButton with a glyph read as decoration, so this draws a real tab with
+    // an arrowhead and a grip, and captions itself INSPECTOR down its length.
+    CallbackComponent inspectorHandle;
+    bool             inspectorOpen_ = false;
     juce::TextButton presetButton { "Presets" };   // opens the hierarchical preset menu
+
+    /** Installs a skin at runtime: pushes it onto the LookAndFeel, re-applies
+        every colour/font baked in at construction time (strip/matrix textbox
+        colours, tab bar colours, knob-label fonts), and repaints the tree. */
+    void applyTheme (pdtheme::ThemeId id);
 
     // Footer strip: where you are, how much modulation is live, and the two
     // actions that are not part of editing a patch.
     CallbackComponent footer;
     juce::TextButton randButton { "RAND" };
     juce::TextButton panicButton { "PANIC" };
+
+    // Wavetable import. The button doubles as the readout for which table is
+    // loaded, so the Wavetable engine is not a mystery box.
+    juce::TextButton wavetableButton { "WAVETABLE: default" };
+    std::unique_ptr<juce::FileChooser> wavetableChooser;
+    void chooseWavetable();
+    void refreshWavetableButton();
     void paintFooter (juce::Graphics&);
     void layoutFooter();
 
@@ -274,20 +304,22 @@ private:
     std::vector<std::unique_ptr<ScrollPanel>>  scrollers;
 
     ScopeDisplay scope_ { [this] (float* d, int n) { proc.readScope (d, n); } };  // master output scope
-    CrtOverlay crtOverlay;   // click-through CRT effect layered over everything
 
     // Fixed performance strip above the tab bar: the controls reached on every
     // patch, so they never leave the screen whichever page is showing.
     CallbackComponent strip;
     std::vector<LabeledKnob*> stripKnobs;   // cutoff, reso, macro 1/2, A D S R Vel, master
     juce::ComboBox* stripPoly = nullptr;
+    juce::Button*   stripAmpSync = nullptr;    // amp envelope tempo sync
+    LabeledKnob*    stripBpm = nullptr;        // always-visible tempo
+    juce::ComboBox* stripTempoMode = nullptr;
     juce::Button*   stripLimiter = nullptr;
     juce::Button*   stripArp = nullptr;
     std::vector<int> stripDividers_;        // x positions of the cluster rules
     std::vector<std::pair<juce::String, juce::Rectangle<int>>> stripGroups_;
 
     // Named sections (built once, then handed to pages).
-    Section oscA, oscB, mixer;                                           // Voice page
+    Section oscA, oscB, mixer, chordSec, chordIdSec;                      // Voice page
     Section glideSec, unison, bassSec;
     Section pluckSec, drive, routingSec, filter, filter2;   // Shape page
     Section stageEnvSec, modEnv, lfo, lfo2, vibratoSec, arpSec;   // Mod page
@@ -305,6 +337,8 @@ private:
     pdui::LfoCurve      lfo2Curve;
     pdui::RoutingDiagram routingDiagram;
     pdui::WaveCyclePreview oscACycle, oscBCycle;
+    pdui::ChordKeyboard    chordKeys;
+    pdui::ChordReadout     chordReadout;
     pdui::FilterResponse filt1Resp, filt2Resp;
     pdui::TransferCurve  driveCurve;
     pdui::EqResponse     eqResp;
@@ -352,12 +386,21 @@ private:
     void addRouteToSelected();
     void timerCallback() override;           // live values + ring refresh
 
+    // Envelope time knobs read out as note divisions while their envelope's
+    // SYNC is on. Held so the timer can refresh them when the switch or the
+    // tempo moves — the value has not changed, only what it means.
+    LabeledKnob* findKnob (const juce::String& paramId);
+    void setupEnvTimeReadouts();
+    void refreshEnvTimeReadouts();
+    std::vector<LabeledKnob*> envTimeKnobs;
+    juce::String lastEnvSyncState;           // change detection for the refresh
+
     // Matrix state as of the last refresh, so painting never touches the APVTS
     // in a tight loop.
     struct RouteView { int slot; int source; int dest; float depth; int curve; };
     std::vector<RouteView> routes_;
     Section chorusSec, delaySec, reverbSec, comp, globalEqSec, stereo;   // Out page
-    Section voiceSec, tuningSec, globalLfoSec, qualitySec;               // Global page
+    Section voiceSec, tuningSec, globalLfoSec, qualitySec, tempoSec;     // Global page
     Section envelope;                                                    // amp env (lives in the strip)
 
     // Modulation matrix. Lives as an overlay over the whole editor rather than

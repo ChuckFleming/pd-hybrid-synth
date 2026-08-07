@@ -7,6 +7,8 @@
 #include "dsp/FilterUnit.h"
 #include "dsp/GlobalEq.h"
 #include "dsp/Waveshaper.h"
+#include "dsp/ChordNamer.h"
+#include "Theme.h"
 #include <array>
 #include <algorithm>
 #include <cmath>
@@ -17,34 +19,33 @@
     Small green-phosphor readouts used throughout the editor: an ADSR curve, an
     LFO waveform with a running playhead, and the signal-routing diagram.
 
-    All three poll their parameters on a timer rather than listening to them, so
-    automation and preset loads move them without any audio-thread callbacks,
-    and none of them ever touch a parameter (they are read-only displays).
+    They poll their parameters on a timer rather than listening to them, so
+    automation and preset loads move them without any audio-thread callbacks.
+    All are read-only except EnvelopeCurve, whose breakpoints can be dragged --
+    it writes through proper begin/endChangeGesture pairs so a host records the
+    move as automation.
 */
 namespace pdui {
-
-inline const juce::Colour kBg     (0xff020805);
-inline const juce::Colour kEdge   (0xff1c3a2b);
-inline const juce::Colour kGrid   (0xff123322);
-inline const juce::Colour kTrace  (0xff4be08a);
-inline const juce::Colour kDim    (0xff37b06e);
-inline const juce::Colour kAmber  (0xffe8a54b);
 
 inline juce::Font monoF (float h)
 {
     return juce::Font (juce::Font::getDefaultMonospacedFontName(), h, juce::Font::plain);
 }
 
-/** Draws a labelled frame and returns the drawable interior. */
+/** Draws a labelled frame and returns the drawable interior. Colours come from
+    the owning component's theme: these widgets are the display windows, so
+    they stay dark (screenBg/screenTrace) even when the panel around them is
+    light -- exactly like the hardware. */
 inline juce::Rectangle<float> drawFrame (juce::Graphics& g, juce::Rectangle<float> r,
-                                         const juce::String& caption, juce::Colour edge = kEdge)
+                                         const juce::String& caption, const juce::Component& owner)
 {
-    g.setColour (kBg);   g.fillRect (r);
-    g.setColour (edge);  g.drawRect (r, 1.0f);
+    const auto edge = owner.findColour (pdui::panelEdge);
+    g.setColour (owner.findColour (pdui::screenBg));   g.fillRect (r);
+    g.setColour (edge);                                g.drawRect (r, 1.0f);
     if (caption.isNotEmpty())
     {
-        g.setFont (monoF (8.0f));
-        g.setColour (kDim.withAlpha (0.75f));
+        g.setFont (pdui::labelFont (owner, 8.0f));
+        g.setColour (owner.findColour (pdui::screenDim).withAlpha (0.75f));
         g.drawText (caption, r.reduced (5.0f, 3.0f), juce::Justification::topLeft);
     }
     return r.reduced (5.0f, 6.0f);
@@ -52,15 +53,20 @@ inline juce::Rectangle<float> drawFrame (juce::Graphics& g, juce::Rectangle<floa
 
 //==============================================================================
 /** ADSR curve. Segment widths follow the real times, with a fixed sustain hold
-    so the sustain level is always visible. */
+    so the sustain level is always visible.
+
+    The breakpoints are draggable: the attack corner sets A, the sustain corner
+    sets D and S together, the plateau end sets S, and the midpoint of the
+    release ramp sets R. As in the 8-stage editor, the horizontal time base is
+    frozen for the duration of a gesture -- otherwise editing a time rescales
+    the x axis under the cursor and the drag fights itself. */
 class EnvelopeCurve : public juce::Component,
                       private juce::Timer
 {
 public:
-    EnvelopeCurve (juce::String caption, juce::Colour colour = kTrace)
-        : caption_ (std::move (caption)), colour_ (colour)
+    explicit EnvelopeCurve (juce::String caption)
+        : caption_ (std::move (caption))
     {
-        setInterceptsMouseClicks (false, false);
     }
     ~EnvelopeCurve() override { stopTimer(); }
 
@@ -73,74 +79,265 @@ public:
         startTimerHz (12);
     }
 
+    /** Maps a raw stage time to the time actually being played. Set by the
+        editor to the tempo-sync snap, so that while SYNC is on the curve only
+        moves when the division changes -- turning a knob within a division's
+        snap zone alters nothing audible and must not animate the display. */
+    void setTimeMapper (std::function<double (double)> fn)
+    {
+        timeMap_ = std::move (fn);
+        repaint();
+    }
+
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), caption_);
+        auto in = drawFrame (g, getLocalBounds().toFloat(), caption_, *this);
         if (a_ == nullptr) return;
 
-        const float A = a_->convertFrom0to1 (a_->getValue());
-        const float D = d_->convertFrom0to1 (d_->getValue());
-        const float S = juce::jlimit (0.0f, 1.0f, s_->convertFrom0to1 (s_->getValue()));
-        const float R = r_->convertFrom0to1 (r_->getValue());
-
-        // The held section is a fixed slice of the width; the three timed
-        // sections share the rest in proportion to their real durations.
-        const float hold  = 0.22f;
-        const float timed = juce::jmax (1.0e-4f, A + D + R);
-        const float sc    = (1.0f - hold) / timed;
-
-        const float x0 = in.getX(), w = in.getWidth();
-        const float yb = in.getBottom(), h = in.getHeight();
-        const float xA = x0 + w * A * sc;
-        const float xD = xA + w * D * sc;
-        const float xS = xD + w * hold;
+        const auto trace = findColour (pdui::screenTrace);
+        const auto geo = geometry (in);
 
         juce::Path p;
-        p.startNewSubPath (x0, yb);
-        p.lineTo (xA, yb - h);              // attack to full
-        p.lineTo (xD, yb - h * S);          // decay to sustain
-        p.lineTo (xS, yb - h * S);          // hold
-        p.lineTo (in.getRight(), yb);       // release
+        p.startNewSubPath (in.getX(), geo.yb);
+        p.lineTo (geo.xA, geo.yb - geo.h);        // attack to full
+        p.lineTo (geo.xD, geo.yS);                // decay to sustain
+        p.lineTo (geo.xS, geo.yS);                // hold
+        p.lineTo (geo.xR, geo.yb);                // release
 
         auto fill = p;
-        fill.lineTo (in.getRight(), yb);
-        fill.lineTo (x0, yb);
+        fill.lineTo (geo.xR, geo.yb);
+        fill.lineTo (in.getX(), geo.yb);
         fill.closeSubPath();
-        g.setColour (colour_.withAlpha (0.12f));
+        g.setColour (trace.withAlpha (0.12f));
         g.fillPath (fill);
 
-        g.setColour (kGrid);
-        g.fillRect (x0, yb - h * S, w, 1.0f);
+        g.setColour (findColour (pdui::screenGrid));
+        g.fillRect (in.getX(), geo.yS, in.getWidth(), 1.0f);
 
-        g.setColour (colour_.withAlpha (0.25f));
+        g.setColour (trace.withAlpha (0.25f));
         g.strokePath (p, juce::PathStrokeType (3.0f));
-        g.setColour (colour_);
+        g.setColour (trace);
         g.strokePath (p, juce::PathStrokeType (1.5f));
 
-        // Breakpoint markers at the three corners.
-        g.setColour (kBg);
-        for (auto pt : { juce::Point<float> (xA, yb - h),
-                         juce::Point<float> (xD, yb - h * S),
-                         juce::Point<float> (xS, yb - h * S) })
+        // Breakpoint handles. The hovered or dragged one lights up amber so it
+        // reads as grabbable rather than as decoration.
+        for (int i = 0; i < kNumNodes; ++i)
         {
-            g.setColour (kBg);     g.fillRect (pt.x - 2.5f, pt.y - 2.5f, 5.0f, 5.0f);
-            g.setColour (colour_); g.drawRect (juce::Rectangle<float> (pt.x - 2.5f, pt.y - 2.5f, 5.0f, 5.0f), 1.0f);
+            const auto pt  = nodePos (geo, i);
+            const bool lit = (i == dragNode_) || (i == hoverNode_);
+            const float rad = lit ? 3.5f : 2.5f;
+            g.setColour (findColour (pdui::screenBg));
+            g.fillRect (pt.x - rad, pt.y - rad, rad * 2.0f, rad * 2.0f);
+            g.setColour (lit ? findColour (pdui::liveCol) : trace);
+            g.drawRect (juce::Rectangle<float> (pt.x - rad, pt.y - rad, rad * 2.0f, rad * 2.0f), 1.0f);
         }
     }
 
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        const int h = hitNode (e.position);
+        if (h != hoverNode_)
+        {
+            hoverNode_ = h;
+            setMouseCursor (h >= 0 ? juce::MouseCursor::DraggingHandCursor
+                                   : juce::MouseCursor::NormalCursor);
+            repaint();
+        }
+    }
+
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        if (hoverNode_ != -1) { hoverNode_ = -1; repaint(); }
+        setMouseCursor (juce::MouseCursor::NormalCursor);
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (a_ == nullptr) return;
+
+        dragNode_ = hitNode (e.position);
+        if (dragNode_ < 0) return;
+
+        // Freeze the time base for the gesture (see the class comment).
+        const auto geo = geometry (interior());
+        dragScale_ = geo.sc;
+
+        for (auto* p : gestureParams (dragNode_))
+            if (p != nullptr) p->beginChangeGesture();
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (dragNode_ < 0) return;
+
+        const auto in = interior();
+        const float w  = in.getWidth();
+        const float yb = in.getBottom(), h = juce::jmax (1.0f, in.getHeight());
+
+        // Time in seconds from a horizontal position, using the frozen scale.
+        auto timeAt = [&] (float x, float startX)
+        {
+            const float dx = juce::jmax (0.0f, x - startX);
+            return dragScale_ > 1.0e-6f ? dx / (w * dragScale_) : 0.0f;
+        };
+        auto setLevel = [&] (juce::RangedAudioParameter* p, float y)
+        {
+            const float v = juce::jlimit (0.0f, 1.0f, (yb - y) / h);
+            p->setValueNotifyingHost (p->convertTo0to1 (v));
+        };
+        auto setTime = [&] (juce::RangedAudioParameter* p, float seconds)
+        {
+            const auto range = p->getNormalisableRange();
+            p->setValueNotifyingHost (p->convertTo0to1 (juce::jlimit (range.start, range.end, seconds)));
+        };
+
+        const float A = a_->convertFrom0to1 (a_->getValue());
+
+        switch (dragNode_)
+        {
+            case 0:   // attack corner: x -> A
+                setTime (a_, timeAt (e.position.x, in.getX()));
+                break;
+
+            case 1:   // sustain corner: x -> D (measured from the attack peak), y -> S
+            {
+                const float xA = in.getX() + w * A * dragScale_;
+                setTime (d_, timeAt (e.position.x, xA));
+                setLevel (s_, e.position.y);
+                break;
+            }
+
+            case 2:   // plateau end: y -> S only (its x is the fixed hold width)
+                setLevel (s_, e.position.y);
+                break;
+
+            case 3:   // release handle sits at the ramp's midpoint, so x -> 2 * R
+            {
+                const float D  = d_->convertFrom0to1 (d_->getValue());
+                const float xS = in.getX() + w * (A + D) * dragScale_ + w * kHold;
+                setTime (r_, 2.0f * timeAt (e.position.x, xS));
+                break;
+            }
+
+            default: break;
+        }
+
+        repaint();
+    }
+
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        if (dragNode_ < 0) return;
+        for (auto* p : gestureParams (dragNode_))
+            if (p != nullptr) p->endChangeGesture();
+        dragNode_ = -1;
+        repaint();
+    }
+
 private:
+    static constexpr int   kNumNodes = 4;
+    static constexpr float kHold     = 0.22f;   // fixed slice given to the sustain hold
+    static constexpr float kHitR     = 6.0f;
+
+    struct Geometry
+    {
+        float sc = 0.0f;                  // seconds -> fraction of width
+        float xA = 0.0f, xD = 0.0f, xS = 0.0f, xR = 0.0f;
+        float yb = 0.0f, yS = 0.0f, h = 0.0f;
+    };
+
+    juce::Rectangle<float> interior() const
+    {
+        // Mirrors drawFrame's inset so hit-testing lines up with what is drawn.
+        return getLocalBounds().toFloat().reduced (5.0f, 6.0f);
+    }
+
+    Geometry geometry (juce::Rectangle<float> in) const
+    {
+        Geometry g;
+        if (a_ == nullptr) return g;
+
+        const float A = mapTime (a_->convertFrom0to1 (a_->getValue()));
+        const float D = mapTime (d_->convertFrom0to1 (d_->getValue()));
+        const float S = juce::jlimit (0.0f, 1.0f, s_->convertFrom0to1 (s_->getValue()));
+        const float R = mapTime (r_->convertFrom0to1 (r_->getValue()));
+
+        // The held section is a fixed slice of the width; the three timed
+        // sections share the rest in proportion to their real durations.
+        const float timed = juce::jmax (1.0e-4f, A + D + R);
+        g.sc = (1.0f - kHold) / timed;
+
+        const float w = in.getWidth();
+        g.yb = in.getBottom();
+        g.h  = in.getHeight();
+        g.yS = g.yb - g.h * S;
+        g.xA = in.getX() + w * A * g.sc;
+        g.xD = g.xA + w * D * g.sc;
+        g.xS = g.xD + w * kHold;
+        g.xR = in.getRight();
+        return g;
+    }
+
+    juce::Point<float> nodePos (const Geometry& g, int i) const
+    {
+        switch (i)
+        {
+            case 0:  return { g.xA, g.yb - g.h };
+            case 1:  return { g.xD, g.yS };
+            case 2:  return { g.xS, g.yS };
+            default: return { (g.xS + g.xR) * 0.5f, (g.yS + g.yb) * 0.5f };
+        }
+    }
+
+    int hitNode (juce::Point<float> p) const
+    {
+        if (a_ == nullptr) return -1;
+        const auto g = geometry (interior());
+        for (int i = 0; i < kNumNodes; ++i)
+            if (nodePos (g, i).getDistanceFrom (p) <= kHitR)
+                return i;
+        return -1;
+    }
+
+    std::array<juce::RangedAudioParameter*, 2> gestureParams (int node) const
+    {
+        switch (node)
+        {
+            case 0:  return { a_, nullptr };
+            case 1:  return { d_, s_ };
+            case 2:  return { s_, nullptr };
+            default: return { r_, nullptr };
+        }
+    }
+
+    float mapTime (float seconds) const
+    {
+        return timeMap_ ? static_cast<float> (timeMap_ (seconds)) : seconds;
+    }
+
     void timerCallback() override
     {
         if (a_ == nullptr) return;
-        const float now[4] { a_->getValue(), d_->getValue(), s_->getValue(), r_->getValue() };
+
+        // Compare the *drawn* values, not the raw parameter values: with sync
+        // on, a knob can move a long way inside one division without changing
+        // the shape, and repainting then would show motion that is not there.
+        const float now[4] { mapTime (a_->convertFrom0to1 (a_->getValue())),
+                             mapTime (d_->convertFrom0to1 (d_->getValue())),
+                             s_->getValue(),
+                             mapTime (r_->convertFrom0to1 (r_->getValue())) };
         for (int i = 0; i < 4; ++i)
             if (! juce::approximatelyEqual (now[i], last_[i])) { last_[i] = now[i]; repaint(); }
     }
 
     juce::String caption_;
-    juce::Colour colour_;
     juce::RangedAudioParameter *a_ = nullptr, *d_ = nullptr, *s_ = nullptr, *r_ = nullptr;
     float last_[4] { -1.0f, -1.0f, -1.0f, -1.0f };
+
+    int   dragNode_  = -1;
+    int   hoverNode_ = -1;
+    float dragScale_ = 0.0f;   // x scale frozen for the duration of a drag
+    std::function<double (double)> timeMap_;   // raw seconds -> played seconds
 };
 
 //==============================================================================
@@ -198,13 +395,13 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), caption_);
+        auto in = drawFrame (g, getLocalBounds().toFloat(), caption_, *this);
         if (wave_ == nullptr) return;
 
         const int wv = juce::roundToInt (wave_->convertFrom0to1 (wave_->getValue()));
         const float cy = in.getCentreY(), amp = in.getHeight() * 0.42f;
 
-        g.setColour (kGrid);
+        g.setColour (findColour (pdui::screenGrid));
         g.fillRect (in.getX(), cy, in.getWidth(), 1.0f);
 
         juce::Path p;
@@ -223,11 +420,11 @@ public:
         // With a live reader the shape becomes a dim reference and the real
         // output is drawn over it; without one, the shape is the whole story.
         const bool hasLive = (live_ != nullptr);
-        g.setColour (kTrace.withAlpha (hasLive ? 0.16f : 0.22f));
+        g.setColour (findColour (pdui::screenTrace).withAlpha (hasLive ? 0.16f : 0.22f));
         g.strokePath (p, juce::PathStrokeType (hasLive ? 1.2f : 3.0f));
         if (! hasLive)
         {
-            g.setColour (kTrace);
+            g.setColour (findColour (pdui::screenTrace));
             g.strokePath (p, juce::PathStrokeType (1.4f));
         }
 
@@ -241,9 +438,9 @@ public:
                 if (i == 0) lp.startNewSubPath (x, y);
                 else        lp.lineTo (x, y);
             }
-            g.setColour (kTrace.withAlpha (0.25f));
+            g.setColour (findColour (pdui::screenTrace).withAlpha (0.25f));
             g.strokePath (lp, juce::PathStrokeType (3.0f));
-            g.setColour (kTrace);
+            g.setColour (findColour (pdui::screenTrace));
             g.strokePath (lp, juce::PathStrokeType (1.4f));
 
             // Current value, marked at the leading edge of the trace.
@@ -254,7 +451,7 @@ public:
         {
             const float px = in.getX() + phase_ * in.getWidth();
             const float py = cy - shape (wv, phase_) * amp;
-            g.setColour (kTrace);
+            g.setColour (findColour (pdui::screenTrace));
             g.fillEllipse (px - 2.4f, py - 2.4f, 4.8f, 4.8f);
         }
     }
@@ -308,12 +505,21 @@ public:
         rebuild();
     }
 
+    /** Point the preview at the loaded wavetable and redraw. Called when a new
+        table is imported; the parameter timer cannot see that change. */
+    void setWavetable (std::shared_ptr<pdhybrid::WavetableOscillator::WavetableSet> t)
+    {
+        osc_.setWavetable (std::move (t));
+        if (apvts_ != nullptr)
+            rebuild();
+    }
+
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), "CYCLE");
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "CYCLE", *this);
         const float cy = in.getCentreY(), amp = in.getHeight() * 0.44f;
 
-        g.setColour (kGrid);
+        g.setColour (findColour (pdui::screenGrid));
         g.fillRect (in.getX(), cy, in.getWidth(), 1.0f);
 
         juce::Path p;
@@ -324,9 +530,9 @@ public:
             if (i == 0) p.startNewSubPath (x, y);
             else        p.lineTo (x, y);
         }
-        g.setColour (kTrace.withAlpha (0.25f));
+        g.setColour (findColour (pdui::screenTrace).withAlpha (0.25f));
         g.strokePath (p, juce::PathStrokeType (3.0f));
-        g.setColour (kTrace);
+        g.setColour (findColour (pdui::screenTrace));
         g.strokePath (p, juce::PathStrokeType (1.4f));
     }
 
@@ -473,12 +679,12 @@ public:
 
             if (sel)
             {
-                g.setColour (kAmber.withAlpha (0.10f));
+                g.setColour (findColour (pdui::liveCol).withAlpha (0.10f));
                 g.fillRect (b);
             }
 
             g.setFont (monoF (8.5f));
-            g.setColour (used ? kAmber : kDim.withAlpha (0.65f));
+            g.setColour (used ? findColour (pdui::liveCol) : findColour (pdui::screenDim).withAlpha (0.65f));
             g.drawText (row.name.toUpperCase(), b.withWidth (kNameW).reduced (3, 0),
                         juce::Justification::centredLeft);
 
@@ -487,10 +693,10 @@ public:
                          .reduced (2, row.trace ? 3 : 5);
             auto value = history_[i].empty() ? 0.0f : history_[i].back();
 
-            g.setColour (juce::Colour (0xff0e2116));
+            g.setColour (findColour (pdui::screenBg).brighter (0.05f));
             g.fillRect (plot);
 
-            const auto col = used ? kTrace : kTrace.withAlpha (0.5f);
+            const auto col = used ? findColour (pdui::screenTrace) : findColour (pdui::screenTrace).withAlpha (0.5f);
 
             if (row.trace)
             {
@@ -499,7 +705,7 @@ public:
                 const float amp = row.bipolar ? plot.getHeight() * 0.45f : plot.getHeight() * 0.92f;
                 if (row.bipolar)
                 {
-                    g.setColour (kGrid);
+                    g.setColour (findColour (pdui::screenGrid));
                     g.fillRect ((float) plot.getX(), mid, (float) plot.getWidth(), 1.0f);
                 }
 
@@ -542,7 +748,7 @@ public:
             }
 
             g.setFont (monoF (8.0f));
-            g.setColour (kDim);
+            g.setColour (findColour (pdui::screenDim));
             g.drawText (juce::String (value, 2), b.removeFromRight (kValueW).reduced (2, 0),
                         juce::Justification::centredRight);
         }
@@ -603,11 +809,11 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), "RESPONSE");
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "RESPONSE", *this);
         if (apvts_ == nullptr) return;
 
         // Decade gridlines across 20 Hz .. 20 kHz.
-        g.setColour (kGrid);
+        g.setColour (findColour (pdui::screenGrid));
         for (float f : { 100.0f, 1000.0f, 10000.0f })
             g.fillRect (in.getX() + xForHz (f) * in.getWidth(), in.getY(), 1.0f, in.getHeight());
         g.fillRect (in.getX(), in.getCentreY(), in.getWidth(), 1.0f);
@@ -627,11 +833,11 @@ public:
         fill.lineTo (in.getRight(), in.getBottom());
         fill.lineTo (in.getX(),     in.getBottom());
         fill.closeSubPath();
-        g.setColour (kTrace.withAlpha (0.10f));
+        g.setColour (findColour (pdui::screenTrace).withAlpha (0.10f));
         g.fillPath (fill);
-        g.setColour (kTrace.withAlpha (0.25f));
+        g.setColour (findColour (pdui::screenTrace).withAlpha (0.25f));
         g.strokePath (p, juce::PathStrokeType (3.0f));
-        g.setColour (kTrace);
+        g.setColour (findColour (pdui::screenTrace));
         g.strokePath (p, juce::PathStrokeType (1.5f));
 
         // Cutoff marker, labelled with the frequency the knob is actually set to.
@@ -639,7 +845,7 @@ public:
         {
             const float hz = c->convertFrom0to1 (c->getValue());
             const float mx = in.getX() + xForHz (hz) * in.getWidth();
-            g.setColour (kAmber.withAlpha (0.7f));
+            g.setColour (findColour (pdui::liveCol).withAlpha (0.7f));
             for (float y = in.getY(); y < in.getBottom(); y += 5.0f)
                 g.fillRect (mx, y, 1.0f, 2.5f);
             g.setFont (monoF (8.0f));
@@ -726,7 +932,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), "TRANSFER");
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "TRANSFER", *this);
         if (apvts_ == nullptr) return;
 
         pdhybrid::Waveshaper sh;
@@ -734,11 +940,11 @@ public:
         sh.setDrive (raw (drive_));
         sh.setBias  (raw (bias_));
 
-        g.setColour (kGrid);
+        g.setColour (findColour (pdui::screenGrid));
         g.fillRect (in.getCentreX(), in.getY(), 1.0f, in.getHeight());
         g.fillRect (in.getX(), in.getCentreY(), in.getWidth(), 1.0f);
         // Unity reference: what "no shaping" would look like.
-        g.setColour (kEdge);
+        g.setColour (findColour (pdui::panelEdge));
         g.drawLine (in.getX(), in.getBottom(), in.getRight(), in.getY(), 1.0f);
 
         juce::Path p;
@@ -752,9 +958,9 @@ public:
             if (i == 0) p.startNewSubPath (px, py);
             else        p.lineTo (px, py);
         }
-        g.setColour (kTrace.withAlpha (0.25f));
+        g.setColour (findColour (pdui::screenTrace).withAlpha (0.25f));
         g.strokePath (p, juce::PathStrokeType (3.0f));
-        g.setColour (kTrace);
+        g.setColour (findColour (pdui::screenTrace));
         g.strokePath (p, juce::PathStrokeType (1.5f));
     }
 
@@ -797,13 +1003,13 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), "RESPONSE");
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "RESPONSE", *this);
         if (apvts_ == nullptr) return;
 
-        g.setColour (kGrid);
+        g.setColour (findColour (pdui::screenGrid));
         for (float f : { 100.0f, 1000.0f, 10000.0f })
             g.fillRect (in.getX() + xForHz (f) * in.getWidth(), in.getY(), 1.0f, in.getHeight());
-        g.setColour (kEdge);
+        g.setColour (findColour (pdui::panelEdge));
         g.fillRect (in.getX(), in.getCentreY(), in.getWidth(), 1.0f);   // 0 dB
 
         juce::Path p;
@@ -817,9 +1023,9 @@ public:
             if (i == 0) p.startNewSubPath (in.getX() + (float) i, y);
             else        p.lineTo (in.getX() + (float) i, y);
         }
-        g.setColour (kTrace.withAlpha (0.25f));
+        g.setColour (findColour (pdui::screenTrace).withAlpha (0.25f));
         g.strokePath (p, juce::PathStrokeType (3.0f));
-        g.setColour (kTrace);
+        g.setColour (findColour (pdui::screenTrace));
         g.strokePath (p, juce::PathStrokeType (1.6f));
 
         // A marker per band, at its frequency and gain.
@@ -831,9 +1037,9 @@ public:
             const float hz = raw (fq[b]), db = raw (gn[b]);
             const float mx = in.getX() + xForHz (hz) * in.getWidth();
             const float my = in.getCentreY() - juce::jlimit (-24.0f, 24.0f, db) * in.getHeight() / 48.0f;
-            g.setColour (kBg);    g.fillRect (mx - 3.0f, my - 3.0f, 6.0f, 6.0f);
-            g.setColour (kTrace); g.drawRect (juce::Rectangle<float> (mx - 3.0f, my - 3.0f, 6.0f, 6.0f), 1.0f);
-            g.setColour (kDim.withAlpha (0.7f));
+            g.setColour (findColour (pdui::screenBg));    g.fillRect (mx - 3.0f, my - 3.0f, 6.0f, 6.0f);
+            g.setColour (findColour (pdui::screenTrace)); g.drawRect (juce::Rectangle<float> (mx - 3.0f, my - 3.0f, 6.0f, 6.0f), 1.0f);
+            g.setColour (findColour (pdui::screenDim).withAlpha (0.7f));
             g.drawText (hz >= 1000.0f ? juce::String (hz / 1000.0f, 1) + "k" : juce::String ((int) hz),
                         juce::Rectangle<float> (mx - 18.0f, in.getBottom() - 10.0f, 36.0f, 10.0f),
                         juce::Justification::centred);
@@ -906,25 +1112,25 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), "GAIN REDUCTION");
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "GAIN REDUCTION", *this);
         in = in.withTrimmedTop (9.0f);
 
-        g.setColour (juce::Colour (0xff0e2116));
+        g.setColour (findColour (pdui::screenBg).brighter (0.05f));
         g.fillRect (in);
 
         // Scale runs 0 dB at the right to -24 dB at the left, so reduction grows
         // leftwards from rest the way a hardware meter does.
-        g.setColour (kGrid);
+        g.setColour (findColour (pdui::screenGrid));
         for (int db = -6; db > -24; db -= 6)
             g.fillRect (in.getRight() + (float) db / 24.0f * in.getWidth(), in.getY(), 1.0f, in.getHeight());
 
         const float amt = juce::jlimit (0.0f, 24.0f, -gr_);
         const float w   = amt / 24.0f * in.getWidth();
-        g.setColour (kAmber);
+        g.setColour (findColour (pdui::liveCol));
         g.fillRect (in.getRight() - w, in.getY(), w, in.getHeight());
 
         g.setFont (monoF (8.0f));
-        g.setColour (amt > 0.05f ? kAmber : kDim.withAlpha (0.6f));
+        g.setColour (amt > 0.05f ? findColour (pdui::liveCol) : findColour (pdui::screenDim).withAlpha (0.6f));
         g.drawText (juce::String (gr_, 1) + " dB", getLocalBounds().reduced (5, 2),
                     juce::Justification::topRight);
     }
@@ -952,17 +1158,22 @@ public:
 
     void attach (juce::AudioProcessorValueTreeState& s) { apvts_ = &s; startTimerHz (10); }
 
+    /** Maps a raw tap time to the time actually used, so the pattern holds
+        still while SYNC is on and a knob moves inside one division. */
+    void setTimeMapper (std::function<double (double)> fn)
+    { timeMap_ = std::move (fn); repaint(); }
+
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), "TAPS");
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "TAPS", *this);
         if (apvts_ == nullptr) return;
 
-        const float tL  = raw ("delayTimeL"), tR = raw ("delayTimeR");
+        const float tL  = mapTime (raw ("delayTimeL")), tR = mapTime (raw ("delayTimeR"));
         const float fb  = juce::jlimit (0.0f, 0.95f, raw ("delayFeedback"));
         const int   mod = juce::roundToInt (raw ("delayMode"));   // 0 mono 1 stereo 2 ping-pong
         const float span = juce::jmax (0.05f, juce::jmax (tL, tR) * 6.0f);
 
-        g.setColour (kGrid);
+        g.setColour (findColour (pdui::screenGrid));
         g.fillRect (in.getX(), in.getCentreY(), in.getWidth(), 1.0f);
 
         // Dry hit, then successive echoes decaying by the feedback amount.
@@ -974,7 +1185,7 @@ public:
             const float h = level * in.getHeight() * 0.46f;
             // Ping-pong alternates sides; the others stay centred.
             const float up = (mod == 2 && n % 2 == 1) ? -1.0f : 1.0f;
-            g.setColour (n == 0 ? kTrace : kTrace.withAlpha (0.35f + 0.6f * level));
+            g.setColour (n == 0 ? findColour (pdui::screenTrace) : findColour (pdui::screenTrace).withAlpha (0.35f + 0.6f * level));
             if (mod == 2) g.fillRect (x, in.getCentreY() - (up > 0 ? h : 0.0f), 1.6f, h);
             else          g.fillRect (x, in.getCentreY() - h, 1.6f, h * 2.0f);
             level *= fb;
@@ -988,16 +1199,21 @@ private:
         auto* p = apvts_->getParameter (id);
         return p != nullptr ? p->convertFrom0to1 (p->getValue()) : 0.0f;
     }
+    float mapTime (float seconds) const
+    { return timeMap_ ? static_cast<float> (timeMap_ (seconds)) : seconds; }
     void timerCallback() override
     {
         if (apvts_ == nullptr) return;
-        const float now[4] { raw ("delayTimeL"), raw ("delayTimeR"),
+        // Compare the drawn times, not the raw ones: with sync on a knob can
+        // move a long way inside one division without changing the pattern.
+        const float now[4] { mapTime (raw ("delayTimeL")), mapTime (raw ("delayTimeR")),
                              raw ("delayFeedback"), raw ("delayMode") };
         for (int i = 0; i < 4; ++i)
             if (! juce::approximatelyEqual (now[i], last_[i])) { last_[i] = now[i]; repaint(); }
     }
 
     juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    std::function<double (double)> timeMap_;   // raw seconds -> played seconds
     float last_[4] { -1e9f, -1e9f, -1e9f, -1e9f };
 };
 
@@ -1014,7 +1230,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), "DECAY");
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "DECAY", *this);
         if (apvts_ == nullptr) return;
 
         const float size = juce::jlimit (0.0f, 1.0f, raw ("reverbSize"));
@@ -1035,11 +1251,11 @@ public:
         auto fill = p;
         fill.lineTo (in.getRight(), in.getBottom());
         fill.closeSubPath();
-        g.setColour (kTrace.withAlpha (0.10f));
+        g.setColour (findColour (pdui::screenTrace).withAlpha (0.10f));
         g.fillPath (fill);
-        g.setColour (kTrace.withAlpha (0.25f));
+        g.setColour (findColour (pdui::screenTrace).withAlpha (0.25f));
         g.strokePath (p, juce::PathStrokeType (3.0f));
-        g.setColour (kTrace);
+        g.setColour (findColour (pdui::screenTrace));
         g.strokePath (p, juce::PathStrokeType (1.4f));
     }
 
@@ -1076,16 +1292,16 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), "VELOCITY CURVE");
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "VELOCITY CURVE", *this);
         if (apvts_ == nullptr) return;
 
         auto* p = apvts_->getParameter (id_);
         const int mode = p != nullptr ? juce::roundToInt (p->convertFrom0to1 (p->getValue())) : 0;
 
-        g.setColour (kGrid);
+        g.setColour (findColour (pdui::screenGrid));
         g.fillRect (in.getCentreX(), in.getY(), 1.0f, in.getHeight());
         g.fillRect (in.getX(), in.getCentreY(), in.getWidth(), 1.0f);
-        g.setColour (kEdge);   // linear reference
+        g.setColour (findColour (pdui::panelEdge));   // linear reference
         g.drawLine (in.getX(), in.getBottom(), in.getRight(), in.getY(), 1.0f);
 
         juce::Path path;
@@ -1105,9 +1321,9 @@ public:
             if (i == 0) path.startNewSubPath (x, y);
             else        path.lineTo (x, y);
         }
-        g.setColour (kTrace.withAlpha (0.25f));
+        g.setColour (findColour (pdui::screenTrace).withAlpha (0.25f));
         g.strokePath (path, juce::PathStrokeType (3.0f));
-        g.setColour (kTrace);
+        g.setColour (findColour (pdui::screenTrace));
         g.strokePath (path, juce::PathStrokeType (1.5f));
     }
 
@@ -1139,7 +1355,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), "SCALE OFFSET (CENTS)");
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "SCALE OFFSET (CENTS)", *this);
         if (apvts_ == nullptr) return;
 
         auto* p = apvts_->getParameter (id_);
@@ -1147,7 +1363,7 @@ public:
 
         in = in.withTrimmedBottom (10.0f);
         const float cy = in.getCentreY();
-        g.setColour (kEdge);
+        g.setColour (findColour (pdui::panelEdge));
         g.fillRect (in.getX(), cy, in.getWidth(), 1.0f);
 
         static const char* names[12] { "C", "C#", "D", "D#", "E", "F",
@@ -1160,11 +1376,11 @@ public:
             const float h = juce::jlimit (-1.0f, 1.0f, cents / 20.0f) * in.getHeight() * 0.42f;
             const float x = in.getX() + (float) pc * w;
 
-            g.setColour (std::abs (cents) < 0.05f ? kDim.withAlpha (0.4f) : kTrace);
+            g.setColour (std::abs (cents) < 0.05f ? findColour (pdui::screenDim).withAlpha (0.4f) : findColour (pdui::screenTrace));
             g.fillRect (x + w * 0.25f, h >= 0.0f ? cy - h : cy,
                         w * 0.5f, juce::jmax (1.0f, std::abs (h)));
 
-            g.setColour (kDim.withAlpha (0.7f));
+            g.setColour (findColour (pdui::screenDim).withAlpha (0.7f));
             g.drawText (names[pc], juce::Rectangle<float> (x, (float) getHeight() - 12.0f, w, 10.0f),
                         juce::Justification::centred);
         }
@@ -1205,7 +1421,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto in = drawFrame (g, getLocalBounds().toFloat(), "SIGNAL PATH");
+        auto in = drawFrame (g, getLocalBounds().toFloat(), "SIGNAL PATH", *this);
         if (filterRouting_ == nullptr) return;
 
         const int  routing = juce::roundToInt (filterRouting_->convertFrom0to1 (filterRouting_->getValue()));
@@ -1221,16 +1437,16 @@ public:
         auto block = [&] (float bx, float by, float w, const juce::String& t, bool lit)
         {
             juce::Rectangle<float> b (bx, by - bh * 0.5f, w, bh);
-            g.setColour (lit ? kTrace : kEdge);
+            g.setColour (lit ? findColour (pdui::screenTrace) : findColour (pdui::panelEdge));
             g.drawRect (b, 1.0f);
             g.setFont (monoF (8.0f));
-            g.setColour (lit ? kTrace : kDim.withAlpha (0.45f));
+            g.setColour (lit ? findColour (pdui::screenTrace) : findColour (pdui::screenDim).withAlpha (0.45f));
             g.drawText (t, b, juce::Justification::centred);
         };
         static const float dashes[] { 3.0f, 3.0f };
         auto wire = [&] (float x0, float y0, float x1, float y1, bool active)
         {
-            g.setColour (active ? kTrace : kDim.withAlpha (0.3f));
+            g.setColour (active ? findColour (pdui::screenTrace) : findColour (pdui::screenDim).withAlpha (0.3f));
             if (active)
                 g.drawLine (x0, y0, x1, y1, 1.1f);
             else
@@ -1240,7 +1456,7 @@ public:
         {
             juce::Path h;
             h.addTriangle (x1, y1, x1 - 4.0f, y1 - 3.0f, x1 - 4.0f, y1 + 3.0f);
-            g.setColour (kTrace);
+            g.setColour (findColour (pdui::screenTrace));
             g.fillPath (h);
         };
 
@@ -1306,7 +1522,7 @@ public:
         block (x, cy, bw + 12.0f, fxText[juce::jlimit (0, 2, fx)], true);
 
         g.setFont (monoF (8.0f));
-        g.setColour (kDim.withAlpha (0.6f));
+        g.setColour (findColour (pdui::screenDim).withAlpha (0.6f));
         g.drawText (juce::String (routing == 0 ? "single filter"
                                 : routing == 1 ? "filters in series" : "filters in parallel")
                         + (drivePre ? "  |  drive pre-filter" : "  |  drive post-filter")
@@ -1327,6 +1543,331 @@ private:
     juce::RangedAudioParameter *filterRouting_ = nullptr, *drivePos_ = nullptr,
                                *fxRouting_ = nullptr, *driveOn_ = nullptr;
     float last_[4] { -1.0f, -1.0f, -1.0f, -1.0f };
+};
+
+//==============================================================================
+/** The chord-mode keyboard: quality zone, root zone, and what is sounding.
+
+    Draws a real piano layout -- seven white keys per octave with black keys only
+    between C-D, D-E, F-G, G-A and A-B, each 62% of a white key's width and 62%
+    of its height, centred on the white-key boundary. Anything looser than that
+    reads as "not a keyboard" at a glance.
+
+    The quality names are printed on the twelve quality-zone keys, so the mapping
+    needs no separate legend. The latched quality lights green and the held root
+    amber -- the colour this panel already uses for "this is live". */
+class ChordKeyboard : public juce::Component,
+                      private juce::Timer
+{
+public:
+    static constexpr int kOctaves     = 3;
+    static constexpr int kWhitePerOct = 7;
+    static constexpr int kNumWhite    = kOctaves * kWhitePerOct;
+
+    ChordKeyboard() { setInterceptsMouseClicks (false, false); }
+    ~ChordKeyboard() override { stopTimer(); }
+
+    void attach (juce::AudioProcessorValueTreeState& s,
+                 std::function<int()> heldRoot,
+                 std::function<int (int*, int)> voiced)
+    {
+        apvts_    = &s;
+        heldRoot_ = std::move (heldRoot);
+        voiced_   = std::move (voiced);
+        startTimerHz (20);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto frame = drawFrame (g, getLocalBounds().toFloat(), "KEYBOARD", *this);
+        if (apvts_ == nullptr) return;
+
+        // Bottom strip names the chord being played; the keys take the rest.
+        auto readout = frame.removeFromBottom (13.0f);
+        auto in = frame.withTrimmedBottom (2.0f);
+
+        static const char* kQualityNames[12] = { "maj", "min", "7", "m7", "maj7", "6",
+                                                 "m7b5", "dim7", "aug", "sus2", "sus4", "m6" };
+        // A black key is about nine pixels wide at real size, so it gets the
+        // shortest form that is still unambiguous rather than the full name.
+        static const char* kShortNames[12]   = { "maj", "m", "7", "m7", "maj7", "6",
+                                                 "\xc3\xb8", "dim", "+", "s2", "s4", "m6" };
+        static const int kWhiteSemi[7]  = { 0, 2, 4, 5, 7, 9, 11 };
+        static const int kBlackAfter[5] = { 0, 1, 3, 4, 5 };   // C, D, F, G, A
+        static const int kBlackSemi[5]  = { 1, 3, 6, 8, 10 };
+
+        const int split   = juce::roundToInt (raw ("chordSplit"));
+        const int quality = juce::roundToInt (raw ("chordQuality"));
+        const int zoneLow = split - 12;
+        const int root    = heldRoot_ ? heldRoot_() : -1;
+
+        int sounding[8] = { 0 };
+        const int nSounding = voiced_ ? voiced_ (sounding, 8) : 0;
+        auto isSounding = [&] (int midi)
+        {
+            for (int i = 0; i < nSounding; ++i) if (sounding[i] == midi) return true;
+            return false;
+        };
+
+        // Start from the octave holding the quality zone so it is always shown.
+        const int   firstMidi = (zoneLow / 12) * 12;
+        const float w = in.getWidth() / (float) kNumWhite;
+        const float h = in.getHeight();
+
+        g.setFont (monoF (7.5f));
+
+        for (int i = 0; i < kNumWhite; ++i)
+        {
+            const int midi = firstMidi + (i / 7) * 12 + kWhiteSemi[i % 7];
+            const juce::Rectangle<float> r (in.getX() + i * w, in.getY(), w, h);
+
+            const bool inZone = (midi >= zoneLow && midi < split);
+            const bool isSel  = inZone && (midi - zoneLow) == quality;
+            const bool isRoot = (midi == root);
+
+            // Key fills, derived so they follow the skin. White keys sit on the
+            // screen ground; black keys are the same states a shade deeper.
+            const auto base   = findColour (pdui::screenBg);
+            const auto zone   = base.brighter (0.10f);
+            const auto sel    = findColour (pdui::accentCol).withAlpha (0.55f)
+                                    .overlaidWith (base);
+            const auto rootBg = findColour (pdui::liveCol).withAlpha (0.45f)
+                                    .overlaidWith (base);
+
+            g.setColour (isSel ? sel : isRoot ? rootBg : inZone ? zone : base);
+            g.fillRect (r);
+
+            if (isSounding (midi) && ! isRoot)
+            {
+                g.setColour (findColour (pdui::screenTrace).withAlpha (0.30f));
+                g.fillRect (r.reduced (2.0f));
+            }
+
+            g.setColour (isSel ? findColour (pdui::screenTrace) : (isRoot ? findColour (pdui::liveCol) : findColour (pdui::panelEdge)));
+            g.drawRect (r, 1.0f);
+
+            if (inZone)
+            {
+                g.setColour (isSel ? findColour (pdui::textInk).contrasting (0.7f) : findColour (pdui::screenDim));
+                g.drawText (kQualityNames[midi - zoneLow],
+                            r.withTrimmedBottom (2.0f), juce::Justification::centredBottom);
+            }
+        }
+
+        const float bw = w * 0.62f, bh = h * 0.62f;
+        for (int oct = 0; oct < kOctaves; ++oct)
+            for (int b = 0; b < 5; ++b)
+            {
+                const int   midi     = firstMidi + oct * 12 + kBlackSemi[b];
+                const float boundary = in.getX() + (oct * 7 + kBlackAfter[b] + 1) * w;
+                const juce::Rectangle<float> r (boundary - bw * 0.5f, in.getY(), bw, bh);
+
+                const bool inZone = (midi >= zoneLow && midi < split);
+                const bool isSel  = inZone && (midi - zoneLow) == quality;
+                const bool isRoot = (midi == root);
+
+                // Same four key states as the white keys, a shade deeper.
+                const auto base   = findColour (pdui::screenBg);
+                const auto zone   = base.brighter (0.10f);
+                const auto sel    = findColour (pdui::accentCol).withAlpha (0.55f)
+                                        .overlaidWith (base);
+                const auto rootBg = findColour (pdui::liveCol).withAlpha (0.45f)
+                                        .overlaidWith (base);
+
+                g.setColour ((isSel ? sel : isRoot ? rootBg : inZone ? zone : base).darker (0.35f));
+                g.fillRect (r);
+
+                if (isSounding (midi) && ! isRoot)
+                {
+                    g.setColour (findColour (pdui::screenTrace).withAlpha (0.30f));
+                    g.fillRect (r.reduced (1.5f));
+                }
+
+                g.setColour (isSel ? findColour (pdui::screenTrace) : (isRoot ? findColour (pdui::liveCol) : findColour (pdui::panelEdge)));
+                g.drawRect (r, 1.0f);
+
+                if (inZone)
+                {
+                    g.setFont (monoF (6.0f));
+                    g.setColour (isSel ? findColour (pdui::textInk).contrasting (0.7f) : findColour (pdui::screenDim));
+                    g.drawText (kShortNames[midi - zoneLow],
+                                r.withTrimmedBottom (1.0f).expanded (3.0f, 0.0f),
+                                juce::Justification::centredBottom);
+                    g.setFont (monoF (7.5f));
+                }
+            }
+
+        // Split marker on the real zone boundary.
+        const int idx = splitWhiteIndex (firstMidi, split);
+        if (idx >= 0 && idx <= kNumWhite)
+        {
+            g.setColour (findColour (pdui::liveCol));
+            g.fillRect (in.getX() + idx * w - 1.0f, in.getY() - 2.0f, 2.0f, h + 4.0f);
+        }
+
+        // --- readout: the chord actually playing, and how it is voiced ---
+        g.setFont (monoF (8.5f));
+        if (root >= 0 && nSounding > 0)
+        {
+            juce::String s = noteName (root) + " " + kQualityNames[quality] + "   ";
+            for (int i = 0; i < nSounding; ++i)
+                s << noteName (sounding[i]) << " ";
+            g.setColour (findColour (pdui::liveCol));
+            g.drawText (s, readout, juce::Justification::centredLeft);
+        }
+        else
+        {
+            g.setColour (findColour (pdui::screenDim).withAlpha (0.8f));
+            g.drawText (juce::String ("LATCHED ") + kQualityNames[quality]
+                            + "   play a key above the split",
+                        readout, juce::Justification::centredLeft);
+        }
+    }
+
+private:
+    static juce::String noteName (int midi)
+    {
+        static const char* kNames[12] = { "C", "C#", "D", "D#", "E", "F",
+                                          "F#", "G", "G#", "A", "A#", "B" };
+        if (midi < 0) return "--";
+        return juce::String (kNames[((midi % 12) + 12) % 12]) + juce::String (midi / 12 - 1);
+    }
+
+    /** How many white keys sit below `split`, counting from `firstMidi`. */
+    static int splitWhiteIndex (int firstMidi, int split)
+    {
+        static const int kWhiteSemi[7] = { 0, 2, 4, 5, 7, 9, 11 };
+        int idx = 0;
+        for (int i = 0; i < kNumWhite; ++i)
+        {
+            const int midi = firstMidi + (i / 7) * 12 + kWhiteSemi[i % 7];
+            if (midi < split) idx = i + 1;
+        }
+        return idx;
+    }
+
+    float raw (const juce::String& id) const
+    {
+        auto* p = apvts_->getParameter (id);
+        return p != nullptr ? p->convertFrom0to1 (p->getValue()) : 0.0f;
+    }
+
+    void timerCallback() override { repaint(); }
+
+    juce::AudioProcessorValueTreeState* apvts_ = nullptr;
+    std::function<int()> heldRoot_;
+    std::function<int (int*, int)> voiced_;
+};
+
+//==============================================================================
+/** Names whatever is currently sounding.
+
+    Reads the processor's sounding-note set and runs it through ChordNamer, so
+    it names anything played -- a chord built by chord mode, a triad played by
+    hand with chord mode off, a single note, or a bare interval. Three lines: the
+    name at display size, the notes with their octaves, and a one-octave strip
+    lighting the pitch classes that are down.
+
+    Idle it shows a dim dash rather than emptying: a readout that blanks and
+    refills pulls the eye on every note-off, which is distracting on a page you
+    are editing.
+*/
+class ChordReadout : public juce::Component,
+                     private juce::Timer
+{
+public:
+    ChordReadout() { setInterceptsMouseClicks (false, false); }
+    ~ChordReadout() override { stopTimer(); }
+
+    void attach (std::function<int (int*, int)> sounding)
+    {
+        sounding_ = std::move (sounding);
+        startTimerHz (20);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds();
+        g.setColour (findColour (pdui::screenBg));
+        g.fillRect (r);
+        g.setColour (findColour (pdui::panelEdge));
+        g.drawRect (r, 1);
+
+        r = r.reduced (6, 4);
+
+        g.setFont (juce::Font (juce::Font::getDefaultSansSerifFontName(), 8.0f, juce::Font::plain));
+        g.setColour (findColour (pdui::screenDim));
+        g.drawText ("SOUNDING", r.removeFromTop (10), juce::Justification::topLeft);
+
+        int notes[32];
+        const int n = sounding_ ? sounding_ (notes, 32) : 0;
+
+        // The lit-key strip sits at the bottom whatever else happens, so the
+        // readout keeps one shape instead of reflowing as notes come and go.
+        auto keys = r.removeFromBottom (20);
+
+        char name[pdhybrid::ChordNamer::kMaxName] = { 0 };
+        if (n > 0)
+            pdhybrid::ChordNamer::name (notes, n, name, pdhybrid::ChordNamer::kMaxName);
+
+        auto line = r.reduced (0, 1);
+        g.setFont (juce::Font (juce::Font::getDefaultMonospacedFontName(), 25.0f, juce::Font::plain));
+        if (n > 0)
+        {
+            g.setColour (findColour (pdui::liveCol));
+            g.drawText (name, line, juce::Justification::centredLeft);
+
+            juce::String spelled;
+            for (int i = 0; i < n && i < 6; ++i)
+            {
+                char nn[pdhybrid::ChordNamer::kMaxName] = { 0 };
+                pdhybrid::ChordNamer::noteName (notes[i], nn, pdhybrid::ChordNamer::kMaxName);
+                spelled += (i ? " " : "") + juce::String (nn);
+            }
+            if (n > 6) spelled += " ...";
+
+            g.setFont (juce::Font (juce::Font::getDefaultMonospacedFontName(), 10.0f, juce::Font::plain));
+            g.setColour (findColour (pdui::screenDim));
+            g.drawText (spelled, line, juce::Justification::centredRight);
+        }
+        else
+        {
+            g.setColour (findColour (pdui::screenDim).withAlpha (0.45f));
+            g.drawText ("--", line, juce::Justification::centredLeft);
+        }
+
+        // One octave of keys, lighting the pitch classes that are sounding.
+        bool lit[12] = { false };
+        for (int i = 0; i < n; ++i)
+            lit[((notes[i] % 12) + 12) % 12] = true;
+
+        static const int kWhitePc[7] = { 0, 2, 4, 5, 7, 9, 11 };
+        static const int kBlackPc[5] = { 1, 3, 6, 8, 10 };
+        static const float kBlackAt[5] = { 0.5f, 1.5f, 3.5f, 4.5f, 5.5f };
+
+        const float wk = keys.getWidth() / 7.0f;
+        for (int i = 0; i < 7; ++i)
+        {
+            juce::Rectangle<float> k ((float) keys.getX() + i * wk, (float) keys.getY(),
+                                      wk - 1.0f, (float) keys.getHeight());
+            g.setColour (lit[kWhitePc[i]] ? findColour (pdui::liveCol)
+                                          : findColour (pdui::screenBg).brighter (0.16f));
+            g.fillRect (k);
+        }
+        for (int i = 0; i < 5; ++i)
+        {
+            juce::Rectangle<float> k ((float) keys.getX() + kBlackAt[i] * wk + wk * 0.30f,
+                                      (float) keys.getY(), wk * 0.52f,
+                                      keys.getHeight() * 0.62f);
+            g.setColour (lit[kBlackPc[i]] ? findColour (pdui::liveCol)
+                                          : findColour (pdui::screenBg).darker (0.5f));
+            g.fillRect (k);
+        }
+    }
+
+private:
+    void timerCallback() override { repaint(); }
+    std::function<int (int*, int)> sounding_;
 };
 
 } // namespace pdui

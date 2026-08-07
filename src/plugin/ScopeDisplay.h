@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_dsp/juce_dsp.h>
+#include "Theme.h"
 #include <array>
 #include <functional>
 #include <cmath>
@@ -11,7 +12,6 @@
     output. It pulls the most recent samples from a lock-free tap (via the
     supplied reader), zero-crossing triggers them so the trace stays put, and
     draws the waveform over a log-frequency magnitude spectrum. It lives under
-    the CRT overlay, so the scanlines fall over it for free.
 */
 class ScopeDisplay : public juce::Component,
                      private juce::Timer
@@ -26,10 +26,10 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        const juce::Colour bg     (0xff020805);
-        const juce::Colour edge   (0xff1c3a2b);
-        const juce::Colour grid   (0xff123322);
-        const juce::Colour trace  (0xff4be08a);
+        const auto bg    = findColour (pdui::screenBg);
+        const auto edge  = findColour (pdui::panelEdge);
+        const auto grid  = findColour (pdui::screenGrid);
+        const auto trace = findColour (pdui::screenTrace);
 
         auto r = getLocalBounds().toFloat();
         g.setColour (bg);
@@ -113,7 +113,7 @@ public:
         g.drawRect (r, 1.0f);
 
         g.setFont (juce::Font (juce::Font::getDefaultMonospacedFontName(), 8.0f, juce::Font::plain));
-        g.setColour (juce::Colour (0xff37b06e).withAlpha (0.75f));
+        g.setColour (findColour (pdui::screenTrace).withAlpha (0.75f));
         g.drawText ("OUT " + juce::String (juce::CharPointer_UTF8 ("\xc2\xb7")) + " SPECTRUM",
                     r.reduced (5.0f, 3.0f), juce::Justification::topLeft);
     }

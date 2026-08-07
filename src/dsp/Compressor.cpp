@@ -63,11 +63,20 @@ double Compressor::staticCurveDb (double levelDb) const noexcept
 
 void Compressor::processStereo (float* left, float* right, int numSamples) noexcept
 {
+    processStereo (left, right, numSamples, nullptr);
+}
+
+void Compressor::processStereo (float* left, float* right, int numSamples,
+                                float* gainOut) noexcept
+{
     // Transparent at ratio 1:1 with no makeup gain (the default) -> skip the
     // per-sample log10/pow entirely.
     if (ratio_ <= 1.0 + 1.0e-6 && makeupDb_ == 0.0)
     {
         gainDb_ = 0.0;
+        if (gainOut != nullptr)
+            for (int i = 0; i < numSamples; ++i)
+                gainOut[i] = 1.0f;
         return;
     }
 
@@ -91,6 +100,8 @@ void Compressor::processStereo (float* left, float* right, int numSamples) noexc
         const double gainLin = std::pow (10.0, gainDb_ / 20.0) * makeupLin;
         left[i]  = static_cast<float> (l * gainLin);
         right[i] = static_cast<float> (r * gainLin);
+        if (gainOut != nullptr)
+            gainOut[i] = static_cast<float> (gainLin);
     }
 }
 

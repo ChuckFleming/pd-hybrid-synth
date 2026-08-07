@@ -5,6 +5,56 @@ Date: 2026-07-10. Analysis only — **no code was changed**. Each finding lists 
 
 ---
 
+## BENCHMARK HARNESS (added 2026-07-26)
+`tests/bench/bench_main.cpp` -> target `pdhybrid_bench`. Renders a six-note
+chord through a real SynthEngine at 128-sample blocks and reports % of real
+time, worst block, and **blocks over budget**. Run it before and after any DSP
+change:
+
+```
+cmake --build build --config Release --target pdhybrid_bench
+./build/tests/Release/pdhybrid_bench.exe 6
+```
+
+**Benchmark with modulation switched on.** The default `SynthParams` has drift,
+the DCW envelope and the mod matrix all at zero, so nothing moves the shared
+timbre controls and whole classes of per-chunk cost stay invisible. The harness
+therefore includes explicit "drift on" and "DCW envelope" sections. A regression
+that only appears on modulated patches is exactly the kind users report as
+crackling.
+
+To compare against an earlier revision, `git archive <rev> src/dsp` into a temp
+dir and compile a version-agnostic bench directly with `cl /O2` — the DSP core
+is pure C++, so this needs no CMake and no JUCE.
+
+---
+
+## FIXED 2026-07-26 — engine dispatch (crackling on chords) [ce6d0fc]
+`OscillatorUnit` broadcast the shared timbre setters (amount / pulse width /
+engine param / base frequency / phase mod) to **every** engine it owns rather
+than the selected one. Harmless for years; catastrophic once `HarmonicOscillator`
+arrived, because that engine rebuilds a 64-harmonic wavetable when those inputs
+move, and drift or a DCW envelope moves them every 32-sample control chunk. A
+plain Saw patch rebuilt a table ~1500x/sec per voice per slot for an engine it
+was not using: 11.7% -> 97.3% of real time, 484 of ~1500 blocks over budget.
+
+Diagnostic tell: the cost was **identical across all eleven engines**, which
+rules out the selected engine and points at the dispatch.
+
+Fix: dispatch to the selected engine only, caching each shared control so
+`setType` can bring a newly selected engine up to date (covered by a test
+asserting a late switch is sample-identical to selecting up front); plus lazy,
+rate-limited (~94 Hz) table rebuilds using a sine recurrence instead of
+`std::sin` per sample per harmonic. Net result is faster than before the new
+engines landed.
+
+**Rule of thumb this establishes:** anything a `Voice` calls from
+`applyModulation()` runs ~1500x/second per voice. Nothing on that path may
+rebuild a table, and it must reach only the component that will actually be
+used.
+
+---
+
 ## IMPLEMENTATION STATUS (updated 2026-07-11)
 All changes below verified: 127/127 tests green + pluginval strictness-8 clean.
 

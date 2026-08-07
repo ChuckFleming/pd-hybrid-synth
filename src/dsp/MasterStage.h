@@ -5,13 +5,24 @@
 namespace pdhybrid {
 
 /**
-    Final master output stage: a smoothed output gain followed by an optional
-    soft limiter. The limiter is transparent below its threshold and applies a
-    smooth tanh knee above it, so the output asymptotes to a 1.0 ceiling instead
-    of hard-clipping. The knee is applied 4x oversampled so that clipping bright,
-    loud material (e.g. a dense chord of the pulsed VOSIM engine) does not fold
-    its added harmonics down as aliased crackle. Gain is ramped (one-pole) to
-    avoid zipper noise when the level control moves.
+    Final master output stage: a smoothed output gain, then a peak limiter, then
+    a soft-clip safety net.
+
+    The limiter is a feed-forward peak limiter with an envelope: it measures the
+    stereo-linked peak, works out the gain that would bring it to the threshold,
+    and smooths that with a fast attack and a musical release. This is the part
+    that does the level control. Before it existed the stage was only the tanh
+    knee below -- a static waveshaper with no time constants, which distorts
+    every sample above the threshold the instant it arrives. That is audible as
+    clipping, and it is what a chord or a wide unison patch ran into, because
+    voices sum and the engine can arrive several times over the ceiling.
+
+    The tanh knee is kept as the last line of defence: a feed-forward limiter
+    has no lookahead, so a sharp transient can still poke through for the
+    length of the attack. The knee is applied 4x oversampled so that when it
+    does engage, the harmonics it adds do not fold back down as aliased crackle.
+
+    Gain is ramped (one-pole) to avoid zipper noise when the level control moves.
 
     Pure C++, no JUCE; measured directly by the offline harness.
 */
@@ -28,8 +39,14 @@ public:
     float processSample (float x) noexcept;                       // mono (tests)
     void  processStereo (float* left, float* right, int numSamples) noexcept;
 
+    /** Current limiter gain reduction in dB (<= 0), for metering. */
+    double gainReductionDb() const noexcept;
+
 private:
     double softClip (double x) const noexcept;
+    // Updates the limiter envelope for one sample's stereo-linked peak and
+    // returns the gain to apply.
+    double limiterGain (double peak) noexcept;
 
     double sampleRate_ = 44100.0;
     double targetGain_ = 1.0;
@@ -37,6 +54,12 @@ private:
     double gainCoef_   = 1.0;      // one-pole smoothing coefficient
     bool   limiterOn_  = true;
     double threshold_  = 0.9;
+
+    double limGain_    = 1.0;      // smoothed limiter gain (<= 1)
+    double limAtkCoef_ = 0.0;
+    double limRelCoef_ = 0.0;
+    double peakEnv_      = 0.0;   // held peak driving the limiter
+    double peakDecayCoef_ = 0.0;
 
     Oversampler osL_, osR_;        // 4x anti-alias the soft-clip knee
     static constexpr int kOsFactor = 4;

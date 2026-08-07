@@ -241,9 +241,10 @@ private:
     juce::TextButton abButton { "A/B: A" };
     juce::ComboBox   themeBox;
     // The Inspector is a drawer now, not a reserved column; this is its latch.
-    // The drawer.s grab handle, on the edge it opens from -- a chevron rather
-    // than an abbreviation, so it needs no label to explain itself.
-    juce::TextButton inspectorHandle;
+    // The drawer's grab handle, on the edge it opens from. Custom-painted: a
+    // TextButton with a glyph read as decoration, so this draws a real tab with
+    // an arrowhead and a grip, and captions itself INSPECTOR down its length.
+    CallbackComponent inspectorHandle;
     bool             inspectorOpen_ = false;
     juce::TextButton presetButton { "Presets" };   // opens the hierarchical preset menu
 

@@ -2160,11 +2160,70 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // display preference, not a patch setting.
     addAndMakeVisible (inspectorHandle);
     inspectorOpen_ = (bool) proc.apvts.state.getProperty ("inspectorOpen", false);
-    inspectorHandle.onClick = [this]
+    inspectorHandle.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    inspectorHandle.onMouseDown = [this] (const juce::MouseEvent&)
     {
         inspectorOpen_ = ! inspectorOpen_;
         proc.apvts.state.setProperty ("inspectorOpen", inspectorOpen_, nullptr);
         resized();
+    };
+    inspectorHandle.onPaint = [this] (juce::Graphics& g)
+    {
+        auto b = inspectorHandle.getLocalBounds();
+
+        // A raised tab, the same material as a card, so it reads as something
+        // to grab rather than a sliver of background.
+        g.setColour (findColour (pdui::panelCard));
+        g.fillRect (b);
+        g.setColour (findColour (pdui::panelEdge));
+        g.drawRect (b, 1);
+        g.setColour (findColour (pdui::panelHighlight));
+        g.fillRect (b.getX() + 1, b.getY() + 1, b.getWidth() - 2, 1);
+
+        // A solid arrowhead pointing the way the drawer will move. Filled, not a
+        // glyph: at this width a text chevron is a few grey pixels.
+        const float cx = (float) b.getCentreX();
+        const float cy = (float) b.getCentreY();
+        const float w  = 4.5f, h = 7.0f;
+        juce::Path arrow;
+        if (inspectorOpen_)   // points right: it will close
+        {
+            arrow.startNewSubPath (cx - w * 0.5f, cy - h);
+            arrow.lineTo (cx + w * 0.5f, cy);
+            arrow.lineTo (cx - w * 0.5f, cy + h);
+        }
+        else                  // points left: it will open
+        {
+            arrow.startNewSubPath (cx + w * 0.5f, cy - h);
+            arrow.lineTo (cx - w * 0.5f, cy);
+            arrow.lineTo (cx + w * 0.5f, cy + h);
+        }
+        arrow.closeSubPath();
+        g.setColour (findColour (pdui::accentCol));
+        g.fillPath (arrow);
+
+        // Grip dots above and below, the universal "drag or click me" texture.
+        g.setColour (findColour (pdui::textFaint));
+        for (int i = 0; i < 3; ++i)
+        {
+            const float dy = 22.0f + (float) i * 5.0f;
+            g.fillRect (cx - 1.0f, cy - dy, 2.0f, 2.0f);
+            g.fillRect (cx - 1.0f, cy + dy, 2.0f, 2.0f);
+        }
+
+        // The word itself, running down the tab, so nothing has to be guessed.
+        if (b.getHeight() > 150)
+        {
+            g.saveState();
+            g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi,
+                                                             cx, cy));
+            g.setFont (pdui::labelFont (*this, 8.5f));
+            g.setColour (findColour (pdui::textDim));
+            g.drawText ("INSPECTOR",
+                        juce::Rectangle<float> (cx - 90.0f, cy + 46.0f, 180.0f, 12.0f).toNearestInt(),
+                        juce::Justification::centred);
+            g.restoreState();
+        }
     };
 
     addAndMakeVisible (themeBox);
@@ -2794,7 +2853,7 @@ void PDHybridEditor::resized()
     // The drawer and its handle. The handle rides the drawer's outer edge, so it
     // is always the thing you reach for on that side whether the drawer is open
     // or shut, and the chevron points the way it will move.
-    constexpr int kHandleW = 14;
+    constexpr int kHandleW = 20;
     auto drawer = r.withTrimmedTop (tabs.getTabBarDepth());
 
     inspector.setVisible (inspectorOpen_);
@@ -2805,13 +2864,10 @@ void PDHybridEditor::resized()
         inspector.toFront (false);
     }
 
-    inspectorHandle.setButtonText (inspectorOpen_ ? juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xb6"))
-                                                 : juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x80")));
     inspectorHandle.setBounds (drawer.getRight() - kHandleW,
                                drawer.getY() + 4, kHandleW, drawer.getHeight() - 8);
     inspectorHandle.toFront (false);
-    inspectorHandle.setTooltip (inspectorOpen_ ? "Hide the modulation Inspector"
-                                               : "Show the modulation Inspector");
+    inspectorHandle.repaint();
     // The overlay covers everything below the title bar, so the dimmed backdrop
     // reads as "the rest of the editor is inactive".
     matrixHolder.setBounds (getLocalBounds().withTrimmedTop (kTopBar));

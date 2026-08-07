@@ -1049,7 +1049,10 @@ void PDHybridEditor::buildSections()
     glideSec.title  = "Glide";
     glideSec.cols   = 2;
     glideSec.span   = 1;
-    glideSec.column = 1;
+    // Glide is the taller of the two; it goes in the column with the shorter
+    // Mixer so the two columns finish level. Unison / Drift is 160 px against
+    // Mixer.s 113, so the short card belongs beside Unison, not beside Mixer.
+    glideSec.column = 0;
     glideSec.combos = { &addCombo ("glideMode", { "Off", "Always", "Legato" }) };
     glideSec.knobs  = { &addKnob ("glideTime", "Time"), &addKnob ("glideCurve", "Curve") };
 
@@ -1071,7 +1074,7 @@ void PDHybridEditor::buildSections()
     pluckSec.title   = "Pluck";
     pluckSec.cols    = 4;
     pluckSec.span    = 1;
-    pluckSec.column  = 0;
+    pluckSec.column  = 1;
     pluckSec.toggles = { &addToggle ("pluckOn", "ON") };
     pluckSec.knobs   = { &addKnob ("pluckDecay", "Decay"), &addKnob ("pluckDamp", "Damp"),
                          &addKnob ("pluckDispersion", "Disp"), &addKnob ("pluckBurst", "Burst", 1) };

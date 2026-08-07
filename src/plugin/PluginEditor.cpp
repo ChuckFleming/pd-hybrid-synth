@@ -405,6 +405,13 @@ void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
         // Black box with a thin green outline (square corners, terminal style).
         g.setColour (findColour (pdui::panelCard));
         g.fillRect (b);
+
+        // A one-pixel sheen along the top edge reads as a raised moulding. Skins
+        // that are not physical set highlight to transparent, so this is a no-op
+        // for them rather than needing a branch.
+        g.setColour (findColour (pdui::panelHighlight));
+        g.fillRect (b.getX() + 1, b.getY() + 1, b.getWidth() - 2, 1);
+
         g.setColour (findColour (pdui::panelEdge));
         g.drawRect (b, 1);
 
@@ -2685,6 +2692,16 @@ void PDHybridEditor::paint (juce::Graphics& g)
 {
     g.fillAll (findColour (pdui::panelBg));
 
+    // Fine vertical grain in the moulding. Transparent on skins that do not
+    // want it, and cheap enough to draw every frame.
+    const auto grain = findColour (pdui::panelGrain);
+    if (! grain.isTransparent())
+    {
+        g.setColour (grain);
+        for (int gx = 0; gx < getWidth(); gx += 3)
+            g.fillRect (gx, 0, 1, getHeight());
+    }
+
     auto top = getLocalBounds().removeFromTop (kTopBar);
     g.setColour (findColour (pdui::textInk));
     g.setFont (monoFont (18.0f));
@@ -2692,6 +2709,16 @@ void PDHybridEditor::paint (juce::Graphics& g)
     g.setColour (findColour (pdui::textDim));
     g.setFont (monoFont (11.0f));
     g.drawText ("v7", top.withTrimmedLeft (150), juce::Justification::centredLeft);
+
+    // The coloured legend stripe that ran under the badge on every panel of the
+    // period. It is the theme's accent doing its one clearly-signposted job.
+    if (pdui::themeOf (*this).traits.legendStripe)
+    {
+        auto stripe = top.removeFromBottom (3);
+        g.setColour (findColour (pdui::accentCol));
+        g.fillRect (stripe);
+    }
+
     g.setColour (findColour (pdui::panelEdge));
     g.fillRect (0, kTopBar - 1, getWidth(), 1);
 }

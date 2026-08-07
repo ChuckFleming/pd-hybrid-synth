@@ -344,11 +344,20 @@ int PDHybridEditor::SectionPanel::layout (bool apply, int width)
         int best = 0;
         if (! band)
         {
-            int bestY = highestOf (0, sp);
-            for (int c = 1; c + sp <= numCols; ++c)
+            // An explicit column wins; otherwise fill the shortest.
+            const int want = sections[(std::size_t) u.members.front()].column;
+            if (want >= 0 && want + sp <= numCols)
             {
-                const int y = highestOf (c, sp);
-                if (y < bestY) { bestY = y; best = c; }   // ties keep the left-most
+                best = want;
+            }
+            else
+            {
+                int bestY = highestOf (0, sp);
+                for (int c = 1; c + sp <= numCols; ++c)
+                {
+                    const int y = highestOf (c, sp);
+                    if (y < bestY) { bestY = y; best = c; }   // ties keep the left-most
+                }
             }
         }
 
@@ -945,6 +954,7 @@ void PDHybridEditor::buildSections()
     oscA.title  = "Osc A";
     oscA.cols   = 6;
     oscA.span   = 1;
+    oscA.column = 0;
     oscA.custom = &oscACycle;
     oscA.customH = 42;
     oscA.combos = { &addCombo ("oscAType", kOscTypeNames), &addCombo ("oscAWave", kPdWaveNames),
@@ -965,6 +975,7 @@ void PDHybridEditor::buildSections()
     oscB.title  = "Osc B";
     oscB.cols   = 6;
     oscB.span   = 1;
+    oscB.column = 1;
     oscB.custom = &oscBCycle;
     oscB.customH = 42;
     oscB.combos = { &addCombo ("oscBType", kOscTypeNames), &addCombo ("oscBWave", kPdWaveNames),
@@ -982,6 +993,7 @@ void PDHybridEditor::buildSections()
     mixer.title  = "Mixer";
     mixer.cols   = 4;
     mixer.span   = 1;
+    mixer.column = 0;
     mixer.combos = { &addCombo ("oscCrossMod", { "No Cross Mod", "Hard Sync", "Phase Mod" }) };
     mixer.knobs  = { &addKnob ("noiseLevel", "Noise"), &addKnob ("ringMod", "Ring"),
                      &addKnob ("noiseMod", "N.Mod"), &addKnob ("crossModAmount", "X-Amt") };
@@ -999,6 +1011,7 @@ void PDHybridEditor::buildSections()
     chordSec.title   = "Chord";
     chordSec.cols    = 3;
     chordSec.span    = 1;
+    chordSec.column  = 2;
     chordSec.custom  = &chordKeys;
     chordSec.customH = 70;
     chordSec.toggles = { &addToggle ("chordOn", "ON") };
@@ -1013,6 +1026,7 @@ void PDHybridEditor::buildSections()
     bassSec.title   = "Mono Bass";
     bassSec.cols    = 5;
     bassSec.span    = 1;
+    bassSec.column  = 2;
     bassSec.custom  = &bassCurve;
     bassSec.customH = 42;
     bassSec.toggles = { &addToggle ("bassOn", "ON") };
@@ -1027,6 +1041,7 @@ void PDHybridEditor::buildSections()
     unison.title = "Unison / Drift";
     unison.cols  = 4;
     unison.span  = 1;
+    unison.column = 1;
     unison.knobs = { &addKnob ("unisonVoices", "Voices", 0), &addKnob ("unisonDetune", "Detune"),
                      &addKnob ("unisonWidth", "Width"), &addKnob ("unisonSpread", "Spread"),
                      &addKnob ("drift", "Drift"), &addKnob ("fxSend", "FX Send") };
@@ -1034,6 +1049,7 @@ void PDHybridEditor::buildSections()
     glideSec.title  = "Glide";
     glideSec.cols   = 2;
     glideSec.span   = 1;
+    glideSec.column = 1;
     glideSec.combos = { &addCombo ("glideMode", { "Off", "Always", "Legato" }) };
     glideSec.knobs  = { &addKnob ("glideTime", "Time"), &addKnob ("glideCurve", "Curve") };
 
@@ -1042,6 +1058,7 @@ void PDHybridEditor::buildSections()
     routingSec.title   = "Routing";
     routingSec.cols    = 1;
     routingSec.span    = 1;
+    routingSec.column  = 2;
     routingSec.combos  = { &addCombo ("filterRouting", { "Single Filter", "Filters Series", "Filters Parallel" }),
                            &addCombo ("drivePos", { "Drive Post Filter", "Drive Pre Filter" }),
                            &addCombo ("fxRouting", { "Delay -> Reverb", "Reverb -> Delay", "Reverb, Dry Delay" }) };
@@ -1054,6 +1071,7 @@ void PDHybridEditor::buildSections()
     pluckSec.title   = "Pluck";
     pluckSec.cols    = 4;
     pluckSec.span    = 1;
+    pluckSec.column  = 0;
     pluckSec.toggles = { &addToggle ("pluckOn", "ON") };
     pluckSec.knobs   = { &addKnob ("pluckDecay", "Decay"), &addKnob ("pluckDamp", "Damp"),
                          &addKnob ("pluckDispersion", "Disp"), &addKnob ("pluckBurst", "Burst", 1) };
@@ -1062,6 +1080,7 @@ void PDHybridEditor::buildSections()
     drive.title   = "Overdrive";
     drive.cols    = 3;
     drive.span    = 1;
+    drive.column  = 2;
     drive.custom  = &driveCurve;
     drive.customH = 52;
     drive.toggles = { &addToggle ("driveOn", "ON") };
@@ -1080,6 +1099,7 @@ void PDHybridEditor::buildSections()
     filter.title    = "Filter 1";
     filter.cols     = 5;
     filter.span     = 1;
+    filter.column   = 0;
     filter.custom   = &filt1Resp;
     filter.customH  = 52;
     filter.custom2  = &filt1Curve;
@@ -1101,6 +1121,7 @@ void PDHybridEditor::buildSections()
     filter2.title    = "Filter 2";
     filter2.cols     = 5;
     filter2.span     = 1;
+    filter2.column   = 1;
     filter2.custom   = &filt2Resp;
     filter2.customH  = 52;
     filter2.custom2  = &filt2Curve;
@@ -1126,6 +1147,7 @@ void PDHybridEditor::buildSections()
     modEnv.title   = "Mod Env";
     modEnv.cols    = 4;
     modEnv.span    = 1;
+    modEnv.column  = 2;
     modEnv.custom  = &modCurve;
     modEnv.customH = 48;
     modEnv.toggles = { &addToggle ("modEnvSync", "SYNC") };
@@ -1154,6 +1176,7 @@ void PDHybridEditor::buildSections()
     lfo.title   = "LFO 1";
     lfo.cols    = 3;
     lfo.span    = 1;
+    lfo.column  = 0;
     lfo.toggles = { &addToggle ("lfoRetrig", "RETRIG") };
     lfo.combos  = { &addCombo ("lfoWave", kLfoWaveNames), &addCombo ("lfoSync", kSyncNames) };
     lfo.custom  = &lfo1Head;
@@ -1185,6 +1208,7 @@ void PDHybridEditor::buildSections()
     lfo2.title   = "LFO 2";
     lfo2.cols    = 3;
     lfo2.span    = 1;
+    lfo2.column  = 1;
     lfo2.toggles = { &addToggle ("lfo2Retrig", "RETRIG") };
     lfo2.combos  = { &addCombo ("lfo2Wave", kLfoWaveNames), &addCombo ("lfo2Sync", kSyncNames) };
     lfo2.custom  = &lfo2Head;
@@ -1210,6 +1234,7 @@ void PDHybridEditor::buildSections()
     vibratoSec.title   = "Vibrato";
     vibratoSec.cols    = 3;
     vibratoSec.span    = 1;
+    vibratoSec.column  = 0;
     vibratoSec.toggles = { &addToggle ("vibratoOn", "ON") };
     vibratoSec.combos  = { &addCombo ("vibratoWave", { "Triangle", "Square", "Ramp Up", "Ramp Down" }) };
     vibratoSec.knobs   = { &addKnob ("vibratoRate", "Rate"), &addKnob ("vibratoDepth", "Depth", 0),
@@ -1219,6 +1244,7 @@ void PDHybridEditor::buildSections()
     arpSec.title   = "Arpeggiator";
     arpSec.cols    = 2;
     arpSec.span    = 1;
+    arpSec.column  = 1;
     arpSec.toggles = { &addToggle ("arpOn", "ON"), &addToggle ("arpLatch", "LATCH") };
     arpSec.combos  = { &addCombo ("arpMode", { "Up", "Down", "Up-Down", "Random", "As Played" }),
                        &addCombo ("arpRate", { "1/1", "1/2", "1/4", "1/8", "1/16", "1/4.", "1/8.", "1/4T", "1/8T" }),
@@ -1229,6 +1255,7 @@ void PDHybridEditor::buildSections()
     chorusSec.title   = "Chorus";
     chorusSec.cols    = 3;
     chorusSec.span    = 1;
+    chorusSec.column  = 0;
     chorusSec.toggles = { &addToggle ("chorusOn", "ON") };
     chorusSec.combos  = { &addCombo ("chorusMode", { "Mode I", "Mode II", "Mode I+II" }) };
     chorusSec.knobs   = { &addKnob ("chorusRate", "Rate"), &addKnob ("chorusDepth", "Depth"),
@@ -1238,6 +1265,7 @@ void PDHybridEditor::buildSections()
     delaySec.title   = "Delay";
     delaySec.cols    = 3;
     delaySec.span    = 1;
+    delaySec.column  = 1;
     delaySec.custom  = &delayTaps;
     delaySec.customH = 44;
     delaySec.toggles = { &addToggle ("delayOn", "ON"), &addToggle ("delaySync", "SYNC") };
@@ -1250,6 +1278,7 @@ void PDHybridEditor::buildSections()
     reverbSec.title   = "Reverb";
     reverbSec.cols    = 4;
     reverbSec.span    = 1;
+    reverbSec.column  = 2;
     reverbSec.custom  = &reverbDecay;
     reverbSec.customH = 36;
     reverbSec.toggles = { &addToggle ("reverbOn", "ON") };
@@ -1260,6 +1289,7 @@ void PDHybridEditor::buildSections()
     comp.title   = "Compressor";
     comp.cols    = 3;
     comp.span    = 1;
+    comp.column  = 1;
     comp.custom  = &grMeter;
     comp.customH = 28;
     comp.toggles = { &addToggle ("compOn", "ON") };
@@ -1271,6 +1301,7 @@ void PDHybridEditor::buildSections()
     globalEqSec.title   = "Global EQ";
     globalEqSec.cols    = 8;
     globalEqSec.span    = 1;
+    globalEqSec.column  = 0;
     globalEqSec.custom  = &eqResp;
     globalEqSec.customH = 56;
     globalEqSec.toggles = { &addToggle ("globalEqOn", "ON") };
@@ -1282,6 +1313,7 @@ void PDHybridEditor::buildSections()
     stereo.title   = "Stereo";
     stereo.cols    = 2;
     stereo.span    = 1;
+    stereo.column  = 2;
     stereo.knobs   = { &addKnob ("pan", "Pan"), &addKnob ("panSpread", "Spread") };
 
     // --------------------------------------------------------------- GLOBAL --
@@ -1291,6 +1323,7 @@ void PDHybridEditor::buildSections()
     voiceSec.title = "Voice Allocation";
     voiceSec.cols  = 3;
     voiceSec.span  = 1;
+    voiceSec.column = 0;
     voiceSec.toggles = { &addToggle ("monoRetrigger", "RETRIG") };
     voiceSec.combos = { &addCombo ("notePriority", { "Priority: Last", "Priority: Top", "Priority: Bottom" }),
                         &addCombo ("stealPolicy", { "Steal Oldest", "Steal Quietest" }),
@@ -1306,6 +1339,7 @@ void PDHybridEditor::buildSections()
     tuningSec.title  = "Tuning";
     tuningSec.cols   = 3;
     tuningSec.span   = 1;
+    tuningSec.column  = 1;
     tuningSec.custom  = &scaleDisp;
     tuningSec.customH = 56;
     tuningSec.combos = { &addCombo ("tuningScale", { "Equal Temperament", "Just Intonation", "Pythagorean" }) };
@@ -1323,6 +1357,7 @@ void PDHybridEditor::buildSections()
     globalLfoSec.title  = "Global LFO";
     globalLfoSec.cols   = 1;
     globalLfoSec.span   = 1;
+    globalLfoSec.column  = 0;
     globalLfoSec.custom  = &globalLfoHead;
     globalLfoSec.customH = kCellH;
     globalLfoSec.combos = { &addCombo ("globalLfoWave", kLfoWaveNames) };
@@ -1344,6 +1379,7 @@ void PDHybridEditor::buildSections()
     qualitySec.title  = "Quality";
     qualitySec.cols   = 1;
     qualitySec.span   = 1;
+    qualitySec.column  = 2;
     qualitySec.combos = { &addCombo ("osQuality", { "Oversampling 1x", "Oversampling 2x",
                                                     "Oversampling 4x", "Oversampling 8x" }) };
 
@@ -1352,6 +1388,7 @@ void PDHybridEditor::buildSections()
     tempoSec.title  = "Tempo";
     tempoSec.cols   = 1;
     tempoSec.span   = 1;
+    tempoSec.column  = 1;
     tempoSec.combos = { &addCombo ("tempoMode", { "Tempo: Host", "Tempo: Local" }) };
     tempoSec.knobs  = { &addKnob ("internalBpm", "BPM", 1, KnobSize::Large) };
 
@@ -1727,6 +1764,11 @@ void PDHybridEditor::inspectorClicked (const juce::MouseEvent&)
 void PDHybridEditor::paintInspector (juce::Graphics& g)
 {
     auto full = inspector.getLocalBounds();
+    // Opaque. As a reserved column this only needed an outline, because the page
+    // background sat behind it; as a drawer it floats over the cards, so without
+    // a fill they read straight through it.
+    g.setColour (findColour (pdui::panelCard));
+    g.fillRect (full);
     g.setColour (findColour (pdui::panelEdge));
     g.drawRect (full, 1);
 
@@ -2114,15 +2156,13 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     // Theme is a display preference, not a patch setting: it is stored as a
     // property on the state tree rather than as a parameter, so it is neither
     // automatable nor swapped by A/B compare.
-    // Inspector drawer toggle. Stored on the state tree beside the theme: a
+    // Inspector drawer handle. Stored on the state tree beside the theme: a
     // display preference, not a patch setting.
-    addAndMakeVisible (inspectorButton);
-    inspectorButton.setClickingTogglesState (true);
+    addAndMakeVisible (inspectorHandle);
     inspectorOpen_ = (bool) proc.apvts.state.getProperty ("inspectorOpen", false);
-    inspectorButton.setToggleState (inspectorOpen_, juce::dontSendNotification);
-    inspectorButton.onClick = [this]
+    inspectorHandle.onClick = [this]
     {
-        inspectorOpen_ = inspectorButton.getToggleState();
+        inspectorOpen_ = ! inspectorOpen_;
         proc.apvts.state.setProperty ("inspectorOpen", inspectorOpen_, nullptr);
         resized();
     };
@@ -2235,8 +2275,8 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
                         { &stageEnvSec, &lfo, &lfo2,
                           &modEnv, &vibratoSec, &arpSec },                      nullptr, {}, 0 },
         { "OUT",
-                        { &chorusSec, &delaySec, &reverbSec,
-                          &globalEqSec, &comp, &stereo },                        nullptr, {}, 0 },
+                        { &globalEqSec, &delaySec, &reverbSec,
+                          &chorusSec, &comp, &stereo },                        nullptr, {}, 0 },
         { "GLOBAL",
                         { &voiceSec, &tuningSec, &globalLfoSec, &tempoSec, &qualitySec },  nullptr, {}, 0 },
     };
@@ -2297,6 +2337,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
 
     setResizable (true, true);
     setResizeLimits (1100, 700, 2600, 1600);
+
     // A fixed opening size, not one derived from the content. The editor used to
     // grow to fit its tallest page so that nothing ever had to be scrolled --
     // which produced a 1382 px window, taller than a 1080p screen, and so the
@@ -2734,7 +2775,6 @@ void PDHybridEditor::resized()
     // is an item inside the preset menu, where the preset it deletes is named.
     int x = top.getRight() - 76;
     initButton.setBounds (x, y, 64, 26);
-    x -= 56;  inspectorButton.setBounds (x, y, 50, 26);
     x -= 126; themeBox.setBounds   (x, y, 120, 26);
     x -= 70;  saveButton.setBounds (x, y, 64, 26);
     x -= 58;  abButton.setBounds   (x, y, 52, 26);
@@ -2750,10 +2790,28 @@ void PDHybridEditor::resized()
     // overlays the right-hand side rather than squeezing the cards, so the
     // layout underneath never reflows when it is toggled.
     tabs.setBounds (r);
-    inspector.setBounds (r.removeFromRight (kInspW).reduced (6, 6));
+
+    // The drawer and its handle. The handle rides the drawer's outer edge, so it
+    // is always the thing you reach for on that side whether the drawer is open
+    // or shut, and the chevron points the way it will move.
+    constexpr int kHandleW = 14;
+    auto drawer = r.withTrimmedTop (tabs.getTabBarDepth());
+
     inspector.setVisible (inspectorOpen_);
     if (inspectorOpen_)
+    {
+        auto panel = drawer.removeFromRight (kInspW);
+        inspector.setBounds (panel.reduced (4, 4));
         inspector.toFront (false);
+    }
+
+    inspectorHandle.setButtonText (inspectorOpen_ ? juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xb6"))
+                                                 : juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x80")));
+    inspectorHandle.setBounds (drawer.getRight() - kHandleW,
+                               drawer.getY() + 4, kHandleW, drawer.getHeight() - 8);
+    inspectorHandle.toFront (false);
+    inspectorHandle.setTooltip (inspectorOpen_ ? "Hide the modulation Inspector"
+                                               : "Show the modulation Inspector");
     // The overlay covers everything below the title bar, so the dimmed backdrop
     // reads as "the rest of the editor is inactive".
     matrixHolder.setBounds (getLocalBounds().withTrimmedTop (kTopBar));

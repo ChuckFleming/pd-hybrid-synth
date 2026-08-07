@@ -65,6 +65,12 @@ private:
         std::vector<juce::Button*> toggles;
         int cols = 4;
         int span = 2;             // grid columns (the page grid is kGridCols wide)
+        // Which column this card belongs in, or -1 to let the packer choose the
+        // shortest. Which cards sit next to each other is a design decision, not
+        // something to leave to a fill heuristic -- greedy packing is well
+        // balanced but scatters related cards, so every page states its own
+        // arrangement and the automatic path is the fallback.
+        int column = -1;
         // Stacking is obsolete under column packing: the packer already keeps
         // columns level, and forcing two cards into one unit defeats it -- LFO 1
         // and LFO 2 shared an id and so both landed in the same column, leaving
@@ -235,7 +241,9 @@ private:
     juce::TextButton abButton { "A/B: A" };
     juce::ComboBox   themeBox;
     // The Inspector is a drawer now, not a reserved column; this is its latch.
-    juce::TextButton inspectorButton { "INSP" };
+    // The drawer.s grab handle, on the edge it opens from -- a chevron rather
+    // than an abbreviation, so it needs no label to explain itself.
+    juce::TextButton inspectorHandle;
     bool             inspectorOpen_ = false;
     juce::TextButton presetButton { "Presets" };   // opens the hierarchical preset menu
 

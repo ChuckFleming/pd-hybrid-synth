@@ -1,0 +1,289 @@
+<title>Chord readout — VOICE page</title>
+
+<style>
+:root{
+  --page-bg:#0d0e11; --page-panel:#15171c; --page-ink:#e8eaee;
+  --page-dim:#8b919d; --page-faint:#5b616d; --page-accent:#c08a4a; --page-rule:#1e2229;
+  --ui: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+@media (prefers-color-scheme: light){
+  :root{ --page-bg:#f7f6f4; --page-panel:#fff; --page-ink:#1a1c20;
+         --page-dim:#5f646d; --page-faint:#8b909a; --page-accent:#8a5a1c; --page-rule:#e8e5e0; }
+}
+:root[data-theme="dark"]{ --page-bg:#0d0e11; --page-panel:#15171c; --page-ink:#e8eaee;
+  --page-dim:#8b919d; --page-faint:#5b616d; --page-accent:#c08a4a; --page-rule:#1e2229; }
+:root[data-theme="light"]{ --page-bg:#f7f6f4; --page-panel:#fff; --page-ink:#1a1c20;
+  --page-dim:#5f646d; --page-faint:#8b909a; --page-accent:#8a5a1c; --page-rule:#e8e5e0; }
+
+*{box-sizing:border-box}
+body{margin:0; background:var(--page-bg); color:var(--page-ink);
+  font-family:var(--ui); line-height:1.5; -webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px; margin:0 auto; padding:44px 20px 80px}
+h1{font-family:var(--serif); font-weight:600; font-size:clamp(26px,4vw,40px);
+  margin:0 0 14px; letter-spacing:-.01em}
+.eyebrow{font-family:var(--mono); font-size:11px; letter-spacing:.18em;
+  text-transform:uppercase; color:var(--page-accent); margin:0 0 14px}
+.lede{max-width:70ch; color:var(--page-dim); font-size:16px; margin:0 0 10px}
+.lede strong{color:var(--page-ink); font-weight:600}
+
+.sec{margin:46px 0 14px}
+.sec h2{font-family:var(--mono); font-size:12px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--page-accent); font-weight:500; margin:0 0 6px}
+.sec p{margin:0; color:var(--page-dim); font-size:14px; max-width:70ch}
+
+.slot{display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start}
+.slotbox{flex:none}
+.slotbox .cap{font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--page-faint); margin-bottom:6px}
+
+/* ---- Panel 1985 surface, so the swatches sit in their real context ---- */
+.surf{
+  --edge:#a09a8c; --bg:#c9c4b8; --card:#d5d1c6; --ink:#26251f; --dim:#5a564c;
+  --faint:#6e6a5f; --accent:#b4472e; --screen:#2c2c2a; --trace:#ed8058;
+  --screendim:#b0aca2; --sel:#e0dbcd; --hi:rgba(255,255,255,.5);
+  width:415px; padding:10px; background:var(--bg); border:1px solid var(--edge);
+  background-image:repeating-linear-gradient(90deg, rgba(255,255,255,.14) 0 1px, transparent 1px 3px);
+  color:var(--ink); font-size:11px;
+}
+.surf.dark{
+  --edge:#154a30; --bg:#04120c; --card:#07190f; --ink:#7df0ad; --dim:#4fb37c;
+  --faint:#3d8e63; --accent:#7df0ad; --screen:#020c07; --trace:#7df0ad;
+  --screendim:#4a9a69; --sel:#020c07; --hi:transparent;
+  background-image:none;
+}
+.card{background:var(--card); border:1px solid var(--edge); box-shadow:inset 0 1px 0 var(--hi);
+  padding:5px 6px 6px}
+.card h4{margin:0 0 4px; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+  font-weight:600; display:flex; align-items:center; gap:6px; height:19px; line-height:19px}
+.leds{margin-left:auto; display:flex; gap:4px}
+.led{font-size:8px; letter-spacing:.07em; padding:2px 6px; border:1px solid var(--edge);
+  color:var(--faint); background:rgba(0,0,0,.06)}
+.led.on{background:var(--accent); color:#f5efe2; border-color:#8a3221}
+.surf.dark .led.on{background:#0d3520; color:#ffb340; border-color:#7a5a20}
+
+.well{background:var(--screen); border:1px solid var(--edge); position:relative; overflow:hidden}
+.well .lbl{position:absolute; top:3px; left:6px; font-size:7px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--screendim)}
+
+/* the readout itself */
+.big{font-family:var(--mono); color:var(--trace); line-height:1; letter-spacing:.01em}
+.surf.dark .big{color:#ffb340}
+.notes{font-family:var(--mono); font-size:12px; color:var(--screendim); letter-spacing:.08em}
+.sub{font-family:var(--mono); font-size:8.5px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--screendim)}
+
+/* mini keyboard for option C */
+.mk{display:flex; height:34px; position:relative; margin-top:4px}
+.mk .w{flex:1; border-right:1px solid #4a4a47; background:#3a3a38}
+.surf.dark .mk .w{background:#0a2416; border-right-color:#154a30}
+.mk .w.lit{background:var(--trace)}
+.surf.dark .mk .w.lit{background:#ffb340}
+.mk .b{position:absolute; top:0; width:8px; height:60%; background:#1c1c1a; z-index:2}
+.surf.dark .mk .b{background:#020c07}
+.mk .b.lit{background:var(--trace)}
+.surf.dark .mk .b.lit{background:#ffb340}
+
+.notes-list{margin-top:44px; padding-top:24px; border-top:1px solid var(--page-rule)}
+.notes-list h2{font-family:var(--serif); font-size:23px; margin:0 0 12px; font-weight:600}
+.notes-list ul{color:var(--page-dim); max-width:72ch; font-size:14.5px; padding-left:19px; margin:0}
+.notes-list li{margin-bottom:10px}
+.notes-list b{color:var(--page-ink)}
+.notes-list code{font-family:var(--mono); font-size:.9em; color:var(--page-ink)}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">PD Hybrid · VOICE page · chord readout</p>
+  <h1>A larger chord readout under the Chord card</h1>
+  <p class="lede">
+    Column 3 of the VOICE page has <strong>96 px × 415 px</strong> free below Chord — measured, not
+    estimated. Three ways to use it, all shown at exact size on the real panel surface, each with
+    its Phosphor Mk II counterpart so you can see it works in both skins.
+  </p>
+  <p class="lede">
+    All three are fed by <code>ChordNamer</code>, which already exists and already produces
+    every string shown here — the name, the inversion slash, and the note spellings.
+  </p>
+
+  <!-- ============================================================ A -->
+  <section class="sec">
+    <h2>A · Marquee</h2>
+    <p>The name as large as the slot allows, with the sounding notes beneath it. Nothing else competes.</p>
+  </section>
+  <div class="slot">
+    <div class="slotbox"><div class="cap">Panel 1985 — 415 × 96</div>
+      <div class="surf"><div class="well" style="height:76px; display:flex; flex-direction:column;
+           align-items:center; justify-content:center; gap:6px">
+        <span class="lbl">Sounding</span>
+        <span class="big" style="font-size:38px">Cmaj7</span>
+        <span class="notes">C4 · E4 · G4 · B4</span>
+      </div></div>
+    </div>
+    <div class="slotbox"><div class="cap">Phosphor Mk II</div>
+      <div class="surf dark"><div class="well" style="height:76px; display:flex; flex-direction:column;
+           align-items:center; justify-content:center; gap:6px">
+        <span class="lbl">Sounding</span>
+        <span class="big" style="font-size:38px">Cmaj7</span>
+        <span class="notes">C4 · E4 · G4 · B4</span>
+      </div></div>
+    </div>
+    <div class="slotbox"><div class="cap">Inversion — the slash case</div>
+      <div class="surf"><div class="well" style="height:76px; display:flex; flex-direction:column;
+           align-items:center; justify-content:center; gap:6px">
+        <span class="lbl">Sounding</span>
+        <span class="big" style="font-size:38px">Am7/G</span>
+        <span class="notes">G3 · A3 · C4 · E4</span>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ B -->
+  <section class="sec">
+    <h2>B · Name and source</h2>
+    <p>The name on the left, and on the right what produced it: the key you pressed, the latched quality, and the voicing in force. Answers "why is it playing that?".</p>
+  </section>
+  <div class="slot">
+    <div class="slotbox"><div class="cap">Panel 1985 — 415 × 96</div>
+      <div class="surf"><div class="well" style="height:76px; display:flex; align-items:center;
+           padding:0 12px; gap:14px">
+        <span class="lbl">Sounding</span>
+        <span class="big" style="font-size:34px; flex:none">Cmaj7</span>
+        <span style="flex:1; display:flex; flex-direction:column; gap:3px; text-align:right">
+          <span class="sub">Root <span style="color:var(--trace)">C4</span></span>
+          <span class="sub">Quality <span style="color:var(--trace)">maj7</span></span>
+          <span class="sub">Voicing <span style="color:var(--trace)">Voice-Led</span></span>
+        </span>
+      </div></div>
+    </div>
+    <div class="slotbox"><div class="cap">Phosphor Mk II</div>
+      <div class="surf dark"><div class="well" style="height:76px; display:flex; align-items:center;
+           padding:0 12px; gap:14px">
+        <span class="lbl">Sounding</span>
+        <span class="big" style="font-size:34px; flex:none">Cmaj7</span>
+        <span style="flex:1; display:flex; flex-direction:column; gap:3px; text-align:right">
+          <span class="sub">Root <span style="color:#ffb340">C4</span></span>
+          <span class="sub">Quality <span style="color:#ffb340">maj7</span></span>
+          <span class="sub">Voicing <span style="color:#ffb340">Voice-Led</span></span>
+        </span>
+      </div></div>
+    </div>
+    <div class="slotbox"><div class="cap">Chord mode off — plain playing</div>
+      <div class="surf"><div class="well" style="height:76px; display:flex; align-items:center;
+           padding:0 12px; gap:14px">
+        <span class="lbl">Sounding</span>
+        <span class="big" style="font-size:34px; flex:none">Dm7</span>
+        <span style="flex:1; display:flex; flex-direction:column; gap:3px; text-align:right">
+          <span class="sub">Root <span style="color:var(--trace)">D3</span></span>
+          <span class="sub">Quality <span style="color:var(--trace)">m7</span></span>
+          <span class="sub" style="opacity:.5">Voicing —</span>
+        </span>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ============================================================ C -->
+  <section class="sec">
+    <h2>C · Name and keys</h2>
+    <p>The name with a one-octave keyboard beneath it lighting the pitch classes that are sounding. Shows the shape as well as the name.</p>
+  </section>
+  <div class="slot">
+    <div class="slotbox"><div class="cap">Panel 1985 — 415 × 96</div>
+      <div class="surf"><div class="well" style="height:76px; padding:4px 8px 6px">
+        <span class="lbl">Sounding</span>
+        <div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:8px">
+          <span class="big" style="font-size:26px">Cmaj7</span>
+          <span class="notes" style="font-size:11px">C4 · E4 · G4 · B4</span>
+        </div>
+        <div class="mk">
+          <div class="w lit"></div><div class="w"></div><div class="w"></div><div class="w lit"></div>
+          <div class="w"></div><div class="w"></div><div class="w lit"></div><div class="w"></div>
+          <div class="w"></div><div class="w"></div><div class="w"></div><div class="w lit"></div>
+          <div class="b" style="left:6.2%"></div><div class="b" style="left:14.5%"></div>
+          <div class="b" style="left:31%"></div><div class="b" style="left:39.3%"></div>
+          <div class="b" style="left:47.6%"></div><div class="b" style="left:64%"></div>
+          <div class="b" style="left:72.4%"></div>
+        </div>
+      </div></div>
+    </div>
+    <div class="slotbox"><div class="cap">Phosphor Mk II</div>
+      <div class="surf dark"><div class="well" style="height:76px; padding:4px 8px 6px">
+        <span class="lbl">Sounding</span>
+        <div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:8px">
+          <span class="big" style="font-size:26px">Cmaj7</span>
+          <span class="notes" style="font-size:11px">C4 · E4 · G4 · B4</span>
+        </div>
+        <div class="mk">
+          <div class="w lit"></div><div class="w"></div><div class="w"></div><div class="w lit"></div>
+          <div class="w"></div><div class="w"></div><div class="w lit"></div><div class="w"></div>
+          <div class="w"></div><div class="w"></div><div class="w"></div><div class="w lit"></div>
+          <div class="b" style="left:6.2%"></div><div class="b" style="left:14.5%"></div>
+          <div class="b" style="left:31%"></div><div class="b" style="left:39.3%"></div>
+          <div class="b" style="left:47.6%"></div><div class="b" style="left:64%"></div>
+          <div class="b" style="left:72.4%"></div>
+        </div>
+      </div></div>
+    </div>
+    <div class="slotbox"><div class="cap">A chord with a black key — F#m7♭5</div>
+      <div class="surf"><div class="well" style="height:76px; padding:4px 8px 6px">
+        <span class="lbl">Sounding</span>
+        <div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:8px">
+          <span class="big" style="font-size:26px">F#m7b5</span>
+          <span class="notes" style="font-size:11px">F#3 · A3 · C4 · E4</span>
+        </div>
+        <div class="mk">
+          <div class="w"></div><div class="w"></div><div class="w"></div><div class="w lit"></div>
+          <div class="w"></div><div class="w"></div><div class="w"></div><div class="w"></div>
+          <div class="w lit"></div><div class="w"></div><div class="w"></div><div class="w lit"></div>
+          <div class="b" style="left:6.2%"></div><div class="b" style="left:14.5%"></div>
+          <div class="b" style="left:31%"></div><div class="b lit" style="left:39.3%"></div>
+          <div class="b" style="left:47.6%"></div><div class="b" style="left:64%"></div>
+          <div class="b" style="left:72.4%"></div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ================================================== silent state -->
+  <section class="sec">
+    <h2>Nothing playing</h2>
+    <p>The state you will look at most. A readout that goes blank draws the eye every time it changes; one that stays lit with a dash does not.</p>
+  </section>
+  <div class="slot">
+    <div class="slotbox"><div class="cap">A · idle</div>
+      <div class="surf"><div class="well" style="height:76px; display:flex; flex-direction:column;
+           align-items:center; justify-content:center; gap:6px">
+        <span class="lbl">Sounding</span>
+        <span class="big" style="font-size:38px; opacity:.28">—</span>
+        <span class="notes" style="opacity:.4">no notes held</span>
+      </div></div>
+    </div>
+    <div class="slotbox"><div class="cap">Single note — not every readout is a chord</div>
+      <div class="surf"><div class="well" style="height:76px; display:flex; flex-direction:column;
+           align-items:center; justify-content:center; gap:6px">
+        <span class="lbl">Sounding</span>
+        <span class="big" style="font-size:38px">C4</span>
+        <span class="notes">one note</span>
+      </div></div>
+    </div>
+    <div class="slotbox"><div class="cap">Two notes — an interval</div>
+      <div class="surf"><div class="well" style="height:76px; display:flex; flex-direction:column;
+           align-items:center; justify-content:center; gap:6px">
+        <span class="lbl">Sounding</span>
+        <span class="big" style="font-size:38px">C-G P5</span>
+        <span class="notes">C4 · G4</span>
+      </div></div>
+    </div>
+  </div>
+
+  <section class="notes-list">
+    <h2>Notes</h2>
+    <ul>
+      <li><b>All three fit the measured slot exactly</b> — 76 px of display inside a 96 px space, leaving the 10 px card gap. None of them push anything else down or touch the footer.</li>
+      <li><b>No new DSP is needed.</b> <code>ChordNamer::name()</code> already returns every string here including <code>Am7/G</code>, <code>C4</code> and <code>C-G P5</code>, and the processor already publishes the sounding notes. This is display work only.</li>
+      <li><b>A is the biggest name, C is the most informative.</b> B is the only one that explains <em>why</em> a chord is sounding, which matters in chord mode where one key produces four notes — but it is the only one that goes half-blank when chord mode is off.</li>
+      <li><b>The idle state is the one to decide deliberately.</b> Shown here as a dim dash rather than an empty box: a readout that empties and refills pulls the eye on every note-off, which is distracting on a page you are editing.</li>
+      <li>Placed under Chord it reads as part of chord mode, but it is fed from everything sounding — so it names what you play with chord mode off too. If that is confusing, it could carry a plain <code>SOUNDING</code> caption rather than sitting inside the Chord card, which is how it is drawn here.</li>
+    </ul>
+  </section>
+</div>

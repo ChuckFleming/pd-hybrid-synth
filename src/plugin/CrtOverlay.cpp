@@ -44,6 +44,21 @@ void CrtOverlay::resized()
     rebuildVignette();
 }
 
+void CrtOverlay::setScope (pdui::Traits::Crt scope)
+{
+    if (scope_ == scope)
+        return;
+
+    scope_ = scope;
+    repaint();
+}
+
+void CrtOverlay::setScreenAreas (const juce::Array<juce::Rectangle<int>>& areas)
+{
+    screens_ = areas;
+    repaint();
+}
+
 void CrtOverlay::rebuildScanlineTile()
 {
     // kScanPeriod tall: one hard dark row + one soft falloff row, the rest clear.
@@ -82,13 +97,8 @@ void CrtOverlay::rebuildVignette()
     g.fillRect (0, 0, w, h);
 }
 
-void CrtOverlay::paint (juce::Graphics& g)
+void CrtOverlay::paintInto (juce::Graphics& g, juce::Rectangle<int> clip)
 {
-    if (! enabled_)
-        return;
-
-    const auto clip = g.getClipBounds();
-
     // Faint green phosphor wash so even black areas read as a lit screen.
     g.setColour (kPhosphorTint.withAlpha (kTintAlpha));
     g.fillRect (clip);
@@ -99,8 +109,27 @@ void CrtOverlay::paint (juce::Graphics& g)
         g.setTiledImageFill (scanlineTile_, 0, 0, 1.0f);
         g.fillRect (clip);
     }
+}
 
-    // Vignette (drawImageAt is clipped to the repaint region for free).
-    if (vignette_.isValid())
-        g.drawImageAt (vignette_, 0, 0);
+void CrtOverlay::paint (juce::Graphics& g)
+{
+    if (! enabled_ || scope_ == pdui::Traits::Crt::Never)
+        return;
+
+    if (scope_ == pdui::Traits::Crt::WholePanel)
+    {
+        paintInto (g, g.getClipBounds());
+        if (vignette_.isValid())
+            g.drawImageAt (vignette_, 0, 0);
+        return;
+    }
+
+    // ScreensOnly: clip to each display window in turn. No vignette -- that is
+    // a whole-tube effect and makes no sense inside a small window.
+    for (const auto& area : screens_)
+    {
+        juce::Graphics::ScopedSaveState save (g);
+        g.reduceClipRegion (area);
+        paintInto (g, area);
+    }
 }

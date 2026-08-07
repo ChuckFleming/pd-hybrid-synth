@@ -2120,6 +2120,7 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         crtOverlay.setEffectEnabled (on);
         proc.apvts.state.setProperty ("crtEnabled", on, nullptr);
     };
+    crtOverlay.setScope (pdui::themeOf (*this).traits.crt);
 
     refreshPresetList();
 
@@ -2686,6 +2687,14 @@ void PDHybridEditor::resized()
     // reads as "the rest of the editor is inactive".
     matrixHolder.setBounds (getLocalBounds().withTrimmedTop (kTopBar));
     crtOverlay.setBounds (getLocalBounds());
+
+    // The display windows the CRT effect is allowed to touch.
+    juce::Array<juce::Rectangle<int>> screens;
+    for (auto* c : { (juce::Component*) &scope_, (juce::Component*) &oscACycle,
+                     (juce::Component*) &oscBCycle })
+        if (c->isVisible())
+            screens.add (getLocalArea (c, c->getLocalBounds()));
+    crtOverlay.setScreenAreas (screens);
 }
 
 void PDHybridEditor::paint (juce::Graphics& g)

@@ -35,7 +35,10 @@ public:
 
     juce::Font getComboBoxFont (juce::ComboBox&) override          { return mono (11.5f); }
     juce::Font getPopupMenuFont () override                        { return mono (12.0f); }
-    juce::Font getLabelFont (juce::Label& l) override              { return mono (l.getFont().getHeight()); }
+    // Respect whatever face the label was explicitly given (pdui::labelFont /
+    // pdui::valueFont pick sans or mono per theme); forcing mono here would
+    // silently undo that split for every juce::Label in the editor.
+    juce::Font getLabelFont (juce::Label& l) override              { return l.getFont(); }
     juce::Font getTextButtonFont (juce::TextButton&, int) override { return mono (11.5f); }
 
     void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&,

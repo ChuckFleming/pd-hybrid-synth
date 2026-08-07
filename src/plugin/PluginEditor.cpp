@@ -2118,6 +2118,26 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     };
     crtOverlay.setScope (pdui::themeOf (*this).traits.crt);
 
+    // Theme is a display preference, not a patch setting: it is stored as a
+    // property on the state tree rather than as a parameter, so it is neither
+    // automatable nor swapped by A/B compare -- the same treatment crtEnabled
+    // already gets.
+    addAndMakeVisible (themeBox);
+    for (int i = 0; i < pdtheme::kNumThemes; ++i)
+        themeBox.addItem (pdtheme::themeName (static_cast<pdtheme::ThemeId> (i)), i + 1);
+
+    const int storedTheme = (int) proc.apvts.state.getProperty ("themeId", 0);
+    themeBox.setSelectedId (juce::jlimit (1, pdtheme::kNumThemes, storedTheme + 1),
+                            juce::dontSendNotification);
+    applyTheme (static_cast<pdtheme::ThemeId> (themeBox.getSelectedId() - 1));
+
+    themeBox.onChange = [this]
+    {
+        const auto id = static_cast<pdtheme::ThemeId> (themeBox.getSelectedId() - 1);
+        proc.apvts.state.setProperty ("themeId", (int) id, nullptr);
+        applyTheme (id);
+    };
+
     refreshPresetList();
 
     buildSections();
@@ -2288,6 +2308,53 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
         const int h = kTopBar + kStripH + tabs.getTabBarDepth() + tallest + kFooterH + 6;
         setSize (w, juce::jlimit (700, 1900, h));
     }
+}
+
+void PDHybridEditor::applyTheme (pdtheme::ThemeId id)
+{
+    const auto theme = pdui::Theme::fromId (id);
+    lnf.setTheme (theme);
+
+    // Everything below re-applies a colour or font that was resolved once at
+    // construction time (via findColour()/labelFont()) and stashed on a child
+    // component rather than looked up live in that child's own paint(). Those
+    // sites never see setTheme() at all, so without this they would keep
+    // showing the previous skin after a live switch.
+    for (auto& k : knobs)
+        k->label.setFont (pdui::labelFont (*this, k->size == KnobSize::Large ? 11.0f : 10.5f));
+
+    for (auto* k : stripKnobs)
+    {
+        k->slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        k->slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+        k->slider.setColour (juce::Slider::textBoxTextColourId, findColour (pdui::textInk));
+    }
+    if (stripBpm != nullptr)
+    {
+        stripBpm->slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        stripBpm->slider.setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+        stripBpm->slider.setColour (juce::Slider::textBoxTextColourId, findColour (pdui::textInk));
+    }
+
+    for (auto& s : modDepthSlider)
+    {
+        s.setColour (juce::Slider::textBoxTextColourId, findColour (pdui::textInk));
+        s.setColour (juce::Slider::textBoxBackgroundColourId, findColour (pdui::panelCard));
+        s.setColour (juce::Slider::textBoxOutlineColourId, findColour (pdui::panelEdge));
+    }
+
+    tabs.setColour (juce::TabbedComponent::backgroundColourId, findColour (pdui::panelBg));
+    tabs.setColour (juce::TabbedComponent::outlineColourId, findColour (pdui::panelEdge));
+    tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::tabTextColourId, findColour (pdui::textDim));
+    tabs.getTabbedButtonBar().setColour (juce::TabbedButtonBar::frontTextColourId, findColour (pdui::accentCol));
+
+    crtOverlay.setScope (theme.traits.crt);
+
+    // Pushes a lookAndFeelChanged() through the whole tree, so every child
+    // re-reads its colours. Without this the change only lands on repaint of
+    // whatever happens to be dirty.
+    sendLookAndFeelChange();
+    repaint();
 }
 
 PDHybridEditor::~PDHybridEditor()
@@ -2667,6 +2734,7 @@ void PDHybridEditor::resized()
     int x = top.getRight() - 76;
     initButton.setBounds (x, y, 64, 26);
     x -= 52;  crtButton.setBounds  (x, y, 46, 26);
+    x -= 126; themeBox.setBounds   (x, y, 120, 26);
     x -= 70;  saveButton.setBounds (x, y, 64, 26);
     x -= 58;  abButton.setBounds   (x, y, 52, 26);
     x -= 32;  nextButton.setBounds (x, y, 28, 26);

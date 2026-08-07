@@ -229,7 +229,13 @@ private:
     juce::TextButton nextButton { ">" };
     juce::TextButton abButton { "A/B: A" };
     juce::TextButton crtButton { "CRT" };
+    juce::ComboBox   themeBox;
     juce::TextButton presetButton { "Presets" };   // opens the hierarchical preset menu
+
+    /** Installs a skin at runtime: pushes it onto the LookAndFeel, re-applies
+        every colour/font baked in at construction time (strip/matrix textbox
+        colours, tab bar colours, knob-label fonts), and repaints the tree. */
+    void applyTheme (pdtheme::ThemeId id);
 
     // Footer strip: where you are, how much modulation is live, and the two
     // actions that are not part of editing a patch.

@@ -13,6 +13,13 @@ target_include_directories(pdhybrid_bench PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(pdhybrid_bench PRIVATE pdhybrid_dsp)
 target_compile_features(pdhybrid_bench PRIVATE cxx_std_17)
 
+# Note-on -> audio latency, so "it feels delayed" can be answered with numbers
+# instead of impressions. Not part of ctest.
+add_executable(pdhybrid_latency bench/latency_main.cpp)
+target_include_directories(pdhybrid_latency PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(pdhybrid_latency PRIVATE pdhybrid_dsp)
+target_compile_features(pdhybrid_latency PRIVATE cxx_std_17)
+
 add_executable(pdhybrid_tests
     dsp/oscillator_tests.cpp
     dsp/analog_oscillator_tests.cpp

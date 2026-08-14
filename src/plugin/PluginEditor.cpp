@@ -425,7 +425,8 @@ void PDHybridEditor::SectionPanel::paint (juce::Graphics& g)
 
     for (const auto& s : sections)
     {
-        drawFrame (s.bounds, s.title, s.titleCol);
+        drawFrame (s.bounds, s.title,
+                   findColour (s.titleLive ? pdui::liveCol : pdui::textInk));
 
         // Punch a black notch behind each header toggle so it reads as breaking
         // the frame, matching the title tag on the other end.
@@ -1174,7 +1175,7 @@ void PDHybridEditor::buildSections()
     // draggable curve; see buildStageEnvelopes(). Amber-titled because the card
     // *is* a modulation source, the same way modulated knobs are ringed amber.
     stageEnvSec.title     = "Multi-Stage Envelopes (CZ)";
-    stageEnvSec.titleCol  = findColour (pdui::liveCol);
+    stageEnvSec.titleLive = true;   // this card IS a modulation source
     // Full-width band: the sixteen numeric knobs need more width than one
     // column can give, so this card takes a row of its own.
     stageEnvSec.span      = kGridCols;
@@ -1408,15 +1409,9 @@ void PDHybridEditor::buildSections()
     tempoSec.combos = { &addCombo ("tempoMode", { "Tempo: Host", "Tempo: Local" }) };
     tempoSec.knobs  = { &addKnob ("internalBpm", "BPM", 1, KnobSize::Large) };
 
-    // Card title colour: dim ink for ordinary cards. stageEnvSec is set to
-    // liveCol above instead -- that card *is* a modulation source, the same
-    // way modulated knobs are ringed in the live colour.
-    for (Section* s : { &oscA, &oscB, &mixer, &chordSec, &glideSec, &unison, &bassSec,
-                         &pluckSec, &drive, &routingSec, &filter, &filter2, &modEnv,
-                         &lfo, &lfo2, &vibratoSec, &arpSec, &chorusSec, &delaySec,
-                         &reverbSec, &comp, &globalEqSec, &stereo, &voiceSec, &tuningSec,
-                         &globalLfoSec, &qualitySec, &tempoSec })
-        s->titleCol = findColour (pdui::textInk);
+    // Title colours are resolved at paint time from Section::titleLive, so
+    // nothing needs listing here -- a card added later cannot be forgotten and
+    // left with an unset colour, which is what happened to Chord ID.
 }
 
 //==============================================================================

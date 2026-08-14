@@ -84,7 +84,13 @@ private:
         juce::Component* custom2 = nullptr;
         int customH2 = 0;
         int knobSplit = -1;       // knobs before this index go above custom2
-        juce::Colour titleCol {};   // set from the theme when the section is built
+        // Which ROLE the title takes, not a baked colour. Storing a resolved
+        // juce::Colour here meant the titles kept whichever theme was live when
+        // the sections were built -- switch to Phosphor and every card title
+        // stayed Panel 1985.s near-black ink on a near-black card. Cards that
+        // *are* a modulation source take the live colour; everything else takes
+        // ordinary ink, and both are looked up at paint time.
+        bool titleLive = false;
         juce::Rectangle<int> bounds;
     };
 

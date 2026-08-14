@@ -566,10 +566,10 @@ PDHybridAudioProcessor::PDHybridAudioProcessor()
           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMS", createLayout())
 {
-    // Fixed oscillator anti-alias FIR group delay (see prepareToPlay); reported
-    // here too so the host sees it before prepare. It is in host-rate samples and
-    // independent of sample rate, so the constant is valid everywhere.
-    setLatencySamples (8);
+    // Reported here as well as in prepareToPlay so the host sees it before
+    // prepare. Both terms are in host-rate samples and independent of sample
+    // rate, so the constant holds everywhere.
+    setLatencySamples (kTotalLatencySamples);
 }
 
 void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -598,12 +598,21 @@ void PDHybridAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     fxScratchL_.assign (n, 0.0f);
     fxScratchR_.assign (n, 0.0f);
 
-    // The oscillator anti-alias decimation FIR (16 taps/phase, linear phase) adds
-    // a fixed ~8-sample group delay whenever oversampling is on (the default). We
-    // report that constant so the host aligns our output; the small extra delay
-    // when overdrive is engaged, and the 0 delay at 1x, are left uncompensated to
-    // avoid latency changes mid-session.
-    setLatencySamples (8);
+    // Two fixed contributions, both measurable with pdhybrid_latency:
+    //
+    //   8  the oscillator anti-alias decimation FIR (16 taps/phase, linear phase)
+    //   15 the output stage's 4x soft-clip knee oversampler
+    //
+    // The second used to be missing here, so the host under-compensated by 15
+    // samples whenever the limiter was on -- which is the default. It was also
+    // genuinely conditional, because the oversampler was skipped with the
+    // limiter off; MasterStage now runs a matching plain delay in that case, so
+    // the figure below is true in every state rather than in one of them.
+    //
+    // Still uncompensated by choice: the small extra delay when overdrive is
+    // engaged, and the 0 delay at 1x oversampling, both of which would mean
+    // changing latency mid-session.
+    setLatencySamples (kTotalLatencySamples);
 }
 
 void PDHybridAudioProcessor::pushParams()

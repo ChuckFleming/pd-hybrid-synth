@@ -1,7 +1,9 @@
 name: CI
 
-# Build the plugin and run the DSP test suite on every push and pull request,
-# across all three desktop platforms.
+# Build the plugin and run the test suite on every push and pull request, across
+# all three desktop platforms. The suite includes the layout check, which builds
+# a real editor and fails if any tab page no longer fits its window -- hence xvfb
+# on the headless Linux runner.
 on:
   push:
     branches: [ master, main ]
@@ -23,7 +25,7 @@ jobs:
           - os: ubuntu-latest
             name: Linux
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -33,7 +35,7 @@ jobs:
             libasound2-dev libjack-jackd2-dev libx11-dev libxext-dev \
             libxrandr-dev libxinerama-dev libxcursor-dev libfreetype6-dev \
             libglu1-mesa-dev libcurl4-openssl-dev libwebkit2gtk-4.1-dev \
-            pkg-config ninja-build
+            pkg-config ninja-build xvfb
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release

@@ -29,6 +29,9 @@ void MasterStage::reset() noexcept
     peakEnv_ = 0.0;
     osL_.reset();
     osR_.reset();
+    for (auto& s : bypassL_) s = 0.0f;
+    for (auto& s : bypassR_) s = 0.0f;
+    bypassPos_ = 0;
 }
 
 void MasterStage::setGainDb (double db) noexcept
@@ -102,9 +105,18 @@ void MasterStage::processStereo (float* left, float* right, int numSamples) noex
         float gl = static_cast<float> (left[i]  * curGain_);
         float gr = static_cast<float> (right[i] * curGain_);
 
-        if (! limiterOn_)   // transparent: no knee, no oversampling latency
+        if (! limiterOn_)
         {
-            left[i] = gl; right[i] = gr;
+            // Transparent apart from the delay: the knee and its oversampler are
+            // skipped, but the signal still goes through a matching plain delay
+            // so the stage's latency is the same either way. Without this the
+            // reported latency was wrong in whichever state it was not measured
+            // in, and the host's delay compensation with it.
+            bypassL_[(std::size_t) bypassPos_] = gl;
+            bypassR_[(std::size_t) bypassPos_] = gr;
+            bypassPos_ = (bypassPos_ + 1) % (kLatencySamples + 1);
+            left[i]  = bypassL_[(std::size_t) bypassPos_];
+            right[i] = bypassR_[(std::size_t) bypassPos_];
             continue;
         }
 

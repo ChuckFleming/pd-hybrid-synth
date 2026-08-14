@@ -33,6 +33,26 @@ public:
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;   // knob -> Inspector selection
 
+    /** One tab page's vertical budget, for the offline layout check.
+
+        Every page has to fit its window with no scrolling -- that is the whole
+        point of the 1280 x 800 rebuild -- but nothing enforced it: each time the
+        layout moved I added a throwaway diagnostic, read the numbers and deleted
+        it again, which checks the state of the code on that afternoon and
+        nothing afterwards. pdhybrid_uicheck reads these instead, so a card that
+        grows past the window fails a build rather than being noticed by eye. */
+    struct PageFit
+    {
+        juce::String name;
+        int needed = 0;      // height the cards actually require
+        int available = 0;   // height the page area gives them
+        bool fits() const noexcept { return needed <= available; }
+    };
+
+    /** Measures every page as if the editor were `width` x `height`. Does not
+        resize or otherwise disturb the editor. */
+    std::vector<PageFit> measurePageFit (int width, int height);
+
 private:
     using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;

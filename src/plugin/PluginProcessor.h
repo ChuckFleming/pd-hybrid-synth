@@ -107,6 +107,12 @@ private:
     std::atomic<bool> panic_ { false };
     PresetManager presets { apvts };   // constructed after apvts (declaration order)
 
+    // Latency reported to the host. Named so the two setLatencySamples call
+    // sites cannot drift apart, and so the number has a stated derivation.
+    static constexpr int kOscFirLatency     = 8;
+    static constexpr int kTotalLatencySamples =
+        kOscFirLatency + pdhybrid::MasterStage::kLatencySamples;
+
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
     void pushParams();

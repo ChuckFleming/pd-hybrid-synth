@@ -684,7 +684,10 @@ public:
             }
 
             g.setFont (monoF (8.5f));
-            g.setColour (used ? findColour (pdui::liveCol) : findColour (pdui::screenDim).withAlpha (0.65f));
+            // The name sits on the card, not in the plot well -- panel ink, not
+            // screen ink, or it is grey-on-grey at 1.5:1.
+            g.setColour (used ? findColour (pdui::liveCol)
+                              : findColour (pdui::textDim).withAlpha (0.85f));
             g.drawText (row.name.toUpperCase(), b.withWidth (kNameW).reduced (3, 0),
                         juce::Justification::centredLeft);
 
@@ -748,7 +751,7 @@ public:
             }
 
             g.setFont (monoF (8.0f));
-            g.setColour (findColour (pdui::screenDim));
+            g.setColour (findColour (pdui::textDim));   // also outside the plot well
             g.drawText (juce::String (value, 2), b.removeFromRight (kValueW).reduced (2, 0),
                         juce::Justification::centredRight);
         }
@@ -1376,11 +1379,13 @@ public:
             const float h = juce::jlimit (-1.0f, 1.0f, cents / 20.0f) * in.getHeight() * 0.42f;
             const float x = in.getX() + (float) pc * w;
 
-            g.setColour (std::abs (cents) < 0.05f ? findColour (pdui::screenDim).withAlpha (0.4f) : findColour (pdui::screenTrace));
+            // Drawn straight on the card -- no screen well here, so panel roles.
+            g.setColour (std::abs (cents) < 0.05f ? findColour (pdui::textFaint).withAlpha (0.55f)
+                                                  : findColour (pdui::accentCol));
             g.fillRect (x + w * 0.25f, h >= 0.0f ? cy - h : cy,
                         w * 0.5f, juce::jmax (1.0f, std::abs (h)));
 
-            g.setColour (findColour (pdui::screenDim).withAlpha (0.7f));
+            g.setColour (findColour (pdui::textDim));
             g.drawText (names[pc], juce::Rectangle<float> (x, (float) getHeight() - 12.0f, w, 10.0f),
                         juce::Justification::centred);
         }
@@ -1437,16 +1442,18 @@ public:
         auto block = [&] (float bx, float by, float w, const juce::String& t, bool lit)
         {
             juce::Rectangle<float> b (bx, by - bh * 0.5f, w, bh);
-            g.setColour (lit ? findColour (pdui::screenTrace) : findColour (pdui::panelEdge));
+            g.setColour (lit ? findColour (pdui::accentCol) : findColour (pdui::panelEdge));
             g.drawRect (b, 1.0f);
             g.setFont (monoF (8.0f));
-            g.setColour (lit ? findColour (pdui::screenTrace) : findColour (pdui::screenDim).withAlpha (0.45f));
+            g.setColour (lit ? findColour (pdui::accentCol)
+                             : findColour (pdui::textFaint).withAlpha (0.6f));
             g.drawText (t, b, juce::Justification::centred);
         };
         static const float dashes[] { 3.0f, 3.0f };
         auto wire = [&] (float x0, float y0, float x1, float y1, bool active)
         {
-            g.setColour (active ? findColour (pdui::screenTrace) : findColour (pdui::screenDim).withAlpha (0.3f));
+            g.setColour (active ? findColour (pdui::accentCol)
+                                : findColour (pdui::textFaint).withAlpha (0.45f));
             if (active)
                 g.drawLine (x0, y0, x1, y1, 1.1f);
             else
@@ -1456,7 +1463,7 @@ public:
         {
             juce::Path h;
             h.addTriangle (x1, y1, x1 - 4.0f, y1 - 3.0f, x1 - 4.0f, y1 + 3.0f);
-            g.setColour (findColour (pdui::screenTrace));
+            g.setColour (findColour (pdui::accentCol));
             g.fillPath (h);
         };
 
@@ -1522,7 +1529,7 @@ public:
         block (x, cy, bw + 12.0f, fxText[juce::jlimit (0, 2, fx)], true);
 
         g.setFont (monoF (8.0f));
-        g.setColour (findColour (pdui::screenDim).withAlpha (0.6f));
+        g.setColour (findColour (pdui::textDim));
         g.drawText (juce::String (routing == 0 ? "single filter"
                                 : routing == 1 ? "filters in series" : "filters in parallel")
                         + (drivePre ? "  |  drive pre-filter" : "  |  drive post-filter")

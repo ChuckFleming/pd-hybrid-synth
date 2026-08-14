@@ -15,6 +15,11 @@ const Pair kPairs[] = {
     { "body text on panel",      &Palette::ink,        &Palette::bg },
     { "body text on card",       &Palette::ink,        &Palette::card },
     { "dim label on card",       &Palette::dim,        &Palette::card },
+    // Labels land on the bare panel as often as on a card -- the strip and the
+    // page background are both `bg`. Only the card pairing was checked here,
+    // and Panel 1985's dim sat at 4.21 on the panel while passing at 4.80 on a
+    // card, so the floor this file claims to enforce was not enforced.
+    { "dim label on panel",      &Palette::dim,        &Palette::bg },
     { "value on card",           &Palette::ink,        &Palette::card },
     { "dropdown text on field",  &Palette::selInk,     &Palette::selBg },
     { "screen caption on well",  &Palette::screenDim,  &Palette::screenBg },
@@ -55,6 +60,8 @@ TEST_CASE ("Faint text stays above the large-text floor", "[theme]")
         const auto& p = paletteFor (static_cast<ThemeId> (t));
         INFO (themeName (static_cast<ThemeId> (t)) << " faint on card");
         REQUIRE (contrastRatio (p.faint, p.card) >= 3.0);
+        INFO (themeName (static_cast<ThemeId> (t)) << " faint on panel");
+        REQUIRE (contrastRatio (p.faint, p.bg) >= 3.0);
     }
 }
 

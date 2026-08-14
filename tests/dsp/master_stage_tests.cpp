@@ -108,3 +108,82 @@ TEST_CASE ("Master soft-clip does not alias when driven hard", "[master][aliasin
     }
     REQUIRE (alias / (harmonic + alias) < 0.02);
 }
+
+// ---------------------------------------------------------------------------
+// Reported latency
+
+namespace {
+
+/** Group delay of the stage, found by impulse: the position of the peak. */
+int masterDelay (bool limiterOn)
+{
+    pdhybrid::MasterStage m;
+    m.setSampleRate (48000.0);
+    m.reset();
+    m.setLimiterEnabled (limiterOn);
+    m.setGainDb (0.0);
+
+    std::vector<float> l (256, 0.0f), r (256, 0.0f);
+    for (int i = 0; i < 100; ++i)      // settle the gain ramp
+    {
+        std::fill (l.begin(), l.end(), 0.0f);
+        std::fill (r.begin(), r.end(), 0.0f);
+        m.processStereo (l.data(), r.data(), 256);
+    }
+
+    std::fill (l.begin(), l.end(), 0.0f);
+    std::fill (r.begin(), r.end(), 0.0f);
+    l[0] = r[0] = 0.05f;               // small: the knee stays effectively linear
+    m.processStereo (l.data(), r.data(), 256);
+
+    int at = -1; double peak = 0.0;
+    for (int i = 0; i < 256; ++i)
+        if (std::abs ((double) l[(std::size_t) i]) > peak)
+        { peak = std::abs ((double) l[(std::size_t) i]); at = i; }
+    return at;
+}
+
+} // namespace
+
+TEST_CASE ("The output stage's latency does not depend on the limiter",
+           "[master][latency]")
+{
+    // The 4x knee oversampler used to be skipped entirely with the limiter off,
+    // so this stage delayed by 15 samples in one state and 0 in the other --
+    // meaning no single number reported to the host could be right. The
+    // limiter-off path now runs a matching plain delay.
+    REQUIRE (masterDelay (true)  == pdhybrid::MasterStage::kLatencySamples);
+    REQUIRE (masterDelay (false) == pdhybrid::MasterStage::kLatencySamples);
+}
+
+TEST_CASE ("The declared latency matches what the stage actually delays by",
+           "[master][latency]")
+{
+    // kLatencySamples is what the processor reports to the host, so it has to be
+    // the measured figure and not a guess that drifts when the FIR changes.
+    INFO ("declared " << pdhybrid::MasterStage::kLatencySamples
+          << ", measured " << masterDelay (true));
+    REQUIRE (masterDelay (true) == pdhybrid::MasterStage::kLatencySamples);
+}
+
+TEST_CASE ("Bypassing the limiter still passes the signal through", "[master][latency]")
+{
+    // A delay line is easy to get wrong in a way that silences or duplicates.
+    pdhybrid::MasterStage m;
+    m.setSampleRate (48000.0);
+    m.reset();
+    m.setLimiterEnabled (false);
+    m.setGainDb (0.0);
+
+    std::vector<float> l (512, 0.0f), r (512, 0.0f);
+    for (int i = 0; i < 512; ++i)
+        l[(std::size_t) i] = r[(std::size_t) i] = 0.25f * std::sin (0.05 * i);
+
+    const auto before = l;
+    m.processStereo (l.data(), r.data(), 512);
+
+    // Delayed, but otherwise unchanged: sample n out equals sample n-delay in.
+    const int d = pdhybrid::MasterStage::kLatencySamples;
+    for (int i = d + 8; i < 400; ++i)
+        REQUIRE (l[(std::size_t) i] == Approx (before[(std::size_t) (i - d)]).margin (1.0e-6));
+}

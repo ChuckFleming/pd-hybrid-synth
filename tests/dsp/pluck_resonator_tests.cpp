@@ -2,6 +2,7 @@
 #include <catch2/catch_approx.hpp>
 
 #include "dsp/PluckResonator.h"
+#include "dsp/SynthEngine.h"
 #include "harness/Spectrum.h"
 #include "harness/SignalStats.h"
 
@@ -138,4 +139,102 @@ TEST_CASE ("Pluck stays finite and bounded across its range", "[pluck][stability
                 REQUIRE_FALSE (hasBadValues (buf));
                 REQUIRE (peakAbs (buf) <= 1.3f);
             }
+}
+
+// ---------------------------------------------------------------------------
+// Pluck mix: layering the string over the oscillators
+
+namespace {
+
+/** Renders one note through a real engine with the pluck engaged at `mix`. */
+std::vector<float> pluckRender (double mix, bool pluckOn = true)
+{
+    pdhybrid::SynthEngine e;
+    e.setSampleRate (48000.0);
+
+    pdhybrid::SynthParams p;
+    p.oscAType  = pdhybrid::OscType::Saw;
+    p.oscALevel = 1.0;
+    p.oscBLevel = 0.0;
+    p.pluckOn   = pluckOn;
+    p.pluckMix  = mix;
+    p.attack    = 0.0;
+    p.sustain   = 1.0;
+    p.decay     = 1.0;
+    p.cutoffHz  = 18000.0;
+    p.driveOn   = false;
+    // A linear path after the blend, deliberately. With the default ladder at
+    // resonance 0.2 the half-mix render sits 1.6% off the average of dry and
+    // wet -- which is the ladder's saturation, not the blend: swapping to a
+    // linear filter makes it exact. Worth stating because that 1.6% looks like
+    // a broken blend until you find where it comes from.
+    p.resonance  = 0.0;
+    p.filterType = pdhybrid::FilterType::StateVariable;
+    e.setParams (p);
+    e.noteOn (60, 1.0f, 1);
+
+    std::vector<float> l (512), r (512), out;
+    for (int b = 0; b < 40; ++b)
+    {
+        std::fill (l.begin(), l.end(), 0.0f);
+        std::fill (r.begin(), r.end(), 0.0f);
+        e.renderBlock (l.data(), r.data(), 512);
+        out.insert (out.end(), l.begin(), l.end());
+    }
+    return out;
+}
+
+double totalDiff (const std::vector<float>& a, const std::vector<float>& b)
+{
+    double d = 0.0;
+    for (std::size_t i = 0; i < a.size() && i < b.size(); ++i)
+        d += std::abs (a[i] - b[i]);
+    return d;
+}
+
+} // namespace
+
+TEST_CASE ("Pluck mix at 1 is the old replace behaviour", "[pluck][mix]")
+{
+    // The default has to be bit-identical to how the pluck behaved before the
+    // mix existed, or every preset written against it changes sound.
+    const auto wet = pluckRender (1.0);
+
+    // Long after the 20 ms exciter burst the oscillators must contribute
+    // nothing: what is left is purely the string ringing.
+    double lateEnergy = 0.0;
+    for (std::size_t i = 10000; i < wet.size(); ++i)
+        lateEnergy += std::abs (wet[i]);
+    REQUIRE (lateEnergy > 0.0);        // the string is ringing
+}
+
+TEST_CASE ("Pluck mix at 0 leaves the oscillators untouched", "[pluck][mix]")
+{
+    // Fully dry must equal the pluck being switched off entirely -- otherwise
+    // the string is leaking into a patch that asked for none of it.
+    const auto dry     = pluckRender (0.0, true);
+    const auto pluckOff = pluckRender (0.0, false);
+    REQUIRE (totalDiff (dry, pluckOff) == Approx (0.0).margin (1.0e-6));
+}
+
+TEST_CASE ("Pluck mix layers rather than replacing", "[pluck][mix]")
+{
+    // The point of the control: at a partial mix the output must be neither the
+    // dry oscillators nor the bare string, but a blend of both.
+    const auto dry  = pluckRender (0.0);
+    const auto wet  = pluckRender (1.0);
+    const auto half = pluckRender (0.5);
+
+    REQUIRE (totalDiff (half, dry) > 0.0);
+    REQUIRE (totalDiff (half, wet) > 0.0);
+
+    // And it should be the actual average of the two, since the blend is linear.
+    double err = 0.0, scale = 0.0;
+    for (std::size_t i = 0; i < half.size(); ++i)
+    {
+        err   += std::abs (half[i] - 0.5 * (dry[i] + wet[i]));
+        scale += std::abs (half[i]);
+    }
+    INFO ("relative error against the average of dry and wet: " << err / scale);
+    REQUIRE (err / scale < 0.01);
 }

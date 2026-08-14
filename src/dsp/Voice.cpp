@@ -487,9 +487,15 @@ float Voice::renderOneSample() noexcept
 
     s *= mixNorm_;   // constant-power mixer (see applyModulation)
 
-    // Karplus-Strong pluck: the osc mix becomes the string's exciter.
+    // Karplus-Strong pluck: the osc mix becomes the string's exciter, and
+    // pluckMix decides how much of the result is string rather than oscillator.
+    // The string is always run, even at mix 0 -- its delay line has to keep
+    // moving or turning the knob up would drop in on stale, frozen state.
     if (params_.pluckOn)
-        s = pluck_.processSample (static_cast<float> (s));
+    {
+        const double wet = pluck_.processSample (static_cast<float> (s));
+        s = s * (1.0 - params_.pluckMix) + wet * params_.pluckMix;
+    }
 
     // Overdrive can sit before the filter (pre) or after it (post, default).
     if (params_.driveOn && params_.drivePos == 1)

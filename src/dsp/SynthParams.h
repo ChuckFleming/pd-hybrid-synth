@@ -231,6 +231,13 @@ struct SynthParams
     double  pluckDamp       = 0.3;    // tone (feedback lowpass)
     double  pluckDispersion = 0.0;    // inharmonic stretch
     double  pluckBurstMs    = 20.0;   // exciter injection window
+    // How much of the voice is the string. The pluck used to replace the
+    // oscillators outright, so switching it on turned them into a 20 ms
+    // excitation transient and nothing else -- a different instrument rather
+    // than an addition. At 1 that is still exactly what happens, which is why
+    // that is the default: every preset written before this sounds unchanged.
+    // Below 1 the string is layered over the oscillators instead.
+    double  pluckMix        = 1.0;    // 0 = oscillators only, 1 = string only
 
     FilterType filterType   = FilterType::Ladder;
     double     cutoffHz     = 8000.0;

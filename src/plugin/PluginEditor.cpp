@@ -1089,12 +1089,16 @@ void PDHybridEditor::buildSections()
     routingSec.customH = 62;
 
     pluckSec.title   = "Pluck";
-    pluckSec.cols    = 4;
+    // Five across, not four: a fifth knob on a second row would add 61 px to
+    // this column and push the VOICE page past its window (pdhybrid_uicheck
+    // catches that). A column is wide enough for seven cells.
+    pluckSec.cols    = 5;
     pluckSec.span    = 1;
     pluckSec.column  = 1;
     pluckSec.toggles = { &addToggle ("pluckOn", "ON") };
     pluckSec.knobs   = { &addKnob ("pluckDecay", "Decay"), &addKnob ("pluckDamp", "Damp"),
-                         &addKnob ("pluckDispersion", "Disp"), &addKnob ("pluckBurst", "Burst", 1) };
+                         &addKnob ("pluckDispersion", "Disp"), &addKnob ("pluckBurst", "Burst", 1),
+                         &addKnob ("pluckMix", "Mix") };
 
     driveCurve.attach (proc.apvts, "driveType", "drive", "bias");
     drive.title   = "Overdrive";

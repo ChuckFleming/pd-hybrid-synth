@@ -129,6 +129,9 @@ APVTS::ParameterLayout PDHybridAudioProcessor::createLayout()
     pf ("pluckDamp",  "Pluck Damp",  juce::NormalisableRange<float> (0.0f, 1.0f), 0.30f, pct);
     pf ("pluckDispersion", "Pluck Dispersion", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, pct);
     pf ("pluckBurst", "Pluck Burst", juce::NormalisableRange<float> (0.5f, 50.0f, 0.0f, 0.5f), 20.0f, ms);
+    // Default 1 = the string replaces the oscillators, which is how the pluck
+    // behaved before this existed, so old presets are unaffected.
+    pf ("pluckMix", "Pluck Mix", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f, pct);
 
     // Casio CZ-style vibrato (dedicated per-voice pitch LFO). Off by default.
     params.push_back (std::make_unique<juce::AudioParameterBool> (
@@ -684,6 +687,7 @@ void PDHybridAudioProcessor::pushParams()
     p.pluckDamp       = apvts.getRawParameterValue ("pluckDamp")->load();
     p.pluckDispersion = apvts.getRawParameterValue ("pluckDispersion")->load();
     p.pluckBurstMs    = apvts.getRawParameterValue ("pluckBurst")->load();
+    p.pluckMix        = apvts.getRawParameterValue ("pluckMix")->load();
 
     p.vibratoOn    = apvts.getRawParameterValue ("vibratoOn")->load() > 0.5f;
     p.vibratoWave  = static_cast<int> (apvts.getRawParameterValue ("vibratoWave")->load());

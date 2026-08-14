@@ -31,6 +31,8 @@ namespace {
 constexpr double kSampleRate = 48000.0;
 constexpr int    kBlock      = 64;
 constexpr int    kMaxSamples = 48000;   // one second is far past any answer here
+// What the processor tells the host: the oscillator FIR plus the output stage.
+constexpr int    kReported   = 8 + MasterStage::kLatencySamples;
 
 double msOf (int samples) { return 1000.0 * samples / kSampleRate; }
 
@@ -64,11 +66,10 @@ Crossings measure (const SynthParams& p, bool throughMaster)
     // artefact -- the output stage ramps its gain with a one-pole, and a reset
     // ramp would otherwise be counted as latency on the first note.
     //
-    // Worth recording that this made no difference: the ~15 samples the output
+    // Worth recording that this made no difference: the 15 samples the output
     // stage adds survives the warm-up, so it is real group delay from the 4x
-    // oversampled soft-clip knee, not a settling transient. That matters,
-    // because the plugin reports 8 samples of latency to the host and the true
-    // figure through the full chain is about 16.
+    // oversampled soft-clip knee, not a settling transient. That is what led to
+    // the reported latency being corrected from 8 to 23.
     for (int i = 0; i < (int) kSampleRate / kBlock; ++i)
     {
         std::fill (l.begin(), l.end(), 0.0f);
@@ -141,14 +142,60 @@ SynthParams basePatch()
 
 } // namespace
 
+/** Group delay of the output stage, measured with an impulse rather than
+    inferred from a note onset. The peak of the response is the delay. */
+int masterGroupDelay (bool limiterOn)
+{
+    MasterStage m;
+    m.setSampleRate (kSampleRate);
+    m.reset();
+    m.setLimiterEnabled (limiterOn);
+    m.setGainDb (0.0);
+
+    // Settle the gain ramp so it cannot be mistaken for delay.
+    std::vector<float> l (256, 0.0f), r (256, 0.0f);
+    for (int i = 0; i < 200; ++i)
+    {
+        std::fill (l.begin(), l.end(), 0.0f);
+        std::fill (r.begin(), r.end(), 0.0f);
+        m.processStereo (l.data(), r.data(), 256);
+    }
+
+    // A small impulse: large enough to see, small enough that the soft knee is
+    // effectively linear, so what we measure is delay and not compression.
+    std::fill (l.begin(), l.end(), 0.0f);
+    std::fill (r.begin(), r.end(), 0.0f);
+    l[0] = r[0] = 0.05f;
+    m.processStereo (l.data(), r.data(), 256);
+
+    int    peakAt = 0;
+    double peak   = 0.0;
+    for (int i = 0; i < 256; ++i)
+        if (std::abs ((double) l[(std::size_t) i]) > peak)
+        { peak = std::abs ((double) l[(std::size_t) i]); peakAt = i; }
+
+    return peak > 0.0 ? peakAt : -1;
+}
+
 int main()
 {
     std::printf ("\nNote-on to audio latency, %.0f Hz, %d-sample blocks\n",
                  kSampleRate, kBlock);
-    std::printf ("The plugin reports 8 samples (%.2f ms) of latency to the host.\n\n",
-                 msOf (8));
+    std::printf ("The plugin reports %d samples (%.2f ms) of latency to the host.\n\n",
+                 kReported, msOf (kReported));
 
-    std::printf ("--- the DSP alone: instant attack, no output stage ---\n");
+    std::printf ("--- output-stage group delay, measured by impulse ---\n");
+    {
+        const int on  = masterGroupDelay (true);
+        const int off = masterGroupDelay (false);
+        std::printf ("      limiter ON     %6d sm %6.2f ms\n", on,  msOf (on));
+        std::printf ("      limiter OFF    %6d sm %6.2f ms\n", off, msOf (off));
+        std::printf ("      (equal by design: the knee oversampler is skipped with the\n"
+                     "       limiter off, so that path runs a matching plain delay and\n"
+                     "       the reported figure is true in either state)\n");
+    }
+
+    std::printf ("\n--- the DSP alone: instant attack, no output stage ---\n");
     {
         auto p = basePatch();
         p.attack = 0.0;

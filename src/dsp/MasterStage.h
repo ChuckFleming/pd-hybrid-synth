@@ -39,6 +39,16 @@ public:
     float processSample (float x) noexcept;                       // mono (tests)
     void  processStereo (float* left, float* right, int numSamples) noexcept;
 
+    /** Group delay this stage adds, in samples, whatever the limiter is doing.
+        The 4x knee oversampler delays by this much and used to be bypassed
+        entirely with the limiter off -- so the stage's latency changed with a
+        control, and no single number reported to the host could be right. With
+        the limiter off the signal now goes through a matching plain delay
+        instead, which costs almost nothing and makes this constant true.
+
+        Independent of sample rate: the FIR is a fixed number of taps. */
+    static constexpr int kLatencySamples = 15;
+
     /** Current limiter gain reduction in dB (<= 0), for metering. */
     double gainReductionDb() const noexcept;
 
@@ -63,6 +73,12 @@ private:
 
     Oversampler osL_, osR_;        // 4x anti-alias the soft-clip knee
     static constexpr int kOsFactor = 4;
+
+    // Matching delay for the limiter-off path, so this stage's latency does not
+    // depend on whether the limiter is engaged. Fixed capacity: no allocation.
+    float bypassL_[kLatencySamples + 1] = { 0.0f };
+    float bypassR_[kLatencySamples + 1] = { 0.0f };
+    int   bypassPos_ = 0;
 };
 
 } // namespace pdhybrid

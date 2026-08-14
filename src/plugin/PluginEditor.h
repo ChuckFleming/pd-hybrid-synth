@@ -156,7 +156,11 @@ private:
             juce::RangedAudioParameter* sustain = nullptr;   // int, 1..8
             std::vector<LabeledKnob*> knobs;      // R1..R8, L1..L8, Amt, Sus
             bool bipolar = false;                 // levels are centred on 0.5
-            juce::Colour colour;
+            // A role, not a colour: a resolved juce::Colour here would be frozen
+            // to whichever theme was live when the banks were built. DCO and DCW
+            // are modulation sources and take the live colour; MULTI takes the
+            // accent. Both are looked up at paint time.
+            bool live = false;
         };
 
         StageEnvelopePanel();
@@ -258,6 +262,13 @@ private:
         every colour/font baked in at construction time (strip/matrix textbox
         colours, tab bar colours, knob-label fonts), and repaints the tree. */
     void applyTheme (pdtheme::ThemeId id);
+    /** Re-applies every colour and font that has to be stashed on a child
+        component instead of looked up in its own paint (JUCE Label and Slider
+        colour ids, tab backgrounds). Called both after the children are built
+        and on every theme change, so the two paths cannot drift apart -- three
+        separate bugs came from a construction site gaining a baked colour that
+        the switch path never learned about. */
+    void refreshThemedChildren();
 
     // Footer strip: where you are, how much modulation is live, and the two
     // actions that are not part of editing a patch.

@@ -740,7 +740,9 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
             const bool on = (i == active);
             if (on)
             {
-                g.setColour (banks[(std::size_t) i].colour.withAlpha (0.10f));
+                g.setColour (findColour (banks[(std::size_t) i].live ? pdui::liveCol
+                                                                     : pdui::accentCol)
+                                 .withAlpha (0.10f));
                 g.fillRect (seg.reduced (1));
             }
             g.setColour (findColour (pdui::panelEdge));
@@ -748,7 +750,8 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
 
             auto inner = seg.reduced (8, 3);
             g.setFont (pdui::labelFont (*this, 10.0f));
-            g.setColour (on ? banks[(std::size_t) i].colour : findColour (pdui::textDim).withAlpha (0.65f));
+            g.setColour (on ? findColour (banks[(std::size_t) i].live ? pdui::liveCol : pdui::accentCol)
+                            : findColour (pdui::textDim).withAlpha (0.65f));
             g.drawText (banks[(std::size_t) i].name, inner.removeFromTop (13),
                         juce::Justification::centredLeft);
             g.setFont (pdui::labelFont (*this, 8.0f));
@@ -786,7 +789,7 @@ void PDHybridEditor::StageEnvelopePanel::paint (juce::Graphics& g)
                     ex.withX (ex.getRight() + 8).withWidth (260), juce::Justification::centredLeft);
     }
     const auto  area  = frame.toFloat().reduced (6.0f, 8.0f);
-    const auto  col   = bank.colour;
+    const auto  col   = findColour (bank.live ? pdui::liveCol : pdui::accentCol);
 
     g.setColour (findColour (pdui::panelEdge));
     g.drawRect (frame, 1);
@@ -1891,13 +1894,13 @@ void PDHybridEditor::buildStageEnvelopes()
     auto makeBank = [&] (const juce::String& name, const juce::String& dest,
                          const juce::String& prefix, const juce::String& amountId,
                          const juce::String& sustainId, int amountDecimals,
-                         bool bipolar, juce::Colour colour)
+                         bool bipolar, bool live)
     {
         StageEnvelopePanel::Bank b;
         b.name = name;
         b.dest = dest;
         b.bipolar = bipolar;
-        b.colour = colour;
+        b.live = live;
         b.sustain = param (sustainId);
 
         for (int i = 1; i <= 8; ++i)
@@ -1920,11 +1923,11 @@ void PDHybridEditor::buildStageEnvelopes()
     // Parameter ids are "czRate1..8" / "czLevel1..8" for the filter envelope and
     // "<prefix>Rate/Level" for the other two.
     makeBank ("DCO",   "-> pitch",     "pitchEnv", "pitchEnvAmount", "pitchEnvSustain",
-              0, true,  findColour (pdui::liveCol));
+              0, true,  true);
     makeBank ("DCW",   "-> PD amount", "dcwEnv",   "dcwEnvAmount",   "dcwEnvSustain",
-              1, true,  findColour (pdui::liveCol));
+              1, true,  true);
     makeBank ("MULTI", "-> filter",    "cz",       "czAmount",       "czSustain",
-              2, false, findColour (pdui::accentCol));
+              2, false, false);
 
     stageEnv.start();
     // Collapsing the numeric rows changes the card's height, so the page it
@@ -2406,6 +2409,12 @@ PDHybridEditor::PDHybridEditor (PDHybridAudioProcessor& p)
     refreshModRings();
     startTimerHz (12);   // live meters + ring/route refresh
 
+    // Now every child exists, hand them the live theme. applyTheme ran earlier
+    // in this constructor, before any of them had been built, so its loops were
+    // no-ops -- without this the construction-time colours would be the only
+    // thing dressing them, free to disagree with what a switch produces.
+    refreshThemedChildren();
+
     setResizable (true, true);
     setResizeLimits (1100, 700, 2600, 1600);
 
@@ -2422,14 +2431,34 @@ void PDHybridEditor::applyTheme (pdtheme::ThemeId id)
 {
     const auto theme = pdui::Theme::fromId (id);
     lnf.setTheme (theme);
+    refreshThemedChildren();
 
-    // Everything below re-applies a colour or font that was resolved once at
-    // construction time (via findColour()/labelFont()) and stashed on a child
-    // component rather than looked up live in that child's own paint(). Those
-    // sites never see setTheme() at all, so without this they would keep
-    // showing the previous skin after a live switch.
+    // Pushes a lookAndFeelChanged() through the whole tree, so every child
+    // re-reads its colours. Without this the change only lands on repaint of
+    // whatever happens to be dirty.
+    sendLookAndFeelChange();
+    repaint();
+}
+
+void PDHybridEditor::refreshThemedChildren()
+{
+    // Everything here is a colour or font that JUCE keeps *on* the component
+    // rather than resolving through the LookAndFeel at paint time, so a theme
+    // change cannot reach it on its own. Both construction and switching call
+    // this, which is the point: when these lived only in the switch path, every
+    // new baked colour added at a construction site was correct on load and
+    // wrong the moment you changed skin. That bug shipped three times -- tab
+    // backgrounds, card titles, and knob captions.
     for (auto& k : knobs)
+    {
         k->label.setFont (pdui::labelFont (*this, k->size == KnobSize::Large ? 11.0f : 10.5f));
+        // The colour matters as much as the font here and was missed: knob
+        // captions kept the skin they were built under, so switching left them
+        // near-black on a dark panel or phosphor green on a cream one.
+        k->label.setColour (juce::Label::textColourId,
+                            k->size == KnobSize::Large ? findColour (pdui::accentCol)
+                                                       : findColour (pdui::textDim));
+    }
 
     for (auto* k : stripKnobs)
     {
@@ -2462,12 +2491,6 @@ void PDHybridEditor::applyTheme (pdtheme::ThemeId id)
     // switch. Re-stamp every tab, not just the TabbedComponent's own id.
     for (int i = 0; i < tabs.getNumTabs(); ++i)
         tabs.setTabBackgroundColour (i, findColour (pdui::panelBg));
-
-    // Pushes a lookAndFeelChanged() through the whole tree, so every child
-    // re-reads its colours. Without this the change only lands on repaint of
-    // whatever happens to be dirty.
-    sendLookAndFeelChange();
-    repaint();
 }
 
 PDHybridEditor::~PDHybridEditor()

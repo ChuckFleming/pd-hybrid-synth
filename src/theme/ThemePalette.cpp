@@ -16,8 +16,8 @@ const Palette kPanel1985 = {
     /* grain     */ 0x24ffffff,
 
     /* ink       */ 0xff26251f,
-    /* dim       */ 0xff5a564c,
-    /* faint     */ 0xff6e6a5f,
+    /* dim       */ 0xff4e4a41,
+    /* faint     */ 0xff565248,
 
     /* accent    */ 0xffb4472e,
     /* live      */ 0xff8a3221,

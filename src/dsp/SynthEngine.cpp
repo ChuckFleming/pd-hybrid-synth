@@ -14,8 +14,15 @@ double SynthEngine::noteHz (int note) const noexcept
 void SynthEngine::setSampleRate (double sampleRate)
 {
     sampleRate_ = sampleRate;
-    for (auto& v : voices_)
-        v.prepare (sampleRate);
+    for (int i = 0; i < kMaxVoices; ++i)
+    {
+        voices_[i].prepare (sampleRate);
+        // Give every voice its own drift streams. Without this each voice used
+        // the same hard-coded seed and they wandered in perfect lockstep, so
+        // drift widened the whole keyboard as one instead of decorrelating it.
+        // +1 so voice 0 does not get a zero seed.
+        voices_[i].setDriftSeed (static_cast<std::uint32_t> (i) + 1u);
+    }
     for (int i = 0; i < kMaxVoices; ++i)
     {
         voiceHeld_[i]      = false;

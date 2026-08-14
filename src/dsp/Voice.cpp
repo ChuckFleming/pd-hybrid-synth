@@ -171,9 +171,11 @@ void Voice::applyModulation() noexcept
     // Analog drift: apply the current random-walk values (advanced per block by
     // advanceDrift) to pitch, PD amount and filter cutoff for an "unstable
     // analog" feel driven entirely by the single drift knob.
-    const double driftSemis  = params_.drift * driftPitch_ * 2.0;    // +/- 2 semitones
-    const double driftPdAmt  = params_.drift * driftPd_    * 0.6;    // +/- 0.6 DCW
-    const double driftCutOct = params_.drift * driftCut_   * 1.0;    // +/- 1 octave
+    const double driftSemisA = params_.drift * driftPitchA_ * 2.0;   // +/- 2 semitones
+    const double driftSemisB = params_.drift * driftPitchB_ * 2.0;
+    const double driftPdAmtA = params_.drift * driftPdA_    * 0.6;   // +/- 0.6 DCW
+    const double driftPdAmtB = params_.drift * driftPdB_    * 0.6;
+    const double driftCutOct = params_.drift * driftCut_    * 1.0;   // +/- 1 octave
 
     // CZ pitch (DCO) envelope: bipolar around 0.5, scaled to semitones.
     const double pitchEnvSemis = params_.pitchEnvAmount * (pitchEnv_.level() - 0.5) * 2.0;
@@ -205,24 +207,31 @@ void Voice::applyModulation() noexcept
 
     // Pitch (matrix in semitones, +/-24 at full depth). Each unit applies its
     // own octave/semi/fine tuning on top of this note pitch.
-    const double semis = pitchBend_ + md (ModDest::Pitch) * 24.0 + driftSemis
+    // Everything except drift is common to both oscillators; drift is added per
+    // slot so A and B pull away from each other.
+    const double semis = pitchBend_ + md (ModDest::Pitch) * 24.0
                        + pitchEnvSemis + noiseSemis + vibratoSemis
                        + unisonDetuneCents_ / 100.0
                        + md (ModDest::Detune) * 0.5;   // +/- 50 cents at full depth
-    const double freq  = baseFreq_ * std::pow (2.0, semis / 12.0);
-    unitA_.setBaseFrequency (freq);
-    unitB_.setBaseFrequency (freq);
-    pluck_.setFrequency (freq);   // tune the pluck string to the note
+    const double freq  = baseFreq_ * std::pow (2.0, semis / 12.0);   // the note itself
+    unitA_.setBaseFrequency (baseFreq_ * std::pow (2.0, (semis + driftSemisA) / 12.0));
+    unitB_.setBaseFrequency (baseFreq_ * std::pow (2.0, (semis + driftSemisB) / 12.0));
+    // The string and the resonator sync track the *note*, not either oscillator:
+    // once the two drift apart there is no single pitch they could both follow,
+    // and at drift 0 this is the same value they had before.
+    pluck_.setFrequency (freq);
 
     // PD amount and pulse width are modulated equally on both slots. The CZ DCW
     // envelope adds a bipolar-around-0.5 deviation scaled by dcwEnvAmount.
     const double dcwEnvMod = params_.dcwEnvAmount * (dcwEnv_.level() - 0.5) * 2.0;
-    const double pdMod = md (ModDest::PdAmount) + driftPdAmt + dcwEnvMod;
+    const double pdMod = md (ModDest::PdAmount) + dcwEnvMod;
     const double pwMod = md (ModDest::PulseWidth) * 0.45;
     // PdAmountB is an extra offset on slot B only, so the two oscillators can be
-    // swept apart; PdAmount keeps moving both together.
-    const double pdModB = pdMod + md (ModDest::PdAmountB);
-    unitA_.setAmount     (std::clamp (params_.oscAAmount + pdMod, 0.0, 1.0));
+    // swept apart; PdAmount keeps moving both together. Drift is per slot for
+    // the same reason -- it is the part that should NOT move them together.
+    const double pdModA = pdMod + driftPdAmtA;
+    const double pdModB = pdMod + driftPdAmtB + md (ModDest::PdAmountB);
+    unitA_.setAmount     (std::clamp (params_.oscAAmount + pdModA, 0.0, 1.0));
     unitB_.setAmount     (std::clamp (params_.oscBAmount + pdModB, 0.0, 1.0));
     unitA_.setPulseWidth (std::clamp (params_.oscAPulseWidth + pwMod, 0.05, 0.95));
     unitB_.setPulseWidth (std::clamp (params_.oscBPulseWidth + pwMod, 0.05, 0.95));
@@ -318,21 +327,44 @@ void Voice::applyModulation() noexcept
     panR_ = std::sin (angle);
 }
 
+void Voice::setDriftSeed (std::uint32_t seed) noexcept
+{
+    // Two streams from one seed, mixed apart so oscillator A and B never draw
+    // the same sequence. The constants are the usual 32-bit avalanche mixers;
+    // any pair of odd multipliers that decorrelate would do.
+    driftRngA_ = (seed * 2654435761u) ^ 0x9E3779B9u;
+    driftRngB_ = (seed * 2246822519u) ^ 0x85EBCA6Bu;
+
+    // A zero state would leave an LCG stuck; nudge it off zero.
+    if (driftRngA_ == 0u) driftRngA_ = 0x9E3779B9u;
+    if (driftRngB_ == 0u) driftRngB_ = 0x85EBCA6Bu;
+}
+
 void Voice::advanceDrift (int numSamples) noexcept
 {
     // Pull each random walk toward a fresh target with a time-constant-based
     // coefficient, so the wander speed is the same regardless of block size.
-    auto nextRand = [&]
+    auto nextA = [&]
     {
-        driftRng_ = driftRng_ * 1664525u + 1013904223u;
-        return static_cast<double> (static_cast<std::int32_t> (driftRng_)) / 2147483648.0;
+        driftRngA_ = driftRngA_ * 1664525u + 1013904223u;
+        return static_cast<double> (static_cast<std::int32_t> (driftRngA_)) / 2147483648.0;
     };
+    auto nextB = [&]
+    {
+        driftRngB_ = driftRngB_ * 1664525u + 1013904223u;
+        return static_cast<double> (static_cast<std::int32_t> (driftRngB_)) / 2147483648.0;
+    };
+
     const double tau  = 0.2;   // ~200 ms wander time constant
     const double coef = 1.0 - std::exp (-static_cast<double> (numSamples)
                                         / (sampleRate_ * tau));
-    driftPitch_ += coef * (nextRand() - driftPitch_);
-    driftPd_    += coef * (nextRand() - driftPd_);
-    driftCut_   += coef * (nextRand() - driftCut_);
+
+    driftPitchA_ += coef * (nextA() - driftPitchA_);
+    driftPdA_    += coef * (nextA() - driftPdA_);
+    driftCut_    += coef * (nextA() - driftCut_);
+
+    driftPitchB_ += coef * (nextB() - driftPitchB_);
+    driftPdB_    += coef * (nextB() - driftPdB_);
 }
 
 void Voice::start (int note, float velocity, double glideFromHz, double glideSamples)

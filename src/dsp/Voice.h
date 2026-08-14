@@ -27,6 +27,12 @@ class Voice
 {
 public:
     void prepare   (double sampleRate);
+
+    /** Seeds this voice's two drift generators. Called once per voice by the
+        engine so no two voices wander together. Deliberately NOT reset on
+        note-on: drift belongs to the voice's circuit, not to the note, so it
+        carries on from wherever it had got to. */
+    void setDriftSeed (std::uint32_t seed) noexcept;
     void setParams (const SynthParams& params);
 
     // note-on. If glideSamples > 0 and glideFromHz > 0 the pitch slides from
@@ -130,12 +136,23 @@ private:
 
     std::uint32_t rng_ = 0x2545F491u;   // per-voice white-noise generator state
 
-    // Analog drift: three independent slow random-walk values (pitch, PD amount,
-    // filter cutoff), advanced at a buffer-size-independent rate.
-    std::uint32_t driftRng_   = 0x9E3779B9u;
-    double        driftPitch_ = 0.0;
-    double        driftPd_     = 0.0;
-    double        driftCut_    = 0.0;
+    // Analog drift: slow random walks advanced at a buffer-size-independent
+    // rate. Two independent generator streams, one per oscillator, so the two
+    // oscillators wander apart from each other the way two real VCOs never
+    // quite agree -- a single shared walk moved them in lockstep, which widens
+    // the voice but cannot beat A against B.
+    //
+    // The streams are seeded per voice by setDriftSeed. They used to share one
+    // hard-coded constant and were never re-seeded, so every voice produced a
+    // bit-identical walk until they happened to diverge through uneven use --
+    // on the first chord after loading, the whole keyboard drifted as one.
+    std::uint32_t driftRngA_   = 0x9E3779B9u;
+    std::uint32_t driftRngB_   = 0x85EBCA6Bu;
+    double        driftPitchA_ = 0.0;
+    double        driftPitchB_ = 0.0;
+    double        driftPdA_    = 0.0;
+    double        driftPdB_    = 0.0;
+    double        driftCut_    = 0.0;   // the filter is shared, so its walk is too
 };
 
 } // namespace pdhybrid

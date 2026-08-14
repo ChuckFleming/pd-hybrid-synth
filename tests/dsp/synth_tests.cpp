@@ -841,3 +841,119 @@ TEST_CASE ("Unison stacks detuned voices and widens the field", "[synth][unison]
     }
     REQUIRE (diff > ref * 0.01);                 // a genuinely stereo result
 }
+
+// ---------------------------------------------------------------------------
+// Analog drift
+
+namespace {
+
+// Renders one note through its own engine, after burning `skipVoices` voices so
+// the note lands on a later voice slot.
+std::vector<float> driftRender (int skipVoices, double drift, int blocks = 60)
+{
+    SynthEngine e;
+    e.setSampleRate (48000.0);
+
+    SynthParams p;
+    p.oscAType  = OscType::Saw;
+    p.oscBType  = OscType::Saw;
+    p.oscALevel = 1.0;
+    p.oscBLevel = 1.0;      // both slots up, so A-vs-B drift is audible
+    p.drift     = drift;
+    p.attack    = 0.0;
+    p.sustain   = 1.0;
+    p.cutoffHz  = 18000.0;
+    e.setParams (p);
+
+    for (int i = 0; i < skipVoices; ++i)
+    {
+        e.noteOn (40 + i, 1.0f, 100 + i);
+        e.noteOff (40 + i, 100 + i);
+    }
+    e.noteOn (60, 1.0f, 1);
+
+    std::vector<float> l (512), r (512), out;
+    for (int b = 0; b < blocks; ++b)
+    {
+        std::fill (l.begin(), l.end(), 0.0f);
+        std::fill (r.begin(), r.end(), 0.0f);
+        e.renderBlock (l.data(), r.data(), 512);
+        out.insert (out.end(), l.begin(), l.end());
+    }
+    return out;
+}
+
+double relativeDifference (const std::vector<float>& a, const std::vector<float>& b)
+{
+    double diff = 0.0, energy = 0.0;
+    for (std::size_t i = 0; i < a.size() && i < b.size(); ++i)
+    {
+        diff   += std::abs (a[i] - b[i]);
+        energy += std::abs (a[i]);
+    }
+    return energy > 0.0 ? diff / energy : 0.0;
+}
+
+} // namespace
+
+TEST_CASE ("Two voices do not drift in lockstep", "[synth][drift]")
+{
+    // Every voice used to seed its drift generator from the same constant and
+    // nothing re-seeded it, so two fresh voices produced bit-identical output --
+    // measured at a relative difference of exactly 0. Drift is meant to
+    // decorrelate voices; a keyboard that wanders as one block is the bug.
+    const auto v0 = driftRender (0, 1.0);
+    const auto v1 = driftRender (1, 1.0);
+
+    const double rel = relativeDifference (v0, v1);
+    INFO ("relative difference between voice 0 and voice 1: " << rel);
+    REQUIRE (rel > 0.05);
+}
+
+TEST_CASE ("Drift is off when the knob is down", "[synth][drift]")
+{
+    // The decorrelation must come from drift, not from the voices differing for
+    // some other reason: at drift 0 any two voices are identical again.
+    const auto v0 = driftRender (0, 0.0);
+    const auto v1 = driftRender (1, 0.0);
+    REQUIRE (relativeDifference (v0, v1) == Approx (0.0).margin (1.0e-9));
+}
+
+TEST_CASE ("The two oscillators drift apart from each other", "[synth][drift]")
+{
+    // Drift used to drive one shared walk into both slots, so the oscillators
+    // moved together: the voice wandered but A never beat against B. Detuning
+    // slot B by a fixed amount and comparing against drift-off isolates it.
+    auto render = [] (double drift)
+    {
+        SynthEngine e;
+        e.setSampleRate (48000.0);
+        SynthParams p;
+        p.oscAType  = OscType::Saw;
+        p.oscBType  = OscType::Saw;
+        p.oscALevel = 1.0;
+        p.oscBLevel = 1.0;
+        p.drift     = drift;
+        p.attack    = 0.0;
+        p.sustain   = 1.0;
+        p.cutoffHz  = 18000.0;
+        e.setParams (p);
+        e.noteOn (60, 1.0f, 1);
+
+        std::vector<float> l (512), r (512), out;
+        for (int b = 0; b < 60; ++b)
+        {
+            std::fill (l.begin(), l.end(), 0.0f);
+            std::fill (r.begin(), r.end(), 0.0f);
+            e.renderBlock (l.data(), r.data(), 512);
+            out.insert (out.end(), l.begin(), l.end());
+        }
+        return out;
+    };
+
+    // With both oscillators at the same pitch and no drift, they sum coherently.
+    // Drift pulls them apart, so the summed peak stops being a clean doubling.
+    const auto dry = render (0.0);
+    const auto wet = render (1.0);
+    REQUIRE (relativeDifference (dry, wet) > 0.05);
+}

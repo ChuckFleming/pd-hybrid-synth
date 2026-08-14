@@ -20,6 +20,27 @@ target_include_directories(pdhybrid_latency PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(pdhybrid_latency PRIVATE pdhybrid_dsp)
 target_compile_features(pdhybrid_latency PRIVATE cxx_std_17)
 
+# Layout check: builds a real editor headlessly and asserts every tab page fits
+# its window without scrolling. Links the plugin's shared code, so unlike the
+# other test targets it needs JUCE.
+add_executable(pdhybrid_uicheck bench/uicheck_main.cpp)
+target_include_directories(pdhybrid_uicheck PRIVATE ${CMAKE_SOURCE_DIR}/src)
+# The plugin links its JUCE modules PRIVATE, so they do not come through the
+# shared-code target; name them here too.
+target_link_libraries(pdhybrid_uicheck
+    PRIVATE
+        PDHybridSynth
+        pdhybrid_dsp
+        pdhybrid_theme
+        juce::juce_audio_utils
+        juce::juce_dsp
+)
+target_compile_definitions(pdhybrid_uicheck PRIVATE
+    JUCE_STANDALONE_APPLICATION=1
+    JUCE_MODAL_LOOPS_PERMITTED=1
+)
+target_compile_features(pdhybrid_uicheck PRIVATE cxx_std_17)
+
 add_executable(pdhybrid_tests
     dsp/oscillator_tests.cpp
     dsp/analog_oscillator_tests.cpp

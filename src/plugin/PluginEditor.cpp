@@ -2440,6 +2440,31 @@ void PDHybridEditor::applyTheme (pdtheme::ThemeId id)
     repaint();
 }
 
+std::vector<PDHybridEditor::PageFit> PDHybridEditor::measurePageFit (int width, int height)
+{
+    // Mirrors what resized() hands the tab area, without touching the editor:
+    // the strip, tab bar and footer come off the top and bottom, and the page
+    // keeps what is left. The Inspector is a drawer that overlays rather than
+    // squeezing, so it takes no width here -- which is exactly why it became a
+    // drawer.
+    static const char* kNames[] = { "VOICE", "SHAPE", "MOD", "OUT", "GLOBAL" };
+
+    const int contentW = width - 2 * kMargin;
+    const int available = height - kTopBar - kStripH - tabs.getTabBarDepth()
+                        - kFooterH - 6;
+
+    std::vector<PageFit> out;
+    for (std::size_t i = 0; i < pages.size(); ++i)
+    {
+        PageFit f;
+        f.name      = i < 5 ? kNames[i] : juce::String ((int) i);
+        f.needed    = pages[i]->preferredHeight (contentW);
+        f.available = available;
+        out.push_back (std::move (f));
+    }
+    return out;
+}
+
 void PDHybridEditor::refreshThemedChildren()
 {
     // Everything here is a colour or font that JUCE keeps *on* the component

@@ -92,3 +92,14 @@ target_link_libraries(pdhybrid_tests PRIVATE
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
 catch_discover_tests(pdhybrid_tests)
+
+# The layout check runs under ctest with everything else, so CI picks it up
+# without the workflow needing to know about it. It builds a real editor, which
+# needs a display: the Linux runners are headless, so it goes through xvfb
+# there. Failure means a tab page no longer fits its window.
+if(UNIX AND NOT APPLE)
+    add_test(NAME layout_pages_fit
+             COMMAND xvfb-run -a $<TARGET_FILE:pdhybrid_uicheck>)
+else()
+    add_test(NAME layout_pages_fit COMMAND pdhybrid_uicheck)
+endif()
